@@ -1,3 +1,5 @@
+name: your-persona
+
 services:
   api:
     build:
