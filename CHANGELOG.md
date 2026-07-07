@@ -143,23 +143,53 @@ Konvensi: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · `[R
 - 2-phase context cancellation: abort jika user disconnect saat waiting semaphore; `context.WithoutCancel` setelah in-flight (**AGENTS.md**)
 - Graceful degradation: fallback ke `fallback_static` jika Gemini gagal (**FR-C2**)
 
+### Auth & Session Implementation (Day 1 Priority)
+
+#### [A] GORM Models & Repositories
+- Update `UserModel` and `GuestSessionModel` with account lockout counters (`FailedLoginCount`, `LockedUntil`) and locale preferences.
+- Add new `VerificationTokenModel` table structure for tracking email OTPs.
+- Implement concrete Postgres repositories: `UserRepository`, `GuestSessionRepository`, and `VerificationTokenRepository`.
+
+#### [A] Redis Infrastructure & OTP Rate Limiting
+- Add Redis client configuration provider.
+- Implement `OTPRateLimitService` with rolling 5x/day cap and 60-second cooldown per email using pipelines.
+
+#### [A] Security & Session Tokens (JWT)
+- Implement `JWTService` with custom claims containing the `token_version` to support remote session invalidation.
+
+#### [A] Auth Use Cases
+- Implement `CreateGuestSessionUseCase` to support onboarding form submissions for guests.
+- Implement `RegisterUseCase` with atomic transaction-based guest-claiming, referral tracking, and asynchronous email OTP dispatching.
+- Implement `VerifyEmailOTPUseCase` with daily attempt tracking.
+- Implement `ResendEmailOTPUseCase` with rate limit checks and old active token invalidation.
+- Implement `LoginUseCase` with account lockout policy (10 failed consecutive attempts -> 15 min lock).
+
+#### [A] Delivery Layer (HTTP Router & Handlers)
+- Create `AuthHandler` containing standard envelopes and correct HTTP status mappings (e.g. 423 for Account Lock, 429 for Max OTP attempts).
+- Add full Swaggo documentation annotations to all 5 priority auth endpoints.
+- Wire routes and cookies setup in `router.go`.
+- Compile and generate `wire_gen.go` using Google Wire.
+- Generate swagger OpenAPI documentation under `docs/`.
+
 ---
 
 ### Verification
 
 ```
-go build ./internal/domain/...    ✅ OK
-go vet ./internal/domain/...      ✅ OK
+go run github.com/google/wire/cmd/wire ./cmd/api  ✅ OK (generated wire_gen.go)
+swag init -g cmd/api/main.go -o docs              ✅ OK (generated docs/)
+go build ./cmd/api                                ✅ OK (server compiles successfully)
+go build ./cmd/migrate; go build ./cmd/worker     ✅ OK (auxiliary entrypoints compile successfully)
 ```
 
 ---
 
 ## Planned (Next Steps)
 
-- [ ] GORM models — tambahkan semua model yang belum ada (Answer, VerificationToken, Referral, DeletionRequest, Question, InsightTemplate, PromptAuditLog)
-- [ ] Postgres repositories — implementasi konkret untuk semua 10 domain
-- [ ] Redis client + service (idempotency, distributed lock, OTP rate limit, reset token single-use)
-- [ ] Auth use cases — 10 use case (Epic H)
-- [ ] Auth HTTP handler + JWT middleware
-- [ ] Wire — lengkapi `wire.go`, jalankan `make wire`
-- [ ] Migrate — update `cmd/migrate/main.go` dengan semua model baru
+- [ ] Complete GORM models & Postgres repositories for the remaining domains (TestResult, Answer, DeletionRequest, Referral, etc.)
+- [ ] Complete remaining Auth use cases (Forgot Password, Verify Reset OTP, Reset Password, Logout, Logout-all)
+- [ ] Complete worker implementation (Asynq background workers for email, PDF, anonymization)
+- [ ] Implement Redis-backed Distributed Lock & Idempotency Service
+- [ ] Integrate Turnstile verification and actual Have I Been Pwned API checks
+- [ ] Add integration testing via testcontainers-go
+

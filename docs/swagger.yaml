@@ -1,0 +1,270 @@
+basePath: /
+definitions:
+  auth.CreateGuestSessionResponse:
+    properties:
+      expiresAt:
+        type: string
+      sessionID:
+        type: string
+    type: object
+  auth.LoginResponse:
+    properties:
+      accessToken:
+        type: string
+      refreshToken:
+        type: string
+    type: object
+  auth.RegisterResponse:
+    properties:
+      userID:
+        type: string
+    type: object
+  handler.CreateGuestSessionRequestDTO:
+    properties:
+      age:
+        type: integer
+      display_name:
+        type: string
+      locale:
+        description: e.g., en, id
+        type: string
+      status:
+        description: e.g., bekerja, mahasiswa
+        type: string
+    required:
+    - age
+    - display_name
+    - locale
+    - status
+    type: object
+  handler.LoginRequestDTO:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  handler.RegisterRequestDTO:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 10
+        type: string
+      preferred_locale:
+        type: string
+      referral_code:
+        type: string
+    required:
+    - email
+    - password
+    - preferred_locale
+    type: object
+  handler.ResendEmailOTPRequestDTO:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  handler.VerifyEmailOTPRequestDTO:
+    properties:
+      email:
+        type: string
+      otp:
+        type: string
+    required:
+    - email
+    - otp
+    type: object
+  httpresponse.ErrorDetail:
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+    type: object
+  httpresponse.Response:
+    properties:
+      data: {}
+      error:
+        $ref: '#/definitions/httpresponse.ErrorDetail'
+      meta: {}
+      success:
+        type: boolean
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: API Server for Your Persona psychological assessment platform.
+  title: Your Persona API
+  version: "1.0"
+paths:
+  /v1/auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates member and returns JWT tokens
+      parameters:
+      - description: Credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.LoginRequestDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/auth.LoginResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "423":
+          description: Locked
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: User login
+      tags:
+      - Auth
+  /v1/auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Registers a new member account. Claims any valid guest session
+        in cookies.
+      parameters:
+      - description: Registration Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.RegisterRequestDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/auth.RegisterResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Register a new user
+      tags:
+      - Auth
+  /v1/auth/resend-email-otp:
+    post:
+      consumes:
+      - application/json
+      description: Generates and sends a new registration OTP code, invalidating previous
+        ones
+      parameters:
+      - description: Email Address
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.ResendEmailOTPRequestDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Resend verification OTP
+      tags:
+      - Auth
+  /v1/auth/verify-email-otp:
+    post:
+      consumes:
+      - application/json
+      description: Verifies registration OTP and marks email as verified
+      parameters:
+      - description: Email & OTP
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.VerifyEmailOTPRequestDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Verify email verification OTP
+      tags:
+      - Auth
+  /v1/guest-session:
+    post:
+      consumes:
+      - application/json
+      description: Creates a guest session from onboarding data, sets session_id httpOnly
+        cookie
+      parameters:
+      - description: Guest Session Onboarding Data
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.CreateGuestSessionRequestDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/auth.CreateGuestSessionResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Create a guest session
+      tags:
+      - Auth
+swagger: "2.0"
