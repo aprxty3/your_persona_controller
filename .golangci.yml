@@ -63,13 +63,12 @@ linters:
           deny:
             - pkg: "io/ioutil"
               desc: "deprecated since Go 1.16 — use 'io' or 'os'"
+  exclusions:
+    paths:
+      - docs
+      - tmp
 
 formatters:
   enable:
     - gofmt
     - goimports
-
-issues:
-  exclude-dirs:
-    - docs
-    - tmp
