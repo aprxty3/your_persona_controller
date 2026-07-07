@@ -17,6 +17,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
+	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/aprxty3/your_persona_controller.git/pkg/taskqueue"
 	"github.com/hibiken/asynq"
 	"github.com/labstack/echo/v4"
@@ -27,7 +28,7 @@ import (
 // Injectors from wire.go:
 
 // InitializeAPI wires up the entire application and returns the Echo router.
-func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret) (*echo.Echo, error) {
+func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, loggerInstance logger.Logger) (*echo.Echo, error) {
 	testResultRepository := stubs.NewStubTestResultRepository()
 	answerRepository := stubs.NewStubAnswerRepository()
 	client, err := provideGeminiClient(geminiAPIKey, geminiModel, maxConcurrent)

@@ -14,6 +14,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
+	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/aprxty3/your_persona_controller.git/pkg/taskqueue"
 	"github.com/google/wire"
 	"github.com/hibiken/asynq"
@@ -53,6 +54,7 @@ func InitializeAPI(
 	redisPassword RedisPassword,
 	redisDB int,
 	jwtSecret JWTSecret,
+	loggerInstance logger.Logger,
 ) (*echo.Echo, error) {
 	wire.Build(
 		// ---------------------------------------------------------

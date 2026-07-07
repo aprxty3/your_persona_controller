@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	echo "github.com/labstack/echo/v4"
 )
 
@@ -96,6 +97,12 @@ func main() {
 		jwtSecret = "your-persona-super-secret-key-change-in-production-123456"
 	}
 
+	appEnv := os.Getenv("APP_ENV")
+	if appEnv == "" {
+		appEnv = "development"
+	}
+	logInstance := logger.NewLogger(appEnv)
+
 	// ---------------------------------------------------------
 	// DEPENDENCY INJECTION (Wire)
 	// ---------------------------------------------------------
@@ -109,6 +116,7 @@ func main() {
 		RedisPassword(redisPassword),
 		redisDB,
 		JWTSecret(jwtSecret),
+		logInstance,
 	)
 	if err != nil {
 		log.Fatalf("Failed to initialize API: %v", err)
