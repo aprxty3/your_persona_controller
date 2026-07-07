@@ -23,23 +23,27 @@ type Client struct {
 func NewClient(apiKey string, modelName string, maxConcurrent int64) (*Client, error) {
 	ctx := context.Background()
 
-	// Inisialisasi menggunakan format SDK terbaru google.golang.org/genai
-	config := &genai.ClientConfig{
-		APIKey:  apiKey,
-		Backend: genai.BackendGeminiAPI,
+	var client *genai.Client
+	var err error
+
+	if apiKey != "" {
+		config := &genai.ClientConfig{
+			APIKey:  apiKey,
+			Backend: genai.BackendGeminiAPI,
+		}
+		client, err = genai.NewClient(ctx, config)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		log.Println("[Gemini] WARNING: GEMINI_API_KEY is not set. AI assessment features will be unavailable.")
 	}
 
-	client, err := genai.NewClient(ctx, config)
-	if err != nil {
-		return nil, err
-	}
-
-	// Create a semaphore to strictly limit concurrent requests to Google's API.
 	sem := semaphore.NewWeighted(maxConcurrent)
 
 	return &Client{
 		client:    client,
-		modelName: modelName, // Menyimpan nama model (misal: "gemini-2.5-pro-001")
+		modelName: modelName,
 		sem:       sem,
 	}, nil
 }
@@ -47,13 +51,15 @@ func NewClient(apiKey string, modelName string, maxConcurrent int64) (*Client, e
 // GenerateSummary calls the Gemini API to analyze the essay.
 // It implements the AIGeneratorService interface required by the Application layer.
 func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale string) (string, int, error) {
-	// PHASE 1: ACQUIRE SEMAPHORE (Waiting in line)
+	if c.client == nil {
+		return "", 0, errors.New("gemini client is unconfigured: GEMINI_API_KEY environment variable is empty")
+	}
+
 	if err := c.sem.Acquire(ctx, 1); err != nil {
 		return "", 0, errors.New("request aborted while waiting for AI slot or context canceled")
 	}
 	defer c.sem.Release(1)
 
-	// PHASE 2: IN-FLIGHT EXECUTION (Calling the API)
 	aiCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
 
@@ -65,8 +71,6 @@ func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale s
 		locale,
 	)
 
-	// FIX 1: Konfigurasi Generation Config pada SDK Baru
-	// Menggunakan []*genai.Part dan struct initialization {Text: ...}
 	genConfig := &genai.GenerateContentConfig{
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{
@@ -75,7 +79,6 @@ func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale s
 		},
 	}
 
-	// Membungkus esai user ke dalam format Content yang benar untuk SDK baru
 	userContents := []*genai.Content{
 		{
 			Parts: []*genai.Part{
@@ -83,7 +86,6 @@ func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale s
 			},
 		},
 	}
-	// Panggilan GenerateContent menggunakan SDK Baru
 	resp, err := c.client.Models.GenerateContent(
 		aiCtx,
 		c.modelName,
@@ -100,9 +102,6 @@ func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale s
 		return "", 0, errors.New("empty response from Gemini")
 	}
 
-	// FIX 2: Ekstrak teks balasan AI
-	// Tidak perlu type assertion (part.(genai.Text)) lagi,
-	// karena 'part' sudah berupa struct pointer (*genai.Part) yang memiliki properti Text.
 	var summary string
 	for _, part := range resp.Candidates[0].Content.Parts {
 		if part.Text != "" {
@@ -110,7 +109,6 @@ func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale s
 		}
 	}
 
-	// Ekstrak Token Usage untuk Cost Tracking
 	totalTokens := 0
 	if resp.UsageMetadata != nil {
 		totalTokens = int(resp.UsageMetadata.TotalTokenCount)
