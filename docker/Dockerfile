@@ -9,7 +9,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/api ./cmd/api
 RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/worker ./cmd/worker
 RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/migrate ./cmd/migrate
 
-# --- Runtime stage (minimal, tidak bawa Go toolchain) ---
+# --- Runtime stage (minimal, does not include Go toolchain) ---
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates
 WORKDIR /app

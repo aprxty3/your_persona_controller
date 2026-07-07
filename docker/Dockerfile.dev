@@ -1,5 +1,5 @@
-# Dockerfile khusus dev — bawa full Go toolchain + Air untuk hot-reload.
-# JANGAN dipakai untuk production image (pakai docker/Dockerfile).
+# Dockerfile for dev — includes full Go toolchain + Air for hot-reload.
+# DO NOT use for production image (use docker/Dockerfile).
 FROM golang:1.23-alpine
 WORKDIR /app
 RUN apk add --no-cache git

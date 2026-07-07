@@ -15,8 +15,8 @@ services:
     volumes:
       - ..:/app
 
-  # S3-compatible storage untuk dev — kode client S3 yang sama jalan di sini dan di AWS S3 asli
-  # (tinggal ganti S3_ENDPOINT di .env, lihat PRD Section 9.4)
+  # S3-compatible storage for dev — same S3 client code works here and in actual AWS S3
+  # (just replace S3_ENDPOINT in .env, see PRD Section 9.4)
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
@@ -29,7 +29,7 @@ services:
     volumes:
       - minio_data:/data
 
-  # SMTP catcher untuk dev — lihat email yang "terkirim" di http://localhost:8025
+  # SMTP catcher for dev — view "sent" emails at http://localhost:8025
   mailpit:
     image: axllent/mailpit
     ports:
