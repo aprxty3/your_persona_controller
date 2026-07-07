@@ -11,7 +11,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/gemini"
-	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
+	jwtservice "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	asynq2 "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
@@ -70,6 +70,7 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 
 // wire.go:
 
+// Wrapper providers to resolve concrete types using the typed aliases.
 func provideGeminiClient(key GeminiAPIKey, model GeminiModel, maxConcurrent int64) (*gemini.Client, error) {
 	return gemini.NewClient(string(key), string(model), maxConcurrent)
 }

@@ -11,14 +11,14 @@ linters:
     - errcheck
     - govet
     - ineffassign
-    - staticcheck # merger dari stylecheck + gosimple + staticcheck lama
+    - staticcheck # merger of stylecheck + gosimple + old staticcheck
     - unused
-    # Bug prevention relevan untuk stack ini (HTTP client ke Gemini/S3, DB, worker)
-    - bodyclose # response body HTTP (Gemini API, S3) wajib di-close
-    - contextcheck # context propagation benar, penting untuk graceful shutdown & timeout Gemini
-    - noctx # cegah HTTP request tanpa context
+    # Bug prevention relevant for this stack (HTTP client to Gemini/S3, DB, worker)
+    - bodyclose # HTTP response body (Gemini API, S3) must be closed
+    - contextcheck # correct context propagation, important for graceful shutdown & Gemini timeout
+    - noctx # prevent HTTP requests without context
     - copyloopvar # Go 1.22+ loop variable check
-    - errorlint # error wrapping konsisten (lihat NFR error handling di PRD)
+    - errorlint # consistent error wrapping (see NFR error handling in PRD)
     - nilerr
     - sqlclosecheck
     - rowserrcheck
@@ -27,42 +27,42 @@ linters:
     - gosec
     # Code quality
     - misspell
-    - goconst # status string berulang ("completed", "fallback_static") harus jadi const
+    - goconst # repeated status strings ("completed", "fallback_static") must be const
     - revive
-    # Arsitektur — enforcement otomatis dari AGENTS.md Architecture Rules
+    # Architecture — automatic enforcement of AGENTS.md Architecture Rules
     - depguard
   settings:
     gosec:
       config:
         global:
-          "#nosec": "#nosec-reviewed" # wajib alasan eksplisit tiap kali suppress, bukan #nosec polos
+          "#nosec": "#nosec-reviewed" # explicit reason required each time suppressing, not plain #nosec
     errcheck:
       check-type-assertions: true
     goconst:
       min-occurrences: 3
     depguard:
       rules:
-        # Domain layer harus framework-agnostic — dependency rule Clean Architecture
-        # ditegakkan di sini, bukan cuma di dokumentasi AGENTS.md
+        # Domain layer must be framework-agnostic — dependency rule of Clean Architecture
+        # enforced here, not just in AGENTS.md documentation
         domain-layer:
           files:
             - "**/internal/domain/**"
           deny:
             - pkg: "gorm.io"
-              desc: "domain layer harus framework-agnostic — taruh GORM di internal/infrastructure/persistence (lihat AGENTS.md Architecture Rules)"
+              desc: "domain layer must be framework-agnostic — place GORM in internal/infrastructure/persistence (see AGENTS.md Architecture Rules)"
             - pkg: "net/http"
-              desc: "domain layer tidak boleh tahu soal HTTP — itu urusan internal/interfaces/http"
+              desc: "domain layer must not know about HTTP — that is handled by internal/interfaces/http"
             - pkg: "github.com/hibiken/asynq"
-              desc: "domain layer tidak boleh tahu soal Asynq — itu urusan internal/interfaces/worker"
+              desc: "domain layer must not know about Asynq — that is handled by internal/interfaces/worker"
             - pkg: "google.golang.org/genai"
-              desc: "domain layer tidak boleh tahu soal Gemini SDK — itu urusan internal/infrastructure/gemini"
-        # Cegah io/ioutil yang sudah deprecated, dan math/rand non-crypto dipakai untuk hal sensitif
+              desc: "domain layer must not know about Gemini SDK — that is handled by internal/infrastructure/gemini"
+        # Prevent deprecated io/ioutil, and math/rand non-crypto used for sensitive operations
         general:
           files:
             - "$all"
           deny:
             - pkg: "io/ioutil"
-              desc: "deprecated sejak Go 1.16 — pakai 'io' atau 'os'"
+              desc: "deprecated since Go 1.16 — use 'io' or 'os'"
 
 formatters:
   enable:

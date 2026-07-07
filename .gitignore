@@ -1,4 +1,4 @@
-# Secrets — JANGAN PERNAH commit file ini (lihat AGENTS.md Security Rules)
+# Secrets — NEVER commit this file (see AGENTS.md Security Rules)
 .env
 .env.local
 *.pem

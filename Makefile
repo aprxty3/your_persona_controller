@@ -1,6 +1,6 @@
 .PHONY: run-api run-worker migrate wire swag test tidy lint
 
-# Menjalankan aplikasi secara lokal (tanpa Docker)
+# Run application locally (without Docker)
 run-api:
 	go run ./cmd/api
 run-worker:
@@ -11,9 +11,10 @@ migrate:
 	go run ./cmd/migrate
 
 # Generate Dependency Injection (google/wire)
+# Using 'go run' to ensure the correct version is used without requiring a global CLI installation
 wire:
-	wire ./cmd/api
-	wire ./cmd/worker
+	go run github.com/google/wire/cmd/wire ./cmd/api
+	go run github.com/google/wire/cmd/wire ./cmd/worker
 
 # Generate Swagger API Documentation
 swag:

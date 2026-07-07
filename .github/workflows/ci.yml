@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # perlu full history biar gitleaks scan semua commit, bukan cuma HEAD
+          fetch-depth: 0 # requires full history so gitleaks scans all commits, not just HEAD
       - name: gitleaks (secret scanning)
         uses: gitleaks/gitleaks-action@v2
         env:
@@ -64,5 +64,5 @@ jobs:
     needs: [test, security, secrets]
     steps:
       - uses: actions/checkout@v4
-      - name: Build image (verifikasi Dockerfile valid, tidak di-push)
+      - name: Build image (verify Dockerfile is valid, do not push)
         run: docker build -t controller-api:${{ github.sha }} -f docker/Dockerfile .

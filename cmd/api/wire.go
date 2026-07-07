@@ -23,7 +23,6 @@ import (
 )
 
 // Wrapper providers to resolve concrete types using the typed aliases.
-
 func provideGeminiClient(key GeminiAPIKey, model GeminiModel, maxConcurrent int64) (*gemini.Client, error) {
 	return gemini.NewClient(string(key), string(model), maxConcurrent)
 }
