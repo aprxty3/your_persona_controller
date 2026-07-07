@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
+	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/dto"
 	"github.com/aprxty3/your_persona_controller.git/pkg/httpresponse"
 	"github.com/labstack/echo/v4"
 )
@@ -20,15 +21,6 @@ func NewAssessmentHandler(uc *assessment.SubmitAssessmentUseCase) *AssessmentHan
 	}
 }
 
-// SubmitRequestDTO represents the incoming JSON payload for assessment submission.
-type SubmitRequestDTO struct {
-	Locale  string `json:"locale"`
-	Answers []struct {
-		QuestionID string `json:"question_id"`
-		Value      string `json:"value"`
-	} `json:"answers"`
-}
-
 // Submit handles the POST /v1/assessment/submit endpoint.
 func (h *AssessmentHandler) Submit(c echo.Context) error {
 	// 1. Extract Idempotency-Key from Header
@@ -38,7 +30,7 @@ func (h *AssessmentHandler) Submit(c echo.Context) error {
 	}
 
 	// 2. Parse Request Body
-	var payload SubmitRequestDTO
+	var payload dto.SubmitRequestDTO
 	if err := c.Bind(&payload); err != nil {
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
 	}

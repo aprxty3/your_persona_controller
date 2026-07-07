@@ -292,21 +292,3 @@ func (h *AuthHandler) Login(c echo.Context) error {
 
 	return httpcallSuccess(c, http.StatusOK, resp, nil)
 }
-
-// Helpers to satisfy Swaggo DTO representations and unify error handling style.
-
-func httpcallError(c echo.Context, err error) error {
-	return httpresponse.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
-}
-
-func httpcallErrorCustom(c echo.Context, code int, errCode string, msg string) error {
-	return httpcallErrorWithDetail(c, code, errCode, msg)
-}
-
-func httpcallErrorWithDetail(c echo.Context, code int, errCode string, msg string) error {
-	return httpresponse.Error(c, code, errCode, msg)
-}
-
-func httpcallSuccess(c echo.Context, code int, data interface{}, meta interface{}) error {
-	return httpresponse.Success(c, code, data, meta)
-}
