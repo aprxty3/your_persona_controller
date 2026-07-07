@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -119,7 +118,8 @@ func main() {
 		logInstance,
 	)
 	if err != nil {
-		log.Fatalf("Failed to initialize API: %v", err)
+		logInstance.Error("failed to initialize API", "error", err)
+		os.Exit(1)
 	}
 
 	port := os.Getenv("APP_PORT")
@@ -131,9 +131,10 @@ func main() {
 	// SERVER START & GRACEFUL SHUTDOWN
 	// ---------------------------------------------------------
 	go func() {
-		log.Printf("Server is starting on port %s...", port)
+		logInstance.Info("server is starting", "port", port)
 		if err := app.Start(":" + port); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Server forced to shutdown abruptly: %v", err)
+			logInstance.Error("server forced to shutdown abruptly", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -143,7 +144,7 @@ func main() {
 
 	// Block the main thread until a signal is received
 	<-quit
-	log.Println("Interrupt signal received. Shutting down server gracefully...")
+	logInstance.Info("interrupt signal received, shutting down server gracefully")
 
 	// Parse shutdown timeout from env, fallback to 30s
 	timeoutStr := os.Getenv("SHUTDOWN_TIMEOUT")
@@ -157,8 +158,9 @@ func main() {
 	defer cancel()
 
 	if err := app.Shutdown(ctx); err != nil {
-		log.Fatalf("Server shutdown failed or timed out: %v", err)
+		logInstance.Error("server shutdown failed or timed out", "error", err)
+		os.Exit(1)
 	}
 
-	log.Println("Server exited properly.")
+	logInstance.Info("server exited properly")
 }

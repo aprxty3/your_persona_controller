@@ -28,10 +28,10 @@ const (
 // SendEmailPayload is the canonical payload for all send:email tasks.
 // Locale-aware: the worker uses this locale to select the correct email template (FR-I8).
 type SendEmailPayload struct {
-	Type   string `json:"type"`             // otp_verification | otp_reset | deletion_confirmed
+	Type   string `json:"type"` // otp_verification | otp_reset | deletion_confirmed
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`
-	OTP    string `json:"otp,omitempty"`   // present for otp_* types
+	OTP    string `json:"otp,omitempty"` // present for otp_* types
 	Locale string `json:"locale"`
 }
 
@@ -58,16 +58,16 @@ func NewAsynqDispatcher(client *asynq.Client) Dispatcher {
 }
 
 func (d *AsynqDispatcher) EnqueueEmail(ctx context.Context, payload SendEmailPayload, queue string) error {
-	return enqueue(d.client, TaskSendEmail, payload, queue, 5)
+	return enqueue(ctx, d.client, TaskSendEmail, payload, queue, 5)
 }
 
 func (d *AsynqDispatcher) EnqueuePDFGeneration(ctx context.Context, payload GeneratePDFPayload) error {
-	return enqueue(d.client, TaskGeneratePDF, payload, QueuePDF, 3)
+	return enqueue(ctx, d.client, TaskGeneratePDF, payload, QueuePDF, 3)
 }
 
 // enqueue is the single shared implementation for all task types.
 // DO NOT duplicate this logic per-task — that's what this DRY helper prevents.
-func enqueue(client *asynq.Client, taskType string, payload any, queueName string, maxRetry int) error {
+func enqueue(ctx context.Context, client *asynq.Client, taskType string, payload any, queueName string, maxRetry int) error {
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -80,12 +80,6 @@ func enqueue(client *asynq.Client, taskType string, payload any, queueName strin
 		asynq.Timeout(5 * time.Minute),
 	}
 
-	_, err = client.EnqueueContext(context.Background(), task, opts...)
+	_, err = client.EnqueueContext(ctx, task, opts...)
 	return err
-}
-
-// EnqueueTask is the legacy low-level helper kept for backward compatibility.
-// Prefer using a Dispatcher instance injected via Wire.
-func EnqueueTask(client *asynq.Client, taskType string, payload any, queueName string, maxRetry int) error {
-	return enqueue(client, taskType, payload, queueName, maxRetry)
 }

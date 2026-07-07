@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -28,7 +29,7 @@ func NewOTPRateLimitService(client *redis.Client) *OTPRateLimitService {
 // Returns (0, nil) if verification succeeds and OTP dispatch is permitted.
 func (s *OTPRateLimitService) CheckAndConsume(ctx context.Context, email string) (retryAfterSeconds int, err error) {
 	ttl, err := s.client.TTL(ctx, cooldownKey(email)).Result()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return 0, fmt.Errorf("redis: get cooldown ttl: %w", err)
 	}
 	if ttl > 0 {
@@ -36,7 +37,7 @@ func (s *OTPRateLimitService) CheckAndConsume(ctx context.Context, email string)
 	}
 
 	count, err := s.client.Get(ctx, dailyCountKey(email)).Int()
-	if err != nil && err != redis.Nil {
+	if err != nil && !errors.Is(err, redis.Nil) {
 		return 0, fmt.Errorf("redis: get daily send counter: %w", err)
 	}
 	if count >= otpDailyCapCount {

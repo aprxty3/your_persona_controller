@@ -147,12 +147,12 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 			}
 
 			if req.ReferralCode != nil {
-				if err := createReferralEvents(ctx, tx, newUser.ID, *req.ReferralCode, guest.SessionID); err != nil {
+				if err := createReferralEvents(ctx, tx, newUser.ID, *req.ReferralCode, guest.SessionID, uc.log); err != nil {
 					return err
 				}
 			}
 		} else if req.ReferralCode != nil && guest == nil {
-			if err := createSignupEvent(ctx, tx, newUser.ID, *req.ReferralCode); err != nil {
+			if err := createSignupEvent(ctx, tx, newUser.ID, *req.ReferralCode, uc.log); err != nil {
 				_ = err
 			}
 		}
@@ -219,17 +219,21 @@ func buildUser(req RegisterRequest, hash []byte, guest *guestsession.GuestSessio
 	return u
 }
 
-func createReferralEvents(ctx context.Context, tx *gorm.DB, newUserID, referralCode, guestSessionID string) error {
+func createReferralEvents(ctx context.Context, tx *gorm.DB, newUserID, referralCode, guestSessionID string, log logger.Logger) error { //nolint:unparam // always nil by design, see comment above
 	var referralCodeID string
 	if err := tx.Raw("SELECT id FROM referral_codes WHERE code = ?", referralCode).
 		Scan(&referralCodeID).Error; err != nil || referralCodeID == "" {
-		return nil // Silent ignore on invalid codes
+		if err != nil {
+			log.Warn("referral event skipped", "reason", "lookup_failed", "error", err) //nolint:nilerr // best-effort, see func comment
+		}
+		return nil
 	}
 
 	if err := tx.Exec(
 		"INSERT INTO referral_events (id, referral_code_id, referred_user_id, event_type, created_at) VALUES (?, ?, ?, 'signup', NOW())",
 		uuid.New().String(), referralCodeID, newUserID,
 	).Error; err != nil {
+		log.Warn("referral signup event insert failed", "error", err) //nolint:nilerr // best-effort, see func comment
 		return nil
 	}
 
@@ -239,25 +243,34 @@ func createReferralEvents(ctx context.Context, tx *gorm.DB, newUserID, referralC
 		guestSessionID,
 	).Scan(&count)
 	if count > 0 {
-		_ = tx.Exec(
+		if err := tx.Exec(
 			"INSERT INTO referral_events (id, referral_code_id, referred_user_id, event_type, created_at) VALUES (?, ?, ?, 'test_completed', NOW())",
 			uuid.New().String(), referralCodeID, newUserID,
-		).Error
+		).Error; err != nil {
+			log.Warn("referral test_completed event insert failed", "error", err)
+		}
 	}
 
 	return nil
 }
 
-func createSignupEvent(ctx context.Context, tx *gorm.DB, newUserID, referralCode string) error {
+func createSignupEvent(ctx context.Context, tx *gorm.DB, newUserID, referralCode string, log logger.Logger) error { //nolint:unparam // always nil by design, see createReferralEvents
 	var referralCodeID string
 	if err := tx.Raw("SELECT id FROM referral_codes WHERE code = ?", referralCode).
 		Scan(&referralCodeID).Error; err != nil || referralCodeID == "" {
+		if err != nil {
+			log.Warn("signup referral event skipped", "reason", "lookup_failed", "error", err) //nolint:nilerr // best-effort, see createReferralEvents
+		}
 		return nil
 	}
-	return tx.Exec(
+	if err := tx.Exec(
 		"INSERT INTO referral_events (id, referral_code_id, referred_user_id, event_type, created_at) VALUES (?, ?, ?, 'signup', NOW())",
 		uuid.New().String(), referralCodeID, newUserID,
-	).Error
+	).Error; err != nil {
+		log.Warn("signup referral event insert failed", "error", err)
+		return nil //nolint:nilerr // best-effort, see createReferralEvents
+	}
+	return nil
 }
 
 func txUserRepository(tx *gorm.DB, log logger.Logger) user.Repository {
