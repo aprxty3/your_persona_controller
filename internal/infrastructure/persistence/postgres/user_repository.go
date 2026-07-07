@@ -14,15 +14,18 @@ type UserRepository struct {
 	db *gorm.DB
 }
 
+// NewUserRepository constructs a new UserRepository.
 func NewUserRepository(db *gorm.DB) user.Repository {
 	return &UserRepository{db: db}
 }
 
+// Create inserts a new user record.
 func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 	m := toUserModel(u)
 	return r.db.WithContext(ctx).Create(&m).Error
 }
 
+// FindByID retrieves a user by their UUID. Returns nil, nil if not found.
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*user.User, error) {
 	var m UserModel
 	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
@@ -36,6 +39,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*user.User, e
 	return &u, nil
 }
 
+// FindByEmail retrieves a user by email address. Returns nil, nil if not found.
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*user.User, error) {
 	var m UserModel
 	err := r.db.WithContext(ctx).First(&m, "email = ?", email).Error
@@ -49,13 +53,13 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*user.U
 	return &u, nil
 }
 
+// Update saves all mutable fields of the user.
 func (r *UserRepository) Update(ctx context.Context, u *user.User) error {
 	m := toUserModel(u)
 	return r.db.WithContext(ctx).Save(&m).Error
 }
 
 // IncrementTokenVersion atomically increments token_version for the given user ID.
-// Used by reset-password and logout-all. Atomic UPDATE avoids race conditions.
 func (r *UserRepository) IncrementTokenVersion(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).
 		Model(&UserModel{}).
@@ -64,8 +68,7 @@ func (r *UserRepository) IncrementTokenVersion(ctx context.Context, id string) e
 		Error
 }
 
-// UpdateLoginAttempt updates failed_login_count and locked_until.
-// Call with failedCount=0 and lockedUntil=nil on successful login to reset state.
+// UpdateLoginAttempt updates the failed login counter and lockout timestamp.
 func (r *UserRepository) UpdateLoginAttempt(ctx context.Context, id string, failedCount int, lockedUntil *time.Time) error {
 	updates := map[string]interface{}{
 		"failed_login_count": failedCount,

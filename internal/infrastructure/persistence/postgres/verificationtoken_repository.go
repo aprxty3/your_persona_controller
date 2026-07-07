@@ -9,22 +9,24 @@ import (
 	"gorm.io/gorm"
 )
 
-// VerificationTokenRepository implements verificationtoken.Repository backed by PostgreSQL.
+// VerificationTokenRepository implements verificationtoken.Repository backed by PostgreSQL via GORM.
 type VerificationTokenRepository struct {
 	db *gorm.DB
 }
 
+// NewVerificationTokenRepository constructs a new VerificationTokenRepository.
 func NewVerificationTokenRepository(db *gorm.DB) verificationtoken.Repository {
 	return &VerificationTokenRepository{db: db}
 }
 
+// Create inserts a new verification token record.
 func (r *VerificationTokenRepository) Create(ctx context.Context, t *verificationtoken.VerificationToken) error {
 	m := toVTModel(t)
 	return r.db.WithContext(ctx).Create(&m).Error
 }
 
 // FindActiveByUserAndType returns the single active (not expired, not used) token.
-// Lookup MUST always be scoped to (user_id, type) — never by token alone.
+// Lookup is scoped to (user_id, type) for index optimization and security.
 func (r *VerificationTokenRepository) FindActiveByUserAndType(ctx context.Context, userID string, tokenType verificationtoken.TokenType) (*verificationtoken.VerificationToken, error) {
 	var m VerificationTokenModel
 	err := r.db.WithContext(ctx).
@@ -61,7 +63,7 @@ func (r *VerificationTokenRepository) MarkUsed(ctx context.Context, tokenID stri
 }
 
 // ExpireAllActiveForUser force-expires all unused tokens of the given (user_id, type).
-// MUST be called before creating a new OTP to maintain the single-valid-token invariant.
+// Called prior to OTP generation to ensure the single-valid-token invariant.
 func (r *VerificationTokenRepository) ExpireAllActiveForUser(ctx context.Context, userID string, tokenType verificationtoken.TokenType) error {
 	return r.db.WithContext(ctx).
 		Model(&VerificationTokenModel{}).

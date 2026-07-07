@@ -8,26 +8,24 @@ import (
 	"github.com/google/uuid"
 )
 
-// Claims is the standard JWT payload used for access tokens.
-// token_version is embedded so middleware can reject stale tokens without a DB round-trip
-// on every request — only mismatch triggers a DB check.
+// Claims defines standard registered claims with additional attributes for access and revocation control.
 type Claims struct {
 	jwt.RegisteredClaims
 	TokenVersion int    `json:"token_version"`
 	Purpose      string `json:"purpose,omitempty"` // "access" | "refresh" | "password_reset"
 }
 
-// JWTService generates and parses JWTs for auth flows.
+// JWTService handles authorization credentials generation and verification.
 type JWTService struct {
 	secret []byte
 }
 
+// NewJWTService constructs a new JWTService.
 func NewJWTService(secret string) *JWTService {
 	return &JWTService{secret: []byte(secret)}
 }
 
-// GenerateAccessToken creates a short-lived access token with token_version embedded.
-// TTL is typically 15 minutes (from JWT_ACCESS_TTL env).
+// GenerateAccessToken generates a short-lived token with token_version embedded.
 func (s *JWTService) GenerateAccessToken(userID string, tokenVersion int, ttl time.Duration) (string, error) {
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -42,8 +40,7 @@ func (s *JWTService) GenerateAccessToken(userID string, tokenVersion int, ttl ti
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.secret)
 }
 
-// GenerateRefreshToken creates a long-lived refresh token (purpose="refresh").
-// TTL is typically 7–30 days.
+// GenerateRefreshToken generates a long-lived persistence session token.
 func (s *JWTService) GenerateRefreshToken(userID string, ttl time.Duration) (string, error) {
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -57,9 +54,7 @@ func (s *JWTService) GenerateRefreshToken(userID string, ttl time.Duration) (str
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.secret)
 }
 
-// GenerateResetToken creates a single-use password-reset token (purpose="password_reset").
-// The jti claim must be stored in Redis and consumed atomically on use.
-// TTL is typically 15 minutes (from OTP_EXPIRY_MINUTES env).
+// GenerateResetToken creates a single-use code exchange token.
 func (s *JWTService) GenerateResetToken(userID string, ttl time.Duration) (jti string, tokenStr string, err error) {
 	jti = uuid.New().String()
 	claims := Claims{
@@ -75,17 +70,17 @@ func (s *JWTService) GenerateResetToken(userID string, ttl time.Duration) (jti s
 	return jti, tokenStr, err
 }
 
-// ParseAccessToken parses and validates an access token, returning its claims.
+// ParseAccessToken validates the access token structure and purpose.
 func (s *JWTService) ParseAccessToken(tokenStr string) (*Claims, error) {
 	return s.parse(tokenStr, "access")
 }
 
-// ParseRefreshToken parses and validates a refresh token.
+// ParseRefreshToken validates the refresh token structure and purpose.
 func (s *JWTService) ParseRefreshToken(tokenStr string) (*Claims, error) {
 	return s.parse(tokenStr, "refresh")
 }
 
-// ParseResetToken parses and validates a password reset token.
+// ParseResetToken validates the password reset token structure and purpose.
 func (s *JWTService) ParseResetToken(tokenStr string) (*Claims, error) {
 	return s.parse(tokenStr, "password_reset")
 }
@@ -103,10 +98,10 @@ func (s *JWTService) parse(tokenStr, expectedPurpose string) (*Claims, error) {
 
 	claims, ok := token.Claims.(*Claims)
 	if !ok || !token.Valid {
-		return nil, fmt.Errorf("jwt: invalid token")
+		return nil, fmt.Errorf("jwt: invalid token claims")
 	}
 	if claims.Purpose != expectedPurpose {
-		return nil, fmt.Errorf("jwt: token purpose mismatch: got %q, want %q", claims.Purpose, expectedPurpose)
+		return nil, fmt.Errorf("jwt: purpose mismatch: got %q, want %q", claims.Purpose, expectedPurpose)
 	}
 
 	return claims, nil

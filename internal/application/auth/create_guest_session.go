@@ -10,30 +10,32 @@ import (
 	"github.com/google/uuid"
 )
 
-// CreateGuestSessionRequest holds validated input from the Onboarding form.
+// CreateGuestSessionRequest holds validated input from the onboarding form.
 type CreateGuestSessionRequest struct {
 	DisplayName string
 	Age         int
-	Status      string // student|college|work|etc
+	Status      string // student|undergraduate|employed|others
 	Locale      string // en|id
-	IPAddress   string // raw IP — will be hashed, never stored
+	IPAddress   string // raw client IP (hashed and never stored directly)
 }
 
-// CreateGuestSessionResponse is returned to the handler to set the cookie.
+// CreateGuestSessionResponse is returned on successful session creation.
 type CreateGuestSessionResponse struct {
 	SessionID string
 	ExpiresAt time.Time
 }
 
-// CreateGuestSessionUseCase creates a new GUEST_SESSION record.
+// CreateGuestSessionUseCase orchestrates guest session lifecycle creation.
 type CreateGuestSessionUseCase struct {
 	repo guestsession.Repository
 }
 
+// NewCreateGuestSessionUseCase creates a new CreateGuestSessionUseCase.
 func NewCreateGuestSessionUseCase(repo guestsession.Repository) *CreateGuestSessionUseCase {
 	return &CreateGuestSessionUseCase{repo: repo}
 }
 
+// Execute handles the generation of a 14-day persistent guest session.
 func (uc *CreateGuestSessionUseCase) Execute(ctx context.Context, req CreateGuestSessionRequest) (*CreateGuestSessionResponse, error) {
 	sessionID := uuid.New().String()
 	now := time.Now()
@@ -51,7 +53,7 @@ func (uc *CreateGuestSessionUseCase) Execute(ctx context.Context, req CreateGues
 	}
 
 	if err := uc.repo.Create(ctx, session); err != nil {
-		return nil, fmt.Errorf("create_guest_session: %w", err)
+		return nil, fmt.Errorf("create_guest_session: repo create: %w", err)
 	}
 
 	return &CreateGuestSessionResponse{
@@ -60,8 +62,7 @@ func (uc *CreateGuestSessionUseCase) Execute(ctx context.Context, req CreateGues
 	}, nil
 }
 
-// hashIP produces a one-way hash of the raw IP address.
-// Raw IPs are never stored — only the hash, for deduplication only.
+// hashIP computes a SHA-256 digest of the client IP address.
 func hashIP(ip string) string {
 	h := sha256.Sum256([]byte(ip))
 	return fmt.Sprintf("%x", h)

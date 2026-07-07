@@ -8,20 +8,23 @@ import (
 	"gorm.io/gorm"
 )
 
-// GuestSessionRepository implements guestsession.Repository backed by PostgreSQL.
+// GuestSessionRepository implements guestsession.Repository backed by PostgreSQL via GORM.
 type GuestSessionRepository struct {
 	db *gorm.DB
 }
 
+// NewGuestSessionRepository constructs a new GuestSessionRepository.
 func NewGuestSessionRepository(db *gorm.DB) guestsession.Repository {
 	return &GuestSessionRepository{db: db}
 }
 
+// Create inserts a new guest session record.
 func (r *GuestSessionRepository) Create(ctx context.Context, s *guestsession.GuestSession) error {
 	m := toGuestSessionModel(s)
 	return r.db.WithContext(ctx).Create(&m).Error
 }
 
+// FindBySessionID retrieves a guest session by its UUID. Returns nil, nil if not found.
 func (r *GuestSessionRepository) FindBySessionID(ctx context.Context, sessionID string) (*guestsession.GuestSession, error) {
 	var m GuestSessionModel
 	err := r.db.WithContext(ctx).First(&m, "session_id = ?", sessionID).Error
@@ -35,11 +38,13 @@ func (r *GuestSessionRepository) FindBySessionID(ctx context.Context, sessionID 
 	return &s, nil
 }
 
+// Update saves all mutable fields of the guest session.
 func (r *GuestSessionRepository) Update(ctx context.Context, s *guestsession.GuestSession) error {
 	m := toGuestSessionModel(s)
 	return r.db.WithContext(ctx).Save(&m).Error
 }
 
+// FindExpiredUnclaimed retrieves guest sessions that are expired and unclaimed.
 func (r *GuestSessionRepository) FindExpiredUnclaimed(ctx context.Context) ([]guestsession.GuestSession, error) {
 	var models []GuestSessionModel
 	err := r.db.WithContext(ctx).
@@ -55,6 +60,7 @@ func (r *GuestSessionRepository) FindExpiredUnclaimed(ctx context.Context) ([]gu
 	return sessions, nil
 }
 
+// DeleteBySessionID removes a guest session from the database.
 func (r *GuestSessionRepository) DeleteBySessionID(ctx context.Context, sessionID string) error {
 	return r.db.WithContext(ctx).
 		Delete(&GuestSessionModel{}, "session_id = ?", sessionID).Error

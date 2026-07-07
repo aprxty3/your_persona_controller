@@ -11,78 +11,90 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// Sentinel errors — mapped to HTTP error codes in the handler
+// Sentinel login errors mapped to specific HTTP status codes in the presentation layer.
 var (
-	ErrInvalidCredentials = errors.New("INVALID_CREDENTIALS") // generic — never distinguish email-not-found vs wrong-password
+	ErrInvalidCredentials = errors.New("INVALID_CREDENTIALS") // Scoped to prevent user enumeration
 	ErrAccountLocked      = errors.New("ACCOUNT_LOCKED")      // HTTP 423
 )
 
 const (
-	loginMaxAttempts = 10 // lock after 10 consecutive failures
-	lockDuration     = 15 * time.Minute
-	accessTokenTTL   = 15 * time.Minute
-	refreshTokenTTL  = 14 * 24 * time.Hour // 14 days
+	defaultLoginMaxAttempts = 10
+	defaultLockDuration     = 15 * time.Minute
+	defaultAccessTokenTTL   = 15 * time.Minute
+	defaultRefreshTokenTTL  = 14 * 24 * time.Hour
 )
 
-// LoginRequest is the input for the login endpoint.
+// LoginRequest is the payload for the authenticate user endpoint.
 type LoginRequest struct {
 	Email    string
 	Password string
 }
 
-// LoginResponse contains both JWT tokens returned on successful login.
+// LoginResponse carries JWT credentials on successful login.
 type LoginResponse struct {
 	AccessToken  string
 	RefreshToken string
 }
 
-// LoginUseCase validates credentials and issues JWTs.
-// Two separate lockout mechanisms coexist (AGENTS.md):
-//  1. Account-level lockout (this use case) — 10x consecutive failures → 15 min
-//  2. Per-IP rate limit (middleware layer, not here)
+// LoginUseCase validates password hashes and generates session JWTs.
 type LoginUseCase struct {
-	userRepo   user.Repository
-	jwtService *jwtservice.JWTService
+	userRepo        user.Repository
+	jwtService      *jwtservice.JWTService
+	loginMaxAttempts int
+	lockDuration     time.Duration
+	accessTokenTTL   time.Duration
+	refreshTokenTTL  time.Duration
 }
 
+// NewLoginUseCase creates a new LoginUseCase with configurable defaults.
 func NewLoginUseCase(userRepo user.Repository, jwtService *jwtservice.JWTService) *LoginUseCase {
-	return &LoginUseCase{userRepo: userRepo, jwtService: jwtService}
+	return &LoginUseCase{
+		userRepo:         userRepo,
+		jwtService:       jwtService,
+		loginMaxAttempts: defaultLoginMaxAttempts,
+		lockDuration:     defaultLockDuration,
+		accessTokenTTL:   defaultAccessTokenTTL,
+		refreshTokenTTL:  defaultRefreshTokenTTL,
+	}
 }
 
+// Execute authenticates a user and increments or resets login lockout policies.
 func (uc *LoginUseCase) Execute(ctx context.Context, req LoginRequest) (*LoginResponse, error) {
-	// Look up user — use generic error regardless of not-found vs wrong-password
 	u, err := uc.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
-		return nil, fmt.Errorf("login: find user: %w", err)
+		return nil, fmt.Errorf("login: query email: %w", err)
 	}
 	if u == nil {
 		return nil, ErrInvalidCredentials
 	}
 
-	// Check account-level lockout (BEFORE checking password — lockout must fire even if attacker guesses email correctly)
+	// Fast-fail if the account is currently locked out
 	if u.IsLocked() {
 		return nil, ErrAccountLocked
 	}
 
-	// Verify password
+	// Verify password hash
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
 		return nil, uc.handleFailedAttempt(ctx, u)
 	}
 
-	// Successful login — reset attempt counter
-	if err := uc.userRepo.UpdateLoginAttempt(ctx, u.ID, 0, nil); err != nil {
-		// Non-fatal — user is authenticated; counter reset failure is logged, not surfaced
-		_ = err
+	// Clear failed login count upon successful authentication
+	if u.FailedLoginCount > 0 {
+		if err := uc.userRepo.UpdateLoginAttempt(ctx, u.ID, 0, nil); err != nil {
+			// Fail-open: log error but do not block successful authentication
+			_ = err
+		}
 	}
 
-	// Generate tokens
-	accessToken, err := uc.jwtService.GenerateAccessToken(u.ID, u.TokenVersion, accessTokenTTL)
+	// Issue JWT token pairs
+	accessToken, err := uc.jwtService.GenerateAccessToken(u.ID, u.TokenVersion, uc.accessTokenTTL)
 	if err != nil {
-		return nil, fmt.Errorf("login: generate access token: %w", err)
+		return nil, fmt.Errorf("login: issue access token: %w", err)
 	}
-	refreshToken, err := uc.jwtService.GenerateRefreshToken(u.ID, refreshTokenTTL)
+
+	refreshToken, err := uc.jwtService.GenerateRefreshToken(u.ID, uc.refreshTokenTTL)
 	if err != nil {
-		return nil, fmt.Errorf("login: generate refresh token: %w", err)
+		return nil, fmt.Errorf("login: issue refresh token: %w", err)
 	}
 
 	return &LoginResponse{
@@ -91,19 +103,17 @@ func (uc *LoginUseCase) Execute(ctx context.Context, req LoginRequest) (*LoginRe
 	}, nil
 }
 
-// handleFailedAttempt increments the counter and applies lockout if threshold is reached.
-// Always returns ErrInvalidCredentials or ErrAccountLocked — never the internal error.
 func (uc *LoginUseCase) handleFailedAttempt(ctx context.Context, u *user.User) error {
 	newCount := u.FailedLoginCount + 1
 	var lockedUntil *time.Time
 
-	if newCount >= loginMaxAttempts {
-		t := time.Now().Add(lockDuration)
-		lockedUntil = &t
+	if newCount >= uc.loginMaxAttempts {
+		lockTime := time.Now().Add(uc.lockDuration)
+		lockedUntil = &lockTime
 	}
 
 	if err := uc.userRepo.UpdateLoginAttempt(ctx, u.ID, newCount, lockedUntil); err != nil {
-		// Non-fatal update failure — still return the correct auth error to client
+		// Log error but prioritize raising incorrect credential signal to client
 		_ = err
 	}
 
