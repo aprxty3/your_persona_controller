@@ -7,6 +7,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/dto"
 	"github.com/aprxty3/your_persona_controller.git/pkg/httpresponse"
+	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/labstack/echo/v4"
 )
 
@@ -17,6 +18,7 @@ type AuthHandler struct {
 	verifyEmailOTPUseCase     *auth.VerifyEmailOTPUseCase
 	resendEmailOTPUseCase     *auth.ResendEmailOTPUseCase
 	loginUseCase              *auth.LoginUseCase
+	log                       logger.Logger
 }
 
 // NewAuthHandler is the constructor for Dependency Injection.
@@ -26,6 +28,7 @@ func NewAuthHandler(
 	verifyEmailOTPUseCase *auth.VerifyEmailOTPUseCase,
 	resendEmailOTPUseCase *auth.ResendEmailOTPUseCase,
 	loginUseCase *auth.LoginUseCase,
+	log logger.Logger,
 ) *AuthHandler {
 	return &AuthHandler{
 		createGuestSessionUseCase: createGuestSessionUseCase,
@@ -33,6 +36,7 @@ func NewAuthHandler(
 		verifyEmailOTPUseCase:     verifyEmailOTPUseCase,
 		resendEmailOTPUseCase:     resendEmailOTPUseCase,
 		loginUseCase:              loginUseCase,
+		log:                       log.With("handler", "auth"),
 	}
 }
 
@@ -50,10 +54,12 @@ func NewAuthHandler(
 func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 	var payload dto.CreateGuestSessionRequestDTO
 	if err := c.Bind(&payload); err != nil {
+		h.log.Warn("create guest session rejected", "reason", "bind_error", "error", err)
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
 	}
 
 	if payload.DisplayName == "" || payload.Age <= 0 || payload.Status == "" || payload.Locale == "" {
+		h.log.Warn("create guest session rejected", "reason", "validation_error")
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Required fields are missing or invalid")
 	}
 
@@ -69,6 +75,7 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 
 	resp, err := h.createGuestSessionUseCase.Execute(c.Request().Context(), ucReq)
 	if err != nil {
+		h.log.Error("create guest session failed", "error", err)
 		return httpcallError(c, err)
 	}
 
@@ -101,10 +108,12 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 func (h *AuthHandler) Register(c echo.Context) error {
 	var payload dto.RegisterRequestDTO
 	if err := c.Bind(&payload); err != nil {
+		h.log.Warn("register rejected", "reason", "bind_error", "error", err)
 		return httpresponse.Error(c, http.StatusBadRequest, "BIND_ERROR", err.Error())
 	}
 
 	if payload.Email == "" || payload.Password == "" || payload.PreferredLocale == "" {
+		h.log.Warn("register rejected", "reason", "validation_error")
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Email, password, and preferred locale are required")
 	}
 
@@ -132,6 +141,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		if errors.Is(err, auth.ErrPasswordTooShort) {
 			return httpcallErrorCustom(c, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		}
+		h.log.Error("register failed", "error", err)
 		return httpcallError(c, err)
 	}
 
@@ -152,10 +162,12 @@ func (h *AuthHandler) Register(c echo.Context) error {
 func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 	var payload dto.VerifyEmailOTPRequestDTO
 	if err := c.Bind(&payload); err != nil {
+		h.log.Warn("verify email otp rejected", "reason", "bind_error", "error", err)
 		return httpcallError(c, err)
 	}
 
 	if payload.Email == "" || payload.OTP == "" {
+		h.log.Warn("verify email otp rejected", "reason", "validation_error")
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Email and OTP are required")
 	}
 
@@ -201,6 +213,7 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 				Meta: meta,
 			})
 		}
+		h.log.Error("verify email otp failed", "error", err)
 		return httpcallError(c, err)
 	}
 
@@ -220,10 +233,12 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 	var payload dto.ResendEmailOTPRequestDTO
 	if err := c.Bind(&payload); err != nil {
+		h.log.Warn("resend email otp rejected", "reason", "bind_error", "error", err)
 		return httpcallError(c, err)
 	}
 
 	if payload.Email == "" {
+		h.log.Warn("resend email otp rejected", "reason", "validation_error")
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Email is required")
 	}
 
@@ -247,6 +262,7 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 				Meta: meta,
 			})
 		}
+		h.log.Error("resend email otp failed", "error", err)
 		return httpcallError(c, err)
 	}
 
@@ -267,10 +283,12 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 func (h *AuthHandler) Login(c echo.Context) error {
 	var payload dto.LoginRequestDTO
 	if err := c.Bind(&payload); err != nil {
+		h.log.Warn("login rejected", "reason", "bind_error", "error", err)
 		return httpcallError(c, err)
 	}
 
 	if payload.Email == "" || payload.Password == "" {
+		h.log.Warn("login rejected", "reason", "validation_error")
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Email and password are required")
 	}
 
@@ -287,6 +305,7 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		if errors.Is(err, auth.ErrAccountLocked) {
 			return httpcallErrorCustom(c, http.StatusLocked, "ACCOUNT_LOCKED", "Account is locked due to too many failed login attempts")
 		}
+		h.log.Error("login failed", "error", err)
 		return httpcallError(c, err)
 	}
 

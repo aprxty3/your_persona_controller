@@ -10,6 +10,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/verificationtoken"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
+	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/aprxty3/your_persona_controller.git/pkg/otp"
 	"github.com/aprxty3/your_persona_controller.git/pkg/taskqueue"
 	"github.com/google/uuid"
@@ -50,6 +51,7 @@ type RegisterUseCase struct {
 	tokenRepo     verificationtoken.Repository
 	breachChecker PasswordBreachChecker
 	dispatcher    taskqueue.Dispatcher
+	log           logger.Logger
 	otpLength     int
 	otpExpiryMins int
 }
@@ -62,6 +64,7 @@ func NewRegisterUseCase(
 	tokenRepo verificationtoken.Repository,
 	breachChecker PasswordBreachChecker,
 	dispatcher taskqueue.Dispatcher,
+	log logger.Logger,
 ) *RegisterUseCase {
 	return &RegisterUseCase{
 		db:            db,
@@ -70,6 +73,7 @@ func NewRegisterUseCase(
 		tokenRepo:     tokenRepo,
 		breachChecker: breachChecker,
 		dispatcher:    dispatcher,
+		log:           log.With("usecase", "register"),
 		otpLength:     6,
 		otpExpiryMins: 15,
 	}
@@ -78,24 +82,29 @@ func NewRegisterUseCase(
 // Execute performs atomic multi-record mutations in a single transaction.
 func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
 	if len(req.Password) < 10 {
+		uc.log.Warn("registration rejected", "reason", "password_too_short")
 		return nil, ErrPasswordTooShort
 	}
 
 	// HIBP check — fail-open on HIBP API failure so signups are not blocked
 	if breached, err := uc.breachChecker.IsBreached(ctx, req.Password); err == nil && breached {
+		uc.log.Warn("registration rejected", "reason", "password_breached")
 		return nil, errors.New("password found in known breach database — please choose a different password")
 	}
 
 	existing, err := uc.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
+		uc.log.Error("registration failed", "step", "lookup_email", "error", err)
 		return nil, fmt.Errorf("register: lookup email: %w", err)
 	}
 	if existing != nil {
+		uc.log.Warn("registration rejected", "reason", "email_already_registered")
 		return nil, ErrEmailAlreadyRegistered
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
+		uc.log.Error("registration failed", "step", "bcrypt_hash", "error", err)
 		return nil, fmt.Errorf("register: bcrypt hash: %w", err)
 	}
 
@@ -103,6 +112,7 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 	if req.GuestSessionID != nil {
 		guest, err = uc.guestRepo.FindBySessionID(ctx, *req.GuestSessionID)
 		if err != nil {
+			uc.log.Error("registration failed", "step", "find_guest_session", "error", err)
 			return nil, fmt.Errorf("register: find guest session: %w", err)
 		}
 	}
@@ -111,17 +121,19 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 
 	// Single atomic database transaction for multi-table writes
 	txErr := uc.db.Transaction(func(tx *gorm.DB) error {
-		txUserRepo := txUserRepository(tx)
-		txGuestRepo := txGuestRepository(tx)
-		txTokenRepo := txTokenRepository(tx)
+		txUserRepo := txUserRepository(tx, uc.log)
+		txGuestRepo := txGuestRepository(tx, uc.log)
+		txTokenRepo := txTokenRepository(tx, uc.log)
 
 		if err := txUserRepo.Create(ctx, newUser); err != nil {
+			uc.log.Error("registration failed", "step", "tx_create_user", "error", err)
 			return fmt.Errorf("tx: create user: %w", err)
 		}
 
 		if guest != nil && !guest.IsClaimed() {
 			guest.ClaimedByUserID = &newUser.ID
 			if err := txGuestRepo.Update(ctx, guest); err != nil {
+				uc.log.Error("registration failed", "step", "tx_claim_guest_session", "error", err)
 				return fmt.Errorf("tx: claim guest session: %w", err)
 			}
 
@@ -130,6 +142,7 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 				"UPDATE test_results SET user_id = ?, guest_session_id = NULL WHERE guest_session_id = ? AND status IN ('completed','fallback_static')",
 				newUser.ID, guest.SessionID,
 			).Error; err != nil {
+				uc.log.Error("registration failed", "step", "tx_reassign_test_results", "error", err)
 				return fmt.Errorf("tx: reassign test results: %w", err)
 			}
 
@@ -146,6 +159,7 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 
 		otpCode, err := otp.GenerateOTP(uc.otpLength)
 		if err != nil {
+			uc.log.Error("registration failed", "step", "generate_otp", "error", err)
 			return fmt.Errorf("tx: generate verification code: %w", err)
 		}
 
@@ -157,6 +171,7 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 			ExpiresAt: time.Now().Add(time.Duration(uc.otpExpiryMins) * time.Minute),
 		}
 		if err := txTokenRepo.Create(ctx, token); err != nil {
+			uc.log.Error("registration failed", "step", "tx_persist_otp", "error", err)
 			return fmt.Errorf("tx: persist otp: %w", err)
 		}
 
@@ -170,7 +185,7 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 		}
 		if err := uc.dispatcher.EnqueueEmail(ctx, payload, taskqueue.QueueCritical); err != nil {
 			// Enqueue errors do not rollback the registration — users can click resend.
-			_ = err
+			uc.log.Warn("failed to enqueue verification email, user can use resend", "user_id", newUser.ID, "error", err)
 		}
 
 		return nil
@@ -180,6 +195,7 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 		return nil, txErr
 	}
 
+	uc.log.Info("user registered", "user_id", newUser.ID)
 	return &RegisterResponse{UserID: newUser.ID}, nil
 }
 
@@ -244,14 +260,14 @@ func createSignupEvent(ctx context.Context, tx *gorm.DB, newUserID, referralCode
 	).Error
 }
 
-func txUserRepository(tx *gorm.DB) user.Repository {
-	return postgres.NewUserRepository(tx)
+func txUserRepository(tx *gorm.DB, log logger.Logger) user.Repository {
+	return postgres.NewUserRepository(tx, log)
 }
 
-func txGuestRepository(tx *gorm.DB) guestsession.Repository {
-	return postgres.NewGuestSessionRepository(tx)
+func txGuestRepository(tx *gorm.DB, log logger.Logger) guestsession.Repository {
+	return postgres.NewGuestSessionRepository(tx, log)
 }
 
-func txTokenRepository(tx *gorm.DB) verificationtoken.Repository {
-	return postgres.NewVerificationTokenRepository(tx)
+func txTokenRepository(tx *gorm.DB, log logger.Logger) verificationtoken.Repository {
+	return postgres.NewVerificationTokenRepository(tx, log)
 }

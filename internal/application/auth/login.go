@@ -8,6 +8,7 @@ import (
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
 	jwtservice "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
+	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -38,8 +39,9 @@ type LoginResponse struct {
 
 // LoginUseCase validates password hashes and generates session JWTs.
 type LoginUseCase struct {
-	userRepo        user.Repository
-	jwtService      *jwtservice.JWTService
+	userRepo         user.Repository
+	jwtService       *jwtservice.JWTService
+	log              logger.Logger
 	loginMaxAttempts int
 	lockDuration     time.Duration
 	accessTokenTTL   time.Duration
@@ -47,10 +49,11 @@ type LoginUseCase struct {
 }
 
 // NewLoginUseCase creates a new LoginUseCase with configurable defaults.
-func NewLoginUseCase(userRepo user.Repository, jwtService *jwtservice.JWTService) *LoginUseCase {
+func NewLoginUseCase(userRepo user.Repository, jwtService *jwtservice.JWTService, log logger.Logger) *LoginUseCase {
 	return &LoginUseCase{
 		userRepo:         userRepo,
 		jwtService:       jwtService,
+		log:              log.With("usecase", "login"),
 		loginMaxAttempts: defaultLoginMaxAttempts,
 		lockDuration:     defaultLockDuration,
 		accessTokenTTL:   defaultAccessTokenTTL,
@@ -62,14 +65,17 @@ func NewLoginUseCase(userRepo user.Repository, jwtService *jwtservice.JWTService
 func (uc *LoginUseCase) Execute(ctx context.Context, req LoginRequest) (*LoginResponse, error) {
 	u, err := uc.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
+		uc.log.Error("login failed", "step", "query_email", "error", err)
 		return nil, fmt.Errorf("login: query email: %w", err)
 	}
 	if u == nil {
+		uc.log.Warn("login rejected", "reason", "invalid_credentials")
 		return nil, ErrInvalidCredentials
 	}
 
 	// Fast-fail if the account is currently locked out
 	if u.IsLocked() {
+		uc.log.Warn("login rejected", "reason", "account_locked", "user_id", u.ID)
 		return nil, ErrAccountLocked
 	}
 
@@ -81,22 +87,25 @@ func (uc *LoginUseCase) Execute(ctx context.Context, req LoginRequest) (*LoginRe
 	// Clear failed login count upon successful authentication
 	if u.FailedLoginCount > 0 {
 		if err := uc.userRepo.UpdateLoginAttempt(ctx, u.ID, 0, nil); err != nil {
-			// Fail-open: log error but do not block successful authentication
-			_ = err
+			// Fail-open: do not block successful authentication
+			uc.log.Warn("failed to reset login attempt counter", "user_id", u.ID, "error", err)
 		}
 	}
 
 	// Issue JWT token pairs
 	accessToken, err := uc.jwtService.GenerateAccessToken(u.ID, u.TokenVersion, uc.accessTokenTTL)
 	if err != nil {
+		uc.log.Error("login failed", "step", "issue_access_token", "user_id", u.ID, "error", err)
 		return nil, fmt.Errorf("login: issue access token: %w", err)
 	}
 
 	refreshToken, err := uc.jwtService.GenerateRefreshToken(u.ID, uc.refreshTokenTTL)
 	if err != nil {
+		uc.log.Error("login failed", "step", "issue_refresh_token", "user_id", u.ID, "error", err)
 		return nil, fmt.Errorf("login: issue refresh token: %w", err)
 	}
 
+	uc.log.Info("user logged in", "user_id", u.ID)
 	return &LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -113,12 +122,14 @@ func (uc *LoginUseCase) handleFailedAttempt(ctx context.Context, u *user.User) e
 	}
 
 	if err := uc.userRepo.UpdateLoginAttempt(ctx, u.ID, newCount, lockedUntil); err != nil {
-		// Log error but prioritize raising incorrect credential signal to client
-		_ = err
+		// Prioritize raising incorrect credential signal to client over this failure
+		uc.log.Warn("failed to persist login attempt counter", "user_id", u.ID, "error", err)
 	}
 
 	if lockedUntil != nil {
+		uc.log.Warn("login rejected", "reason", "account_locked", "user_id", u.ID, "failed_count", newCount)
 		return ErrAccountLocked
 	}
+	uc.log.Warn("login rejected", "reason", "invalid_credentials", "user_id", u.ID, "failed_count", newCount)
 	return ErrInvalidCredentials
 }

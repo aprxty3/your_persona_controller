@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/guestsession"
+	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/google/uuid"
 )
 
@@ -28,11 +29,12 @@ type CreateGuestSessionResponse struct {
 // CreateGuestSessionUseCase orchestrates guest session lifecycle creation.
 type CreateGuestSessionUseCase struct {
 	repo guestsession.Repository
+	log  logger.Logger
 }
 
 // NewCreateGuestSessionUseCase creates a new CreateGuestSessionUseCase.
-func NewCreateGuestSessionUseCase(repo guestsession.Repository) *CreateGuestSessionUseCase {
-	return &CreateGuestSessionUseCase{repo: repo}
+func NewCreateGuestSessionUseCase(repo guestsession.Repository, log logger.Logger) *CreateGuestSessionUseCase {
+	return &CreateGuestSessionUseCase{repo: repo, log: log.With("usecase", "create_guest_session")}
 }
 
 // Execute handles the generation of a 14-day persistent guest session.
@@ -53,9 +55,11 @@ func (uc *CreateGuestSessionUseCase) Execute(ctx context.Context, req CreateGues
 	}
 
 	if err := uc.repo.Create(ctx, session); err != nil {
+		uc.log.Error("create guest session failed", "step", "repo_create", "error", err)
 		return nil, fmt.Errorf("create_guest_session: repo create: %w", err)
 	}
 
+	uc.log.Info("guest session created", "session_id", sessionID)
 	return &CreateGuestSessionResponse{
 		SessionID: sessionID,
 		ExpiresAt: expiresAt,

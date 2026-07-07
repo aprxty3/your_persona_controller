@@ -44,27 +44,27 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	if err != nil {
 		return nil, err
 	}
-	repository := postgres.NewGuestSessionRepository(db)
-	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(repository)
-	userRepository := postgres.NewUserRepository(db)
-	verificationtokenRepository := postgres.NewVerificationTokenRepository(db)
+	repository := postgres.NewGuestSessionRepository(db, loggerInstance)
+	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(repository, loggerInstance)
+	userRepository := postgres.NewUserRepository(db, loggerInstance)
+	verificationtokenRepository := postgres.NewVerificationTokenRepository(db, loggerInstance)
 	passwordBreachChecker := auth.NewNoopBreachChecker()
 	asynqClient, err := provideAsynqClient(redisAddr, redisPassword, redisDB)
 	if err != nil {
 		return nil, err
 	}
 	dispatcher := taskqueue.NewAsynqDispatcher(asynqClient)
-	registerUseCase := auth.NewRegisterUseCase(db, userRepository, repository, verificationtokenRepository, passwordBreachChecker, dispatcher)
-	verifyEmailOTPUseCase := auth.NewVerifyEmailOTPUseCase(userRepository, verificationtokenRepository)
+	registerUseCase := auth.NewRegisterUseCase(db, userRepository, repository, verificationtokenRepository, passwordBreachChecker, dispatcher, loggerInstance)
+	verifyEmailOTPUseCase := auth.NewVerifyEmailOTPUseCase(userRepository, verificationtokenRepository, loggerInstance)
 	redisClient, err := provideRedisClient(redisAddr, redisPassword, redisDB)
 	if err != nil {
 		return nil, err
 	}
 	otpRateLimitService := redis.NewOTPRateLimitService(redisClient)
-	resendEmailOTPUseCase := auth.NewResendEmailOTPUseCase(userRepository, verificationtokenRepository, otpRateLimitService, dispatcher)
+	resendEmailOTPUseCase := auth.NewResendEmailOTPUseCase(userRepository, verificationtokenRepository, otpRateLimitService, dispatcher, loggerInstance)
 	jwtService := provideJWTService(jwtSecret)
-	loginUseCase := auth.NewLoginUseCase(userRepository, jwtService)
-	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, verifyEmailOTPUseCase, resendEmailOTPUseCase, loginUseCase)
+	loginUseCase := auth.NewLoginUseCase(userRepository, jwtService, loggerInstance)
+	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, verifyEmailOTPUseCase, resendEmailOTPUseCase, loginUseCase, loggerInstance)
 	echoEcho := http.SetupRouter(assessmentHandler, authHandler)
 	return echoEcho, nil
 }

@@ -6,23 +6,29 @@ import (
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
+	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"gorm.io/gorm"
 )
 
 // UserRepository implements user.Repository backed by PostgreSQL via GORM.
 type UserRepository struct {
-	db *gorm.DB
+	db  *gorm.DB
+	log logger.Logger
 }
 
 // NewUserRepository constructs a new UserRepository.
-func NewUserRepository(db *gorm.DB) user.Repository {
-	return &UserRepository{db: db}
+func NewUserRepository(db *gorm.DB, log logger.Logger) user.Repository {
+	return &UserRepository{db: db, log: log.With("repository", "user")}
 }
 
 // Create inserts a new user record.
 func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 	m := toUserModel(u)
-	return r.db.WithContext(ctx).Create(&m).Error
+	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
+		r.log.Error("query failed", "op", "Create", "error", err)
+		return err
+	}
+	return nil
 }
 
 // FindByID retrieves a user by their UUID. Returns nil, nil if not found.
@@ -33,6 +39,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*user.User, e
 		return nil, nil
 	}
 	if err != nil {
+		r.log.Error("query failed", "op", "FindByID", "error", err)
 		return nil, err
 	}
 	u := toUserEntity(&m)
@@ -47,6 +54,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*user.U
 		return nil, nil
 	}
 	if err != nil {
+		r.log.Error("query failed", "op", "FindByEmail", "error", err)
 		return nil, err
 	}
 	u := toUserEntity(&m)
@@ -56,16 +64,24 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*user.U
 // Update saves all mutable fields of the user.
 func (r *UserRepository) Update(ctx context.Context, u *user.User) error {
 	m := toUserModel(u)
-	return r.db.WithContext(ctx).Save(&m).Error
+	if err := r.db.WithContext(ctx).Save(&m).Error; err != nil {
+		r.log.Error("query failed", "op", "Update", "error", err)
+		return err
+	}
+	return nil
 }
 
 // IncrementTokenVersion atomically increments token_version for the given user ID.
 func (r *UserRepository) IncrementTokenVersion(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).
+	err := r.db.WithContext(ctx).
 		Model(&UserModel{}).
 		Where("id = ?", id).
 		UpdateColumn("token_version", gorm.Expr("token_version + 1")).
 		Error
+	if err != nil {
+		r.log.Error("query failed", "op", "IncrementTokenVersion", "error", err)
+	}
+	return err
 }
 
 // UpdateLoginAttempt updates the failed login counter and lockout timestamp.
@@ -74,11 +90,15 @@ func (r *UserRepository) UpdateLoginAttempt(ctx context.Context, id string, fail
 		"failed_login_count": failedCount,
 		"locked_until":       lockedUntil,
 	}
-	return r.db.WithContext(ctx).
+	err := r.db.WithContext(ctx).
 		Model(&UserModel{}).
 		Where("id = ?", id).
 		Updates(updates).
 		Error
+	if err != nil {
+		r.log.Error("query failed", "op", "UpdateLoginAttempt", "error", err)
+	}
+	return err
 }
 
 func toUserModel(u *user.User) UserModel {
