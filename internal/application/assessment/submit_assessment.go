@@ -130,7 +130,7 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 		// Populate mapping here...
 		Locale:        req.Locale,
 		AISummaryText: &aiSummary,
-		Status:        status,
+		Status:        testresult.ResultStatus(status),
 		WellbeingFlag: isWellbeingFlagged,
 	}
 	if err := uc.testResultRepo.Create(aiCtx, result); err != nil {
