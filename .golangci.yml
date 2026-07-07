@@ -1,0 +1,75 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    # Core correctness
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck # merger dari stylecheck + gosimple + staticcheck lama
+    - unused
+    # Bug prevention relevan untuk stack ini (HTTP client ke Gemini/S3, DB, worker)
+    - bodyclose # response body HTTP (Gemini API, S3) wajib di-close
+    - contextcheck # context propagation benar, penting untuk graceful shutdown & timeout Gemini
+    - noctx # cegah HTTP request tanpa context
+    - copyloopvar # Go 1.22+ loop variable check
+    - errorlint # error wrapping konsisten (lihat NFR error handling di PRD)
+    - nilerr
+    - sqlclosecheck
+    - rowserrcheck
+    - unparam
+    # Security
+    - gosec
+    # Code quality
+    - misspell
+    - goconst # status string berulang ("completed", "fallback_static") harus jadi const
+    - revive
+    # Arsitektur — enforcement otomatis dari AGENTS.md Architecture Rules
+    - depguard
+  settings:
+    gosec:
+      config:
+        global:
+          "#nosec": "#nosec-reviewed" # wajib alasan eksplisit tiap kali suppress, bukan #nosec polos
+    errcheck:
+      check-type-assertions: true
+    goconst:
+      min-occurrences: 3
+    depguard:
+      rules:
+        # Domain layer harus framework-agnostic — dependency rule Clean Architecture
+        # ditegakkan di sini, bukan cuma di dokumentasi AGENTS.md
+        domain-layer:
+          files:
+            - "**/internal/domain/**"
+          deny:
+            - pkg: "gorm.io"
+              desc: "domain layer harus framework-agnostic — taruh GORM di internal/infrastructure/persistence (lihat AGENTS.md Architecture Rules)"
+            - pkg: "net/http"
+              desc: "domain layer tidak boleh tahu soal HTTP — itu urusan internal/interfaces/http"
+            - pkg: "github.com/hibiken/asynq"
+              desc: "domain layer tidak boleh tahu soal Asynq — itu urusan internal/interfaces/worker"
+            - pkg: "google.golang.org/genai"
+              desc: "domain layer tidak boleh tahu soal Gemini SDK — itu urusan internal/infrastructure/gemini"
+        # Cegah io/ioutil yang sudah deprecated, dan math/rand non-crypto dipakai untuk hal sensitif
+        general:
+          files:
+            - "$all"
+          deny:
+            - pkg: "io/ioutil"
+              desc: "deprecated sejak Go 1.16 — pakai 'io' atau 'os'"
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  exclude-dirs:
+    - docs
+    - tmp

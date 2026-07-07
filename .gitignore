@@ -1,0 +1,36 @@
+# Secrets — JANGAN PERNAH commit file ini (lihat AGENTS.md Security Rules)
+.env
+.env.local
+*.pem
+*.key
+
+# Binaries
+/bin/
+*.exe
+*.test
+*.out
+
+# Air hot-reload
+tmp/
+build-errors.log
+
+# Go
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage.out
+coverage.html
+
+# Documentation produced outside source control (sensitive/internal)
+AGENTS.md
+CLAUDE.md
+TECHNICAL_DOCUMENTATION.md
