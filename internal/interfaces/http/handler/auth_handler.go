@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
+	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/dto"
 	"github.com/aprxty3/your_persona_controller.git/pkg/httpresponse"
 	"github.com/labstack/echo/v4"
 )
@@ -35,14 +36,6 @@ func NewAuthHandler(
 	}
 }
 
-// CreateGuestSessionRequestDTO is the input payload for guest session creation.
-type CreateGuestSessionRequestDTO struct {
-	DisplayName string `json:"display_name" validate:"required"`
-	Age         int    `json:"age" validate:"required"`
-	Status      string `json:"status" validate:"required"` // e.g., bekerja, mahasiswa
-	Locale      string `json:"locale" validate:"required"` // e.g., en, id
-}
-
 // CreateGuestSession handles POST /v1/guest-session
 // @Summary Create a guest session
 // @Description Creates a guest session from onboarding data, sets session_id httpOnly cookie
@@ -55,7 +48,7 @@ type CreateGuestSessionRequestDTO struct {
 // @Failure 500 {object} httpresponse.Response
 // @Router /v1/guest-session [post]
 func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
-	var payload CreateGuestSessionRequestDTO
+	var payload dto.CreateGuestSessionRequestDTO
 	if err := c.Bind(&payload); err != nil {
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
 	}
@@ -94,14 +87,6 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 	return httpresponse.Success(c, http.StatusCreated, resp, nil)
 }
 
-// RegisterRequestDTO holds registration info.
-type RegisterRequestDTO struct {
-	Email           string  `json:"email" validate:"required,email"`
-	Password        string  `json:"password" validate:"required,min=10"`
-	PreferredLocale string  `json:"preferred_locale" validate:"required"`
-	ReferralCode    *string `json:"referral_code,omitempty"`
-}
-
 // Register handles POST /v1/auth/register
 // @Summary Register a new user
 // @Description Registers a new member account. Claims any valid guest session in cookies.
@@ -114,7 +99,7 @@ type RegisterRequestDTO struct {
 // @Failure 500 {object} httpresponse.Response
 // @Router /v1/auth/register [post]
 func (h *AuthHandler) Register(c echo.Context) error {
-	var payload RegisterRequestDTO
+	var payload dto.RegisterRequestDTO
 	if err := c.Bind(&payload); err != nil {
 		return httpresponse.Error(c, http.StatusBadRequest, "BIND_ERROR", err.Error())
 	}
@@ -153,12 +138,6 @@ func (h *AuthHandler) Register(c echo.Context) error {
 	return httpcallSuccess(c, http.StatusCreated, resp, nil)
 }
 
-// VerifyEmailOTPRequestDTO holds OTP verification parameters.
-type VerifyEmailOTPRequestDTO struct {
-	Email string `json:"email" validate:"required,email"`
-	OTP   string `json:"otp" validate:"required"`
-}
-
 // VerifyEmailOTP handles POST /v1/auth/verify-email-otp
 // @Summary Verify email verification OTP
 // @Description Verifies registration OTP and marks email as verified
@@ -171,7 +150,7 @@ type VerifyEmailOTPRequestDTO struct {
 // @Failure 429 {object} httpresponse.Response
 // @Router /v1/auth/verify-email-otp [post]
 func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
-	var payload VerifyEmailOTPRequestDTO
+	var payload dto.VerifyEmailOTPRequestDTO
 	if err := c.Bind(&payload); err != nil {
 		return httpcallError(c, err)
 	}
@@ -217,7 +196,7 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 				Success: false,
 				Error: &httpresponse.ErrorDetail{
 					Code:    "OTP_MAX_ATTEMPTS",
-					Message: "Batas percobaan verifikasi tercapai. Minta OTP baru",
+					Message: "Verification attempt limit reached. Request a new OTP.",
 				},
 				Meta: meta,
 			})
@@ -226,11 +205,6 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 	}
 
 	return httpcallSuccess(c, http.StatusOK, map[string]string{"message": "Email verified successfully"}, nil)
-}
-
-// ResendEmailOTPRequestDTO holds input for resending verification OTP.
-type ResendEmailOTPRequestDTO struct {
-	Email string `json:"email" validate:"required,email"`
 }
 
 // ResendEmailOTP handles POST /v1/auth/resend-email-otp
@@ -244,7 +218,7 @@ type ResendEmailOTPRequestDTO struct {
 // @Failure 429 {object} httpresponse.Response
 // @Router /v1/auth/resend-email-otp [post]
 func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
-	var payload ResendEmailOTPRequestDTO
+	var payload dto.ResendEmailOTPRequestDTO
 	if err := c.Bind(&payload); err != nil {
 		return httpcallError(c, err)
 	}
@@ -268,7 +242,7 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 				Success: false,
 				Error: &httpresponse.ErrorDetail{
 					Code:    "RATE_LIMITED",
-					Message: "Terlalu banyak permintaan OTP. Silakan tunggu cooldown.",
+					Message: "Too many OTP requests. Please wait for cooldown.",
 				},
 				Meta: meta,
 			})
@@ -276,13 +250,7 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 		return httpcallError(c, err)
 	}
 
-	return httpcallSuccess(c, http.StatusOK, map[string]string{"message": "Jika email terdaftar, OTP telah dikirim kembali"}, nil)
-}
-
-// LoginRequestDTO holds login credentials.
-type LoginRequestDTO struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required"`
+	return httpcallSuccess(c, http.StatusOK, map[string]string{"message": "If email is registered, OTP has been sent again"}, nil)
 }
 
 // Login handles POST /v1/auth/login
@@ -297,7 +265,7 @@ type LoginRequestDTO struct {
 // @Failure 423 {object} httpresponse.Response
 // @Router /v1/auth/login [post]
 func (h *AuthHandler) Login(c echo.Context) error {
-	var payload LoginRequestDTO
+	var payload dto.LoginRequestDTO
 	if err := c.Bind(&payload); err != nil {
 		return httpcallError(c, err)
 	}
@@ -314,10 +282,10 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	resp, err := h.loginUseCase.Execute(c.Request().Context(), ucReq)
 	if err != nil {
 		if errors.Is(err, auth.ErrInvalidCredentials) {
-			return httpcallErrorCustom(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Email atau password salah")
+			return httpcallErrorCustom(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Email or Password is wrong")
 		}
 		if errors.Is(err, auth.ErrAccountLocked) {
-			return httpcallErrorCustom(c, http.StatusLocked, "ACCOUNT_LOCKED", "Akun terkunci selama 15 menit karena terlalu banyak percobaan gagal")
+			return httpcallErrorCustom(c, http.StatusLocked, "ACCOUNT_LOCKED", "Account is locked due to too many failed login attempts")
 		}
 		return httpcallError(c, err)
 	}
