@@ -42,7 +42,7 @@ func NewAuthHandler(
 // @Tags Auth
 // @Accept json
 // @Produce json
-// @Param request body CreateGuestSessionRequestDTO true "Guest Session Onboarding Data"
+// @Param request body dto.CreateGuestSessionRequestDTO true "Guest Session Onboarding Data"
 // @Success 201 {object} httpresponse.Response{data=auth.CreateGuestSessionResponse}
 // @Failure 400 {object} httpresponse.Response
 // @Failure 500 {object} httpresponse.Response
@@ -93,7 +93,7 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 // @Tags Auth
 // @Accept json
 // @Produce json
-// @Param request body RegisterRequestDTO true "Registration Data"
+// @Param request body dto.RegisterRequestDTO true "Registration Data"
 // @Success 201 {object} httpresponse.Response{data=auth.RegisterResponse}
 // @Failure 400 {object} httpresponse.Response
 // @Failure 500 {object} httpresponse.Response
@@ -144,7 +144,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 // @Tags Auth
 // @Accept json
 // @Produce json
-// @Param request body VerifyEmailOTPRequestDTO true "Email & OTP"
+// @Param request body dto.VerifyEmailOTPRequestDTO true "Email & OTP"
 // @Success 200 {object} httpresponse.Response
 // @Failure 400 {object} httpresponse.Response
 // @Failure 429 {object} httpresponse.Response
@@ -213,7 +213,7 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 // @Tags Auth
 // @Accept json
 // @Produce json
-// @Param request body ResendEmailOTPRequestDTO true "Email Address"
+// @Param request body dto.ResendEmailOTPRequestDTO true "Email Address"
 // @Success 200 {object} httpresponse.Response
 // @Failure 429 {object} httpresponse.Response
 // @Router /v1/auth/resend-email-otp [post]
@@ -259,7 +259,7 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 // @Tags Auth
 // @Accept json
 // @Produce json
-// @Param request body LoginRequestDTO true "Credentials"
+// @Param request body dto.LoginRequestDTO true "Credentials"
 // @Success 200 {object} httpresponse.Response{data=auth.LoginResponse}
 // @Failure 401 {object} httpresponse.Response
 // @Failure 423 {object} httpresponse.Response

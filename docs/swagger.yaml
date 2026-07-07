@@ -19,7 +19,7 @@ definitions:
       userID:
         type: string
     type: object
-  handler.CreateGuestSessionRequestDTO:
+  dto.CreateGuestSessionRequestDTO:
     properties:
       age:
         type: integer
@@ -37,7 +37,7 @@ definitions:
     - locale
     - status
     type: object
-  handler.LoginRequestDTO:
+  dto.LoginRequestDTO:
     properties:
       email:
         type: string
@@ -47,7 +47,7 @@ definitions:
     - email
     - password
     type: object
-  handler.RegisterRequestDTO:
+  dto.RegisterRequestDTO:
     properties:
       email:
         type: string
@@ -63,14 +63,14 @@ definitions:
     - password
     - preferred_locale
     type: object
-  handler.ResendEmailOTPRequestDTO:
+  dto.ResendEmailOTPRequestDTO:
     properties:
       email:
         type: string
     required:
     - email
     type: object
-  handler.VerifyEmailOTPRequestDTO:
+  dto.VerifyEmailOTPRequestDTO:
     properties:
       email:
         type: string
@@ -114,7 +114,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/handler.LoginRequestDTO'
+          $ref: '#/definitions/dto.LoginRequestDTO'
       produces:
       - application/json
       responses:
@@ -150,7 +150,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/handler.RegisterRequestDTO'
+          $ref: '#/definitions/dto.RegisterRequestDTO'
       produces:
       - application/json
       responses:
@@ -186,7 +186,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/handler.ResendEmailOTPRequestDTO'
+          $ref: '#/definitions/dto.ResendEmailOTPRequestDTO'
       produces:
       - application/json
       responses:
@@ -212,7 +212,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/handler.VerifyEmailOTPRequestDTO'
+          $ref: '#/definitions/dto.VerifyEmailOTPRequestDTO'
       produces:
       - application/json
       responses:
@@ -243,7 +243,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/handler.CreateGuestSessionRequestDTO'
+          $ref: '#/definitions/dto.CreateGuestSessionRequestDTO'
       produces:
       - application/json
       responses:

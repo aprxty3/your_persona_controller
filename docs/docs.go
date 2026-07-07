@@ -35,7 +35,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.LoginRequestDTO"
+                            "$ref": "#/definitions/dto.LoginRequestDTO"
                         }
                     }
                 ],
@@ -93,7 +93,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.RegisterRequestDTO"
+                            "$ref": "#/definitions/dto.RegisterRequestDTO"
                         }
                     }
                 ],
@@ -151,7 +151,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.ResendEmailOTPRequestDTO"
+                            "$ref": "#/definitions/dto.ResendEmailOTPRequestDTO"
                         }
                     }
                 ],
@@ -191,7 +191,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.VerifyEmailOTPRequestDTO"
+                            "$ref": "#/definitions/dto.VerifyEmailOTPRequestDTO"
                         }
                     }
                 ],
@@ -237,7 +237,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.CreateGuestSessionRequestDTO"
+                            "$ref": "#/definitions/dto.CreateGuestSessionRequestDTO"
                         }
                     }
                 ],
@@ -307,7 +307,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.CreateGuestSessionRequestDTO": {
+        "dto.CreateGuestSessionRequestDTO": {
             "type": "object",
             "required": [
                 "age",
@@ -332,7 +332,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.LoginRequestDTO": {
+        "dto.LoginRequestDTO": {
             "type": "object",
             "required": [
                 "email",
@@ -347,7 +347,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.RegisterRequestDTO": {
+        "dto.RegisterRequestDTO": {
             "type": "object",
             "required": [
                 "email",
@@ -370,7 +370,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.ResendEmailOTPRequestDTO": {
+        "dto.ResendEmailOTPRequestDTO": {
             "type": "object",
             "required": [
                 "email"
@@ -381,7 +381,7 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.VerifyEmailOTPRequestDTO": {
+        "dto.VerifyEmailOTPRequestDTO": {
             "type": "object",
             "required": [
                 "email",

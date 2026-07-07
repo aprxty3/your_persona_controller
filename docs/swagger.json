@@ -29,7 +29,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.LoginRequestDTO"
+                            "$ref": "#/definitions/dto.LoginRequestDTO"
                         }
                     }
                 ],
@@ -87,7 +87,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.RegisterRequestDTO"
+                            "$ref": "#/definitions/dto.RegisterRequestDTO"
                         }
                     }
                 ],
@@ -145,7 +145,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.ResendEmailOTPRequestDTO"
+                            "$ref": "#/definitions/dto.ResendEmailOTPRequestDTO"
                         }
                     }
                 ],
@@ -185,7 +185,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.VerifyEmailOTPRequestDTO"
+                            "$ref": "#/definitions/dto.VerifyEmailOTPRequestDTO"
                         }
                     }
                 ],
@@ -231,7 +231,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/handler.CreateGuestSessionRequestDTO"
+                            "$ref": "#/definitions/dto.CreateGuestSessionRequestDTO"
                         }
                     }
                 ],
@@ -301,7 +301,7 @@
                 }
             }
         },
-        "handler.CreateGuestSessionRequestDTO": {
+        "dto.CreateGuestSessionRequestDTO": {
             "type": "object",
             "required": [
                 "age",
@@ -326,7 +326,7 @@
                 }
             }
         },
-        "handler.LoginRequestDTO": {
+        "dto.LoginRequestDTO": {
             "type": "object",
             "required": [
                 "email",
@@ -341,7 +341,7 @@
                 }
             }
         },
-        "handler.RegisterRequestDTO": {
+        "dto.RegisterRequestDTO": {
             "type": "object",
             "required": [
                 "email",
@@ -364,7 +364,7 @@
                 }
             }
         },
-        "handler.ResendEmailOTPRequestDTO": {
+        "dto.ResendEmailOTPRequestDTO": {
             "type": "object",
             "required": [
                 "email"
@@ -375,7 +375,7 @@
                 }
             }
         },
-        "handler.VerifyEmailOTPRequestDTO": {
+        "dto.VerifyEmailOTPRequestDTO": {
             "type": "object",
             "required": [
                 "email",
