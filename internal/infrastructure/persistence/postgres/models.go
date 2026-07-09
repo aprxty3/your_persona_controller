@@ -68,8 +68,6 @@ type TestResultModel struct {
 func (TestResultModel) TableName() string { return "test_results" }
 
 // VerificationTokenModel represents the database schema for OTP tokens.
-// Composite index on (user_id, type) because lookup is ALWAYS scoped to both —
-// a 6-digit OTP is not globally unique across users.
 type VerificationTokenModel struct {
 	ID           string    `gorm:"primaryKey;type:uuid"`
 	UserID       string    `gorm:"type:uuid;not null;index:idx_vt_user_type"`

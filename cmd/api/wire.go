@@ -77,6 +77,8 @@ func InitializeAPI(
 		postgres.NewUserRepository,
 		postgres.NewGuestSessionRepository,
 		postgres.NewVerificationTokenRepository,
+		postgres.NewReferralRepository,
+		postgres.NewTestResultRepository,
 
 		// Stubs for assessment interfaces
 		stubs.NewStubTestResultRepository,

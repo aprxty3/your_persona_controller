@@ -48,13 +48,15 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(repository, loggerInstance)
 	userRepository := postgres.NewUserRepository(db, loggerInstance)
 	verificationtokenRepository := postgres.NewVerificationTokenRepository(db, loggerInstance)
+	referralRepository := postgres.NewReferralRepository(db, loggerInstance)
+	testresultRepository := postgres.NewTestResultRepository(db, loggerInstance)
 	passwordBreachChecker := auth.NewNoopBreachChecker()
 	asynqClient, err := provideAsynqClient(redisAddr, redisPassword, redisDB)
 	if err != nil {
 		return nil, err
 	}
 	dispatcher := taskqueue.NewAsynqDispatcher(asynqClient)
-	registerUseCase := auth.NewRegisterUseCase(db, userRepository, repository, verificationtokenRepository, passwordBreachChecker, dispatcher, loggerInstance)
+	registerUseCase := auth.NewRegisterUseCase(db, userRepository, repository, verificationtokenRepository, referralRepository, testresultRepository, passwordBreachChecker, dispatcher, loggerInstance)
 	verifyEmailOTPUseCase := auth.NewVerifyEmailOTPUseCase(userRepository, verificationtokenRepository, loggerInstance)
 	redisClient, err := provideRedisClient(redisAddr, redisPassword, redisDB)
 	if err != nil {
