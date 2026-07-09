@@ -15,6 +15,16 @@ const (
 	otpDailyTTL      = 24 * time.Hour
 )
 
+// OTPScope namespaces the rate-limit counters per email-sending purpose,
+// so hammering /resend-email-otp cannot starve /forgot-password (and vice versa).
+// Both scopes carry the same policy: 60s cooldown + 5x/day/email.
+type OTPScope string
+
+const (
+	ScopeEmailVerification OTPScope = "verify"
+	ScopePasswordReset     OTPScope = "reset"
+)
+
 // OTPRateLimitService enforces a 60-second cooldown and 5x/day rolling request limit.
 type OTPRateLimitService struct {
 	client *redis.Client
@@ -25,10 +35,10 @@ func NewOTPRateLimitService(client *redis.Client) *OTPRateLimitService {
 	return &OTPRateLimitService{client: client}
 }
 
-// CheckAndConsume verifies whether the email has exceeded its rate limits.
+// CheckAndConsume verifies whether the email has exceeded its rate limits for the given scope.
 // Returns (0, nil) if verification succeeds and OTP dispatch is permitted.
-func (s *OTPRateLimitService) CheckAndConsume(ctx context.Context, email string) (retryAfterSeconds int, err error) {
-	ttl, err := s.client.TTL(ctx, cooldownKey(email)).Result()
+func (s *OTPRateLimitService) CheckAndConsume(ctx context.Context, scope OTPScope, email string) (retryAfterSeconds int, err error) {
+	ttl, err := s.client.TTL(ctx, cooldownKey(scope, email)).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return 0, fmt.Errorf("redis: get cooldown ttl: %w", err)
 	}
@@ -36,7 +46,7 @@ func (s *OTPRateLimitService) CheckAndConsume(ctx context.Context, email string)
 		return int(ttl.Seconds()), nil
 	}
 
-	count, err := s.client.Get(ctx, dailyCountKey(email)).Int()
+	count, err := s.client.Get(ctx, dailyCountKey(scope, email)).Int()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return 0, fmt.Errorf("redis: get daily send counter: %w", err)
 	}
@@ -47,22 +57,22 @@ func (s *OTPRateLimitService) CheckAndConsume(ctx context.Context, email string)
 	return 0, nil
 }
 
-// SetCooldown writes the 60s restriction key and increments the daily counter.
-func (s *OTPRateLimitService) SetCooldown(ctx context.Context, email string) error {
+// SetCooldown writes the 60s restriction key and increments the daily counter for the given scope.
+func (s *OTPRateLimitService) SetCooldown(ctx context.Context, scope OTPScope, email string) error {
 	pipe := s.client.Pipeline()
 
-	pipe.Set(ctx, cooldownKey(email), 1, otpCooldownTTL)
-	pipe.Incr(ctx, dailyCountKey(email))
-	pipe.ExpireNX(ctx, dailyCountKey(email), otpDailyTTL)
+	pipe.Set(ctx, cooldownKey(scope, email), 1, otpCooldownTTL)
+	pipe.Incr(ctx, dailyCountKey(scope, email))
+	pipe.ExpireNX(ctx, dailyCountKey(scope, email), otpDailyTTL)
 
 	_, err := pipe.Exec(ctx)
 	return err
 }
 
-func cooldownKey(email string) string {
-	return fmt.Sprintf("otp:cooldown:%s", email)
+func cooldownKey(scope OTPScope, email string) string {
+	return fmt.Sprintf("otp:%s:cooldown:%s", scope, email)
 }
 
-func dailyCountKey(email string) string {
-	return fmt.Sprintf("otp:daily:%s", email)
+func dailyCountKey(scope OTPScope, email string) string {
+	return fmt.Sprintf("otp:%s:daily:%s", scope, email)
 }

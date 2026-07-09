@@ -53,37 +53,10 @@ func (uc *VerifyEmailOTPUseCase) Execute(ctx context.Context, req VerifyEmailOTP
 		return nil, application.ErrInvalidOTP
 	}
 
-	token, err := uc.tokenRepo.FindActiveByUserAndType(ctx, u.ID, verificationtoken.TokenTypeEmailVerification)
+	// Shared OTP validation gate — same attempt/expiry policy as the reset flow.
+	token, remaining, err := validateOTPAttempt(ctx, uc.tokenRepo, u.ID, req.OTP, verificationtoken.TokenTypeEmailVerification, uc.log)
 	if err != nil {
-		uc.log.Error("verify email otp failed", "step", "find_token", "user_id", u.ID, "error", err)
-		return nil, fmt.Errorf("verify_email_otp: find token: %w", err)
-	}
-	if token == nil {
-		uc.log.Warn("verify email otp rejected", "reason", "no_active_token", "user_id", u.ID)
-		return nil, application.ErrOTPExpired
-	}
-
-	if token.AttemptCount >= MaxWrongOTPAttempts {
-		uc.log.Warn("verify email otp rejected", "reason", "max_attempts", "user_id", u.ID)
-		return &VerifyEmailOTPResponse{AttemptsRemaining: 0}, application.ErrOTPMaxAttempts
-	}
-
-	if time.Now().After(token.ExpiresAt) {
-		uc.log.Warn("verify email otp rejected", "reason", "expired", "user_id", u.ID)
-		return nil, application.ErrOTPExpired
-	}
-
-	if token.Token != req.OTP {
-		if err := uc.tokenRepo.IncrementAttemptCount(ctx, token.ID); err != nil {
-			uc.log.Error("verify email otp failed", "step", "increment_attempts", "user_id", u.ID, "error", err)
-			return nil, fmt.Errorf("verify_email_otp: increment token attempts: %w", err)
-		}
-		remaining := MaxWrongOTPAttempts - (token.AttemptCount + 1)
-		uc.log.Warn("verify email otp rejected", "reason", "invalid_otp", "user_id", u.ID, "attempts_remaining", remaining)
-		if remaining <= 0 {
-			return &VerifyEmailOTPResponse{AttemptsRemaining: 0}, application.ErrOTPMaxAttempts
-		}
-		return &VerifyEmailOTPResponse{AttemptsRemaining: remaining}, application.ErrInvalidOTP
+		return &VerifyEmailOTPResponse{AttemptsRemaining: remaining}, err
 	}
 
 	if err := uc.tokenRepo.MarkUsed(ctx, token.ID); err != nil {

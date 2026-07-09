@@ -41,7 +41,9 @@ func (s *JWTService) GenerateAccessToken(userID string, tokenVersion int, ttl ti
 }
 
 // GenerateRefreshToken generates a long-lived persistence session token.
-func (s *JWTService) GenerateRefreshToken(userID string, ttl time.Duration) (string, error) {
+// token_version is embedded so that logout-all / reset-password (which increment
+// USER.token_version) invalidate outstanding refresh tokens too — not only access tokens.
+func (s *JWTService) GenerateRefreshToken(userID string, tokenVersion int, ttl time.Duration) (string, error) {
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID,
@@ -49,7 +51,8 @@ func (s *JWTService) GenerateRefreshToken(userID string, ttl time.Duration) (str
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
 		},
-		Purpose: "refresh",
+		TokenVersion: tokenVersion,
+		Purpose:      "refresh",
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.secret)
 }

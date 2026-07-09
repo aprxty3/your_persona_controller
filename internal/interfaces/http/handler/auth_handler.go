@@ -7,6 +7,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/application"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/dto"
+	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/middleware"
 	"github.com/aprxty3/your_persona_controller.git/pkg/httpresponse"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/labstack/echo/v4"
@@ -19,6 +20,12 @@ type AuthHandler struct {
 	verifyEmailOTPUseCase     *auth.VerifyEmailOTPUseCase
 	resendEmailOTPUseCase     *auth.ResendEmailOTPUseCase
 	loginUseCase              *auth.LoginUseCase
+	refreshTokenUseCase       *auth.RefreshTokenUseCase
+	logoutUseCase             *auth.LogoutUseCase
+	logoutAllUseCase          *auth.LogoutAllUseCase
+	forgotPasswordUseCase     *auth.ForgotPasswordUseCase
+	verifyResetOTPUseCase     *auth.VerifyResetOTPUseCase
+	resetPasswordUseCase      *auth.ResetPasswordUseCase
 	log                       logger.Logger
 }
 
@@ -29,6 +36,12 @@ func NewAuthHandler(
 	verifyEmailOTPUseCase *auth.VerifyEmailOTPUseCase,
 	resendEmailOTPUseCase *auth.ResendEmailOTPUseCase,
 	loginUseCase *auth.LoginUseCase,
+	refreshTokenUseCase *auth.RefreshTokenUseCase,
+	logoutUseCase *auth.LogoutUseCase,
+	logoutAllUseCase *auth.LogoutAllUseCase,
+	forgotPasswordUseCase *auth.ForgotPasswordUseCase,
+	verifyResetOTPUseCase *auth.VerifyResetOTPUseCase,
+	resetPasswordUseCase *auth.ResetPasswordUseCase,
 	log logger.Logger,
 ) *AuthHandler {
 	return &AuthHandler{
@@ -37,6 +50,12 @@ func NewAuthHandler(
 		verifyEmailOTPUseCase:     verifyEmailOTPUseCase,
 		resendEmailOTPUseCase:     resendEmailOTPUseCase,
 		loginUseCase:              loginUseCase,
+		refreshTokenUseCase:       refreshTokenUseCase,
+		logoutUseCase:             logoutUseCase,
+		logoutAllUseCase:          logoutAllUseCase,
+		forgotPasswordUseCase:     forgotPasswordUseCase,
+		verifyResetOTPUseCase:     verifyResetOTPUseCase,
+		resetPasswordUseCase:      resetPasswordUseCase,
 		log:                       log.With("handler", "auth"),
 	}
 }
@@ -359,6 +378,282 @@ func (h *AuthHandler) Login(c echo.Context) error {
 			return httpcallErrorCustom(c, http.StatusForbidden, "EMAIL_NOT_VERIFIED", "Please verify your email address before logging in. Check your inbox or request a new OTP via /auth/resend-email-otp")
 		default:
 			h.log.Error("login failed", "error", err)
+			return httpcallError(c, err)
+		}
+	}
+
+	return httpcallSuccess(c, http.StatusOK, resp, nil)
+}
+
+// RefreshToken handles POST /v1/auth/refresh
+// @Summary      Refresh session tokens
+// @Description  Exchanges a valid `refresh_token` for a brand-new `access_token` + `refresh_token` pair.
+// @Description  The presented refresh token is **rotated**: it is revoked immediately after the exchange
+// @Description  and cannot be used a second time.
+// @Description
+// @Description  Returns `TOKEN_VERSION_MISMATCH` when the session was revoked by logout-all or a
+// @Description  password reset — the client must redirect the user to login.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body dto.RefreshTokenRequestDTO true "Refresh token"
+// @Success      200 {object} httpresponse.Response{data=auth.RefreshTokenResponse} "New token pair issued"
+// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR — refresh_token field is missing"
+// @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | TOKEN_VERSION_MISMATCH"
+// @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
+// @Router       /v1/auth/refresh [post]
+func (h *AuthHandler) RefreshToken(c echo.Context) error {
+	var payload dto.RefreshTokenRequestDTO
+	if err := c.Bind(&payload); err != nil {
+		h.log.Warn("refresh rejected", "reason", "bind_error", "error", err)
+		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	}
+
+	resp, err := h.refreshTokenUseCase.Execute(c.Request().Context(), auth.RefreshTokenRequest{
+		RefreshToken: payload.RefreshToken,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, application.ErrInvalidInput):
+			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+		case errors.Is(err, application.ErrTokenVersionMismatch):
+			return httpcallErrorCustom(c, http.StatusUnauthorized, "TOKEN_VERSION_MISMATCH", "This session has been revoked. Please log in again")
+		case errors.Is(err, application.ErrInvalidToken):
+			return httpcallErrorCustom(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired refresh token")
+		default:
+			h.log.Error("refresh failed", "error", err)
+			return httpcallError(c, err)
+		}
+	}
+
+	return httpcallSuccess(c, http.StatusOK, resp, nil)
+}
+
+// Logout handles POST /v1/auth/logout
+// @Summary      Logout (this session)
+// @Description  Terminates the CURRENT session: the provided `refresh_token` is revoked and can no longer
+// @Description  be exchanged for new access tokens. The current access token simply expires on its own
+// @Description  (≤15 minutes). Other devices/sessions stay logged in — use `/auth/logout-all` to revoke everything.
+// @Description
+// @Description  Logout is idempotent: an already-expired refresh token still returns 200.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body dto.LogoutRequestDTO true "Refresh token of the session being terminated"
+// @Success      200 {object} httpresponse.Response "Session terminated"
+// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR — refresh_token field is missing"
+// @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | TOKEN_VERSION_MISMATCH — access token invalid, or refresh token belongs to another account"
+// @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
+// @Router       /v1/auth/logout [post]
+func (h *AuthHandler) Logout(c echo.Context) error {
+	var payload dto.LogoutRequestDTO
+	if err := c.Bind(&payload); err != nil {
+		h.log.Warn("logout rejected", "reason", "bind_error", "error", err)
+		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	}
+
+	err := h.logoutUseCase.Execute(c.Request().Context(), auth.LogoutRequest{
+		UserID:       middleware.UserIDFromContext(c),
+		RefreshToken: payload.RefreshToken,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, application.ErrInvalidInput):
+			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+		case errors.Is(err, application.ErrInvalidToken):
+			return httpcallErrorCustom(c, http.StatusUnauthorized, "UNAUTHORIZED", "The refresh token does not belong to this account")
+		default:
+			h.log.Error("logout failed", "error", err)
+			return httpcallError(c, err)
+		}
+	}
+
+	return httpcallSuccess(c, http.StatusOK, map[string]string{"message": "Logged out successfully"}, nil)
+}
+
+// LogoutAll handles POST /v1/auth/logout-all
+// @Summary      Logout from all devices
+// @Description  Revokes EVERY session of the account (FR-H8) by incrementing the internal token version.
+// @Description  All previously issued access AND refresh tokens become invalid on their next use,
+// @Description  including the one used to call this endpoint.
+// @Tags         Auth
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} httpresponse.Response "All sessions revoked"
+// @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | TOKEN_VERSION_MISMATCH"
+// @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
+// @Router       /v1/auth/logout-all [post]
+func (h *AuthHandler) LogoutAll(c echo.Context) error {
+	if err := h.logoutAllUseCase.Execute(c.Request().Context(), middleware.UserIDFromContext(c)); err != nil {
+		h.log.Error("logout-all failed", "error", err)
+		return httpcallError(c, err)
+	}
+
+	return httpcallSuccess(c, http.StatusOK, map[string]string{"message": "All sessions have been revoked. Please log in again"}, nil)
+}
+
+// ForgotPassword handles POST /v1/auth/forgot-password
+// @Summary      Request a password reset OTP (step 1 of 3)
+// @Description  Sends a 6-digit password reset OTP to the given email address.
+// @Description
+// @Description  **Anti-enumeration:** this endpoint ALWAYS returns the same generic 200 response,
+// @Description  whether or not the email is registered. Do not use it to probe for accounts.
+// @Description
+// @Description  **Rate limiting:** 60-second cooldown + max 5 requests per 24 hours per email
+// @Description  (separate budget from `/auth/resend-email-otp`). When throttled, the response
+// @Description  includes `meta.retry_after_seconds`.
+// @Description
+// @Description  Flow: `/forgot-password` → `/verify-reset-otp` → `/reset-password`.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body dto.ForgotPasswordRequestDTO true "Account email"
+// @Success      200 {object} httpresponse.Response "Generic response — OTP sent if the email is registered"
+// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR — email field is missing"
+// @Failure      429 {object} httpresponse.Response "RATE_LIMITED — check meta.retry_after_seconds"
+// @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
+// @Router       /v1/auth/forgot-password [post]
+func (h *AuthHandler) ForgotPassword(c echo.Context) error {
+	var payload dto.ForgotPasswordRequestDTO
+	if err := c.Bind(&payload); err != nil {
+		h.log.Warn("forgot password rejected", "reason", "bind_error", "error", err)
+		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	}
+
+	resp, err := h.forgotPasswordUseCase.Execute(c.Request().Context(), auth.ForgotPasswordRequest{
+		Email: payload.Email,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, application.ErrInvalidInput):
+			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+		case errors.Is(err, application.ErrRateLimited):
+			meta := map[string]interface{}{}
+			if resp != nil {
+				meta["retry_after_seconds"] = resp.RetryAfterSeconds
+			}
+			return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
+				Success: false,
+				Error:   &httpresponse.ErrorDetail{Code: "RATE_LIMITED", Message: "Too many reset requests. Please wait before requesting again"},
+				Meta:    meta,
+			})
+		default:
+			h.log.Error("forgot password failed", "error", err)
+			return httpcallError(c, err)
+		}
+	}
+
+	// ALWAYS the same generic response — never reveal whether the email exists.
+	return httpcallSuccess(c, http.StatusOK, map[string]string{"message": "If the email is registered, a reset code has been sent"}, nil)
+}
+
+// VerifyResetOTP handles POST /v1/auth/verify-reset-otp
+// @Summary      Verify password reset OTP (step 2 of 3)
+// @Description  Exchanges a valid reset OTP for a short-lived (~15 minutes) single-use `reset_token`.
+// @Description  Pass that token to `/auth/reset-password` to actually change the password.
+// @Description
+// @Description  **Attempt limits:** maximum 5 wrong attempts per OTP; then a new code must be requested
+// @Description  via `/auth/forgot-password`. Failed attempts return `meta.attempts_remaining`.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body dto.VerifyResetOTPRequestDTO true "Email and reset OTP code"
+// @Success      200 {object} httpresponse.Response{data=auth.VerifyResetOTPResponse} "reset_token issued (single-use, ~15 min)"
+// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR | INVALID_OTP | OTP_EXPIRED"
+// @Failure      429 {object} httpresponse.Response "OTP_MAX_ATTEMPTS — request a new OTP via /auth/forgot-password"
+// @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
+// @Router       /v1/auth/verify-reset-otp [post]
+func (h *AuthHandler) VerifyResetOTP(c echo.Context) error {
+	var payload dto.VerifyResetOTPRequestDTO
+	if err := c.Bind(&payload); err != nil {
+		h.log.Warn("verify reset otp rejected", "reason", "bind_error", "error", err)
+		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	}
+
+	resp, err := h.verifyResetOTPUseCase.Execute(c.Request().Context(), auth.VerifyResetOTPRequest{
+		Email: payload.Email,
+		OTP:   payload.OTP,
+	})
+	if err != nil {
+		meta := map[string]interface{}{}
+		if resp != nil {
+			meta["attempts_remaining"] = resp.AttemptsRemaining
+		}
+
+		switch {
+		case errors.Is(err, application.ErrInvalidInput):
+			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+		case errors.Is(err, application.ErrInvalidOTP):
+			return c.JSON(http.StatusBadRequest, httpresponse.Response{
+				Success: false,
+				Error:   &httpresponse.ErrorDetail{Code: "INVALID_OTP", Message: "The OTP code is incorrect"},
+				Meta:    meta,
+			})
+		case errors.Is(err, application.ErrOTPExpired):
+			return c.JSON(http.StatusBadRequest, httpresponse.Response{
+				Success: false,
+				Error:   &httpresponse.ErrorDetail{Code: "OTP_EXPIRED", Message: "The OTP code has expired. Please request a new one via /auth/forgot-password"},
+				Meta:    meta,
+			})
+		case errors.Is(err, application.ErrOTPMaxAttempts):
+			return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
+				Success: false,
+				Error:   &httpresponse.ErrorDetail{Code: "OTP_MAX_ATTEMPTS", Message: "Maximum verification attempts exceeded. Please request a new OTP via /auth/forgot-password"},
+				Meta:    meta,
+			})
+		default:
+			h.log.Error("verify reset otp failed", "error", err)
+			return httpcallError(c, err)
+		}
+	}
+
+	return httpcallSuccess(c, http.StatusOK, resp, nil)
+}
+
+// ResetPassword handles POST /v1/auth/reset-password
+// @Summary      Reset password (step 3 of 3)
+// @Description  Changes the account password using the single-use `reset_token` from `/auth/verify-reset-otp`.
+// @Description
+// @Description  On success:
+// @Description  - The `reset_token` is consumed permanently (replaying it returns 401).
+// @Description  - ALL existing sessions on every device are revoked.
+// @Description  - A fresh `access_token` + `refresh_token` pair is returned (auto-login).
+// @Description
+// @Description  The new password follows the same policy as registration: minimum 10 characters and
+// @Description  checked against known breach databases.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Param        request body dto.ResetPasswordRequestDTO true "Reset token and new password"
+// @Success      200 {object} httpresponse.Response{data=auth.ResetPasswordResponse} "Password changed. New session issued."
+// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR | PASSWORD_TOO_SHORT | PASSWORD_BREACHED"
+// @Failure      401 {object} httpresponse.Response "UNAUTHORIZED — reset_token invalid, expired, or already used"
+// @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
+// @Router       /v1/auth/reset-password [post]
+func (h *AuthHandler) ResetPassword(c echo.Context) error {
+	var payload dto.ResetPasswordRequestDTO
+	if err := c.Bind(&payload); err != nil {
+		h.log.Warn("reset password rejected", "reason", "bind_error", "error", err)
+		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	}
+
+	resp, err := h.resetPasswordUseCase.Execute(c.Request().Context(), auth.ResetPasswordRequest{
+		ResetToken:  payload.ResetToken,
+		NewPassword: payload.NewPassword,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, application.ErrInvalidInput):
+			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+		case errors.Is(err, application.ErrPasswordTooShort):
+			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_TOO_SHORT", "Password must be at least 10 characters long")
+		case errors.Is(err, application.ErrPasswordBreached):
+			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_BREACHED", "This password has appeared in known data breaches. Please choose a different password")
+		case errors.Is(err, application.ErrInvalidToken):
+			return httpcallErrorCustom(c, http.StatusUnauthorized, "UNAUTHORIZED", "The reset token is invalid, expired, or has already been used")
+		default:
+			h.log.Error("reset password failed", "error", err)
 			return httpcallError(c, err)
 		}
 	}

@@ -20,7 +20,6 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/pkg/otp"
 	"github.com/aprxty3/your_persona_controller.git/pkg/taskqueue"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -90,13 +89,6 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 	if err := application.ValidateRequired("email", req.Email); err != nil {
 		return nil, err
 	}
-	if err := application.ValidateRequired("password", req.Password); err != nil {
-		return nil, err
-	}
-	if err := application.ValidateMinLength("password", req.Password, 10); err != nil {
-		uc.log.Warn("registration rejected", "reason", "password_too_short")
-		return nil, application.ErrPasswordTooShort
-	}
 	if err := application.ValidateLocale("preferred_locale", req.PreferredLocale); err != nil {
 		return nil, err
 	}
@@ -106,10 +98,10 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 		)
 	}
 
-	// HIBP check — fail-open on HIBP API failure so signups are not blocked
-	if breached, err := uc.breachChecker.IsBreached(ctx, req.Password); err == nil && breached {
-		uc.log.Warn("registration rejected", "reason", "password_breached")
-		return nil, application.ErrPasswordBreached
+	// Shared password policy (FR-H1a): required, min length, HIBP breach check.
+	if err := ValidateNewPassword(ctx, uc.breachChecker, "password", req.Password); err != nil {
+		uc.log.Warn("registration rejected", "reason", "password_policy", "error", err)
+		return nil, err
 	}
 
 	existing, err := uc.userRepo.FindByEmail(ctx, req.Email)
@@ -122,10 +114,10 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 		return nil, application.ErrEmailAlreadyRegistered
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hash, err := HashPassword(req.Password)
 	if err != nil {
 		uc.log.Error("registration failed", "step", "bcrypt_hash", "error", err)
-		return nil, fmt.Errorf("register: bcrypt hash: %w", err)
+		return nil, fmt.Errorf("register: %w", err)
 	}
 
 	var guest *guestsession.GuestSession
@@ -214,11 +206,11 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 }
 
 // buildUser assembles a new user.User domain entity from registration input.
-func buildUser(req RegisterRequest, hash []byte, guest *guestsession.GuestSession) *user.User {
+func buildUser(req RegisterRequest, hash string, guest *guestsession.GuestSession) *user.User {
 	u := &user.User{
 		ID:              uuid.New().String(),
 		Email:           req.Email,
-		PasswordHash:    string(hash),
+		PasswordHash:    hash,
 		PreferredLocale: req.PreferredLocale,
 		CreatedAt:       time.Now(),
 		TokenVersion:    0,

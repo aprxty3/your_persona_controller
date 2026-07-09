@@ -22,6 +22,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
+	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/middleware"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/aprxty3/your_persona_controller.git/pkg/taskqueue"
 	"github.com/hibiken/asynq"
@@ -71,8 +72,16 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	resendEmailOTPUseCase := auth.NewResendEmailOTPUseCase(userRepository, verificationtokenRepository, otpRateLimitService, dispatcher, loggerInstance)
 	jwtService := provideJWTService(jwtSecret)
 	loginUseCase := auth.NewLoginUseCase(userRepository, jwtService, loggerInstance)
-	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, verifyEmailOTPUseCase, resendEmailOTPUseCase, loginUseCase, loggerInstance)
-	echoEcho := http.SetupRouter(assessmentHandler, authHandler)
+	tokenStore := redis.NewTokenStore(redisClient)
+	refreshTokenUseCase := auth.NewRefreshTokenUseCase(userRepository, jwtService, tokenStore, loggerInstance)
+	logoutUseCase := auth.NewLogoutUseCase(jwtService, tokenStore, loggerInstance)
+	logoutAllUseCase := auth.NewLogoutAllUseCase(userRepository, loggerInstance)
+	forgotPasswordUseCase := auth.NewForgotPasswordUseCase(userRepository, verificationtokenRepository, otpRateLimitService, dispatcher, loggerInstance)
+	verifyResetOTPUseCase := auth.NewVerifyResetOTPUseCase(userRepository, verificationtokenRepository, jwtService, tokenStore, loggerInstance)
+	resetPasswordUseCase := auth.NewResetPasswordUseCase(db, userRepository, passwordBreachChecker, jwtService, tokenStore, loggerInstance)
+	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, verifyEmailOTPUseCase, resendEmailOTPUseCase, loginUseCase, refreshTokenUseCase, logoutUseCase, logoutAllUseCase, forgotPasswordUseCase, verifyResetOTPUseCase, resetPasswordUseCase, loggerInstance)
+	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)
+	echoEcho := http.SetupRouter(assessmentHandler, authHandler, authMiddleware)
 	return echoEcho, nil
 }
 

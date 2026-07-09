@@ -19,6 +19,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
+	appmiddleware "github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/middleware"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/aprxty3/your_persona_controller.git/pkg/taskqueue"
 	"github.com/google/wire"
@@ -94,6 +95,7 @@ func InitializeAPI(
 
 		// Redis Services
 		redis.NewOTPRateLimitService,
+		redis.NewTokenStore,
 
 		// ---------------------------------------------------------
 		// Application (Usecase) Providers
@@ -104,10 +106,17 @@ func InitializeAPI(
 		auth.NewVerifyEmailOTPUseCase,
 		auth.NewResendEmailOTPUseCase,
 		auth.NewLoginUseCase,
+		auth.NewRefreshTokenUseCase,
+		auth.NewLogoutUseCase,
+		auth.NewLogoutAllUseCase,
+		auth.NewForgotPasswordUseCase,
+		auth.NewVerifyResetOTPUseCase,
+		auth.NewResetPasswordUseCase,
 
 		// ---------------------------------------------------------
 		// Delivery (HTTP) Providers
 		// ---------------------------------------------------------
+		appmiddleware.NewAuthMiddleware,
 		handler.NewAssessmentHandler,
 		handler.NewAuthHandler,
 		http.SetupRouter,

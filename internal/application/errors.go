@@ -28,3 +28,15 @@ var (
 	ErrOTPMaxAttempts = errors.New("OTP_MAX_ATTEMPTS")
 	ErrRateLimited    = errors.New("RATE_LIMITED")
 )
+
+// Token errors (refresh / reset tokens)
+var (
+	// ErrInvalidToken covers malformed, expired, revoked, and already-consumed
+	// refresh/reset tokens. Deliberately one generic error so responses don't
+	// leak which specific check failed.
+	ErrInvalidToken = errors.New("INVALID_TOKEN")
+
+	// ErrTokenVersionMismatch means the token is cryptographically valid but its
+	// token_version claim no longer matches USER.token_version (revoked session).
+	ErrTokenVersionMismatch = errors.New("TOKEN_VERSION_MISMATCH")
+)

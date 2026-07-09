@@ -57,7 +57,7 @@ func NewResendEmailOTPUseCase(
 
 // Execute performs rate-limit checking, old token revocation, and enqueues a new OTP task.
 func (uc *ResendEmailOTPUseCase) Execute(ctx context.Context, req ResendEmailOTPRequest) (*ResendEmailOTPResponse, error) {
-	retryAfter, err := uc.rateLimiter.CheckAndConsume(ctx, req.Email)
+	retryAfter, err := uc.rateLimiter.CheckAndConsume(ctx, redis.ScopeEmailVerification, req.Email)
 	if err != nil {
 		uc.log.Error("resend otp failed", "step", "rate_limit_evaluation", "error", err)
 		return nil, fmt.Errorf("resend_otp: rate limit evaluation: %w", err)
@@ -103,7 +103,7 @@ func (uc *ResendEmailOTPUseCase) Execute(ctx context.Context, req ResendEmailOTP
 	}
 
 	// Increment daily limit counter and start OTP cooldown timer
-	if err := uc.rateLimiter.SetCooldown(ctx, req.Email); err != nil {
+	if err := uc.rateLimiter.SetCooldown(ctx, redis.ScopeEmailVerification, req.Email); err != nil {
 		// Non-fatal: proceed to email delivery regardless
 		uc.log.Warn("failed to set otp cooldown", "user_id", u.ID, "error", err)
 	}

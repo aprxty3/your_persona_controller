@@ -3,13 +3,18 @@ package http
 import (
 	_ "github.com/aprxty3/your_persona_controller.git/docs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
+	appmiddleware "github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/middleware"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
 
 // SetupRouter initializes the Echo instance, applies global middlewares,
-func SetupRouter(assessmentHandler *handler.AssessmentHandler, authHandler *handler.AuthHandler) *echo.Echo {
+func SetupRouter(
+	assessmentHandler *handler.AssessmentHandler,
+	authHandler *handler.AuthHandler,
+	authMiddleware *appmiddleware.AuthMiddleware,
+) *echo.Echo {
 	e := echo.New()
 
 	// ---------------------------------------------------------
@@ -31,6 +36,16 @@ func SetupRouter(assessmentHandler *handler.AssessmentHandler, authHandler *hand
 	authGroup.POST("/verify-email-otp", authHandler.VerifyEmailOTP)
 	authGroup.POST("/resend-email-otp", authHandler.ResendEmailOTP)
 	authGroup.POST("/login", authHandler.Login)
+	authGroup.POST("/refresh", authHandler.RefreshToken)
+
+	// Forgot/Reset Password — 3 separate endpoints by design (FR-H4)
+	authGroup.POST("/forgot-password", authHandler.ForgotPassword)
+	authGroup.POST("/verify-reset-otp", authHandler.VerifyResetOTP)
+	authGroup.POST("/reset-password", authHandler.ResetPassword)
+
+	// Auth: Required (Bearer access token + token_version guard)
+	authGroup.POST("/logout", authHandler.Logout, authMiddleware.RequireAuth)
+	authGroup.POST("/logout-all", authHandler.LogoutAll, authMiddleware.RequireAuth)
 
 	// Assessment Group
 	assessmentGroup := v1.Group("/assessment")

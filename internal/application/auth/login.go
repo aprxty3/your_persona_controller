@@ -15,8 +15,6 @@ import (
 const (
 	defaultLoginMaxAttempts = 10
 	defaultLockDuration     = 15 * time.Minute
-	defaultAccessTokenTTL   = 15 * time.Minute
-	defaultRefreshTokenTTL  = 14 * 24 * time.Hour
 )
 
 // LoginRequest is the payload for the authenticate user endpoint.
@@ -27,8 +25,8 @@ type LoginRequest struct {
 
 // LoginResponse carries JWT credentials on successful login.
 type LoginResponse struct {
-	AccessToken  string
-	RefreshToken string
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
 }
 
 // LoginUseCase validates password hashes and generates session JWTs.
@@ -38,8 +36,6 @@ type LoginUseCase struct {
 	log              logger.Logger
 	loginMaxAttempts int
 	lockDuration     time.Duration
-	accessTokenTTL   time.Duration
-	refreshTokenTTL  time.Duration
 }
 
 // NewLoginUseCase creates a new LoginUseCase with configurable defaults.
@@ -50,8 +46,6 @@ func NewLoginUseCase(userRepo user.Repository, jwtService *jwtservice.JWTService
 		log:              log.With("usecase", "login"),
 		loginMaxAttempts: defaultLoginMaxAttempts,
 		lockDuration:     defaultLockDuration,
-		accessTokenTTL:   defaultAccessTokenTTL,
-		refreshTokenTTL:  defaultRefreshTokenTTL,
 	}
 }
 
@@ -91,23 +85,17 @@ func (uc *LoginUseCase) Execute(ctx context.Context, req LoginRequest) (*LoginRe
 		}
 	}
 
-	// Issue JWT token pairs
-	accessToken, err := uc.jwtService.GenerateAccessToken(u.ID, u.TokenVersion, uc.accessTokenTTL)
+	// Issue JWT token pairs via the shared session-minting helper.
+	pair, err := IssueTokenPair(uc.jwtService, u.ID, u.TokenVersion)
 	if err != nil {
-		uc.log.Error("login failed", "step", "issue_access_token", "user_id", u.ID, "error", err)
-		return nil, fmt.Errorf("login: issue access token: %w", err)
-	}
-
-	refreshToken, err := uc.jwtService.GenerateRefreshToken(u.ID, uc.refreshTokenTTL)
-	if err != nil {
-		uc.log.Error("login failed", "step", "issue_refresh_token", "user_id", u.ID, "error", err)
-		return nil, fmt.Errorf("login: issue refresh token: %w", err)
+		uc.log.Error("login failed", "step", "issue_tokens", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("login: %w", err)
 	}
 
 	uc.log.Info("user logged in", "user_id", u.ID)
 	return &LoginResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
+		AccessToken:  pair.AccessToken,
+		RefreshToken: pair.RefreshToken,
 	}, nil
 }
 
