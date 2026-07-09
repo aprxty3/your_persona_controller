@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/application"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/dto"
 	"github.com/aprxty3/your_persona_controller.git/pkg/httpresponse"
@@ -91,7 +92,7 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 
 	resp, err := h.createGuestSessionUseCase.Execute(c.Request().Context(), ucReq)
 	if err != nil {
-		if errors.Is(err, auth.ErrInvalidGuestInput) {
+		if errors.Is(err, application.ErrInvalidInput) {
 			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
 		}
 		h.log.Error("create guest session failed", "error", err)
@@ -162,13 +163,13 @@ func (h *AuthHandler) Register(c echo.Context) error {
 	resp, err := h.registerUseCase.Execute(c.Request().Context(), ucReq)
 	if err != nil {
 		switch {
-		case errors.Is(err, auth.ErrInvalidRegisterInput):
+		case errors.Is(err, application.ErrInvalidInput):
 			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
-		case errors.Is(err, auth.ErrEmailAlreadyRegistered):
+		case errors.Is(err, application.ErrEmailAlreadyRegistered):
 			return httpcallErrorCustom(c, http.StatusConflict, "EMAIL_ALREADY_REGISTERED", "An account with this email address already exists")
-		case errors.Is(err, auth.ErrPasswordTooShort):
+		case errors.Is(err, application.ErrPasswordTooShort):
 			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_TOO_SHORT", "Password must be at least 10 characters long")
-		case errors.Is(err, auth.ErrPasswordBreached):
+		case errors.Is(err, application.ErrPasswordBreached):
 			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_BREACHED", "This password has appeared in known data breaches. Please choose a different password")
 		default:
 			h.log.Error("register failed", "error", err)
@@ -223,19 +224,19 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 		}
 
 		switch {
-		case errors.Is(err, auth.ErrInvalidOTP):
+		case errors.Is(err, application.ErrInvalidOTP):
 			return c.JSON(http.StatusBadRequest, httpresponse.Response{
 				Success: false,
 				Error:   &httpresponse.ErrorDetail{Code: "INVALID_OTP", Message: "The OTP code is incorrect"},
 				Meta:    meta,
 			})
-		case errors.Is(err, auth.ErrOTPExpired):
+		case errors.Is(err, application.ErrOTPExpired):
 			return c.JSON(http.StatusBadRequest, httpresponse.Response{
 				Success: false,
 				Error:   &httpresponse.ErrorDetail{Code: "OTP_EXPIRED", Message: "The OTP code has expired. Please request a new one via /auth/resend-email-otp"},
 				Meta:    meta,
 			})
-		case errors.Is(err, auth.ErrOTPMaxAttempts):
+		case errors.Is(err, application.ErrOTPMaxAttempts):
 			return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
 				Success: false,
 				Error:   &httpresponse.ErrorDetail{Code: "OTP_MAX_ATTEMPTS", Message: "Maximum verification attempts exceeded. Please request a new OTP via /auth/resend-email-otp"},
@@ -289,7 +290,7 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 
 	resp, err := h.resendEmailOTPUseCase.Execute(c.Request().Context(), ucReq)
 	if err != nil {
-		if errors.Is(err, auth.ErrRateLimited) {
+		if errors.Is(err, application.ErrRateLimited) {
 			meta := map[string]interface{}{}
 			if resp != nil {
 				meta["retry_after_seconds"] = resp.RetryAfterSeconds
@@ -350,11 +351,11 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	resp, err := h.loginUseCase.Execute(c.Request().Context(), ucReq)
 	if err != nil {
 		switch {
-		case errors.Is(err, auth.ErrInvalidCredentials):
+		case errors.Is(err, application.ErrInvalidCredentials):
 			return httpcallErrorCustom(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Email or password is incorrect")
-		case errors.Is(err, auth.ErrAccountLocked):
+		case errors.Is(err, application.ErrAccountLocked):
 			return httpcallErrorCustom(c, http.StatusLocked, "ACCOUNT_LOCKED", "Account is temporarily locked due to too many failed login attempts. Please try again later.")
-		case errors.Is(err, auth.ErrEmailNotVerified):
+		case errors.Is(err, application.ErrEmailNotVerified):
 			return httpcallErrorCustom(c, http.StatusForbidden, "EMAIL_NOT_VERIFIED", "Please verify your email address before logging in. Check your inbox or request a new OTP via /auth/resend-email-otp")
 		default:
 			h.log.Error("login failed", "error", err)

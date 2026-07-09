@@ -3,34 +3,14 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
-	"errors"
 	"fmt"
 	"time"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/application"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/guestsession"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/google/uuid"
 )
-
-// Sentinel errors for guest session creation.
-var (
-	ErrInvalidGuestInput = errors.New("INVALID_INPUT")
-)
-
-// validGuestStatuses is the exhaustive set of accepted status values.
-var validGuestStatuses = map[string]struct{}{
-	"student":    {},
-	"worker":     {},
-	"freelancer": {},
-	"unemployed": {},
-	"other":      {},
-}
-
-// validLocales is the exhaustive set of accepted locale values.
-var validLocales = map[string]struct{}{
-	"en": {},
-	"id": {},
-}
 
 // CreateGuestSessionRequest holds validated input from the onboarding form.
 type CreateGuestSessionRequest struct {
@@ -60,24 +40,19 @@ func NewCreateGuestSessionUseCase(repo guestsession.Repository, log logger.Logge
 
 // Execute handles the generation of a 14-day persistent guest session.
 func (uc *CreateGuestSessionUseCase) Execute(ctx context.Context, req CreateGuestSessionRequest) (*CreateGuestSessionResponse, error) {
-	if req.DisplayName == "" {
-		return nil, fmt.Errorf("%w: display_name is required", ErrInvalidGuestInput)
+	if err := application.ValidateRequired("display_name", req.DisplayName); err != nil {
+		return nil, err
 	}
-	if req.Age < 13 {
-		return nil, fmt.Errorf("%w: age must be at least 13", ErrInvalidGuestInput)
+	if err := application.ValidateAge(req.Age, 13); err != nil {
+		return nil, err
 	}
-	if _, ok := validGuestStatuses[req.Status]; !ok {
-		if req.Status == "" {
-			return nil, fmt.Errorf("%w: status is required", ErrInvalidGuestInput)
-		}
-		return nil, fmt.Errorf("%w: status must be one of: student, worker, freelancer, unemployed, other", ErrInvalidGuestInput)
+	if err := application.ValidateStatus(req.Status); err != nil {
+		return nil, err
 	}
-	if _, ok := validLocales[req.Locale]; !ok {
-		if req.Locale == "" {
-			return nil, fmt.Errorf("%w: locale is required", ErrInvalidGuestInput)
-		}
-		return nil, fmt.Errorf("%w: locale must be one of: en, id", ErrInvalidGuestInput)
+	if err := application.ValidateLocale("locale", req.Locale); err != nil {
+		return nil, err
 	}
+
 	sessionID := uuid.New().String()
 	now := time.Now()
 	expiresAt := now.Add(14 * 24 * time.Hour)

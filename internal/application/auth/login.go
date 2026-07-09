@@ -2,21 +2,14 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/application"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
 	jwtservice "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"golang.org/x/crypto/bcrypt"
-)
-
-// Sentinel login errors mapped to specific HTTP status codes in the presentation layer.
-var (
-	ErrInvalidCredentials = errors.New("INVALID_CREDENTIALS") // Scoped to prevent user enumeration
-	ErrAccountLocked      = errors.New("ACCOUNT_LOCKED")      // HTTP 423
-	ErrEmailNotVerified   = errors.New("EMAIL_NOT_VERIFIED")  // HTTP 403
 )
 
 const (
@@ -71,19 +64,19 @@ func (uc *LoginUseCase) Execute(ctx context.Context, req LoginRequest) (*LoginRe
 	}
 	if u == nil {
 		uc.log.Warn("login rejected", "reason", "invalid_credentials")
-		return nil, ErrInvalidCredentials
+		return nil, application.ErrInvalidCredentials
 	}
 
 	// Fast-fail if the account is currently locked out
 	if u.IsLocked() {
 		uc.log.Warn("login rejected", "reason", "account_locked", "user_id", u.ID)
-		return nil, ErrAccountLocked
+		return nil, application.ErrAccountLocked
 	}
 
 	// Block login until email is verified.
 	if !u.IsEmailVerified() {
 		uc.log.Warn("login rejected", "reason", "email_not_verified", "user_id", u.ID)
-		return nil, ErrEmailNotVerified
+		return nil, application.ErrEmailNotVerified
 	}
 
 	// Verify password hash
@@ -133,8 +126,8 @@ func (uc *LoginUseCase) handleFailedAttempt(ctx context.Context, u *user.User) e
 
 	if lockedUntil != nil {
 		uc.log.Warn("login rejected", "reason", "account_locked", "user_id", u.ID, "failed_count", newCount)
-		return ErrAccountLocked
+		return application.ErrAccountLocked
 	}
 	uc.log.Warn("login rejected", "reason", "invalid_credentials", "user_id", u.ID, "failed_count", newCount)
-	return ErrInvalidCredentials
+	return application.ErrInvalidCredentials
 }

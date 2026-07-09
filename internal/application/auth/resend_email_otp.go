@@ -2,10 +2,10 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/application"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/verificationtoken"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
@@ -14,9 +14,6 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/pkg/taskqueue"
 	"github.com/google/uuid"
 )
-
-// ErrRateLimited is raised when rolling daily cap or retry cooldown expires.
-var ErrRateLimited = errors.New("RATE_LIMITED")
 
 // ResendEmailOTPRequest specifies the target user's email.
 type ResendEmailOTPRequest struct {
@@ -67,7 +64,7 @@ func (uc *ResendEmailOTPUseCase) Execute(ctx context.Context, req ResendEmailOTP
 	}
 	if retryAfter > 0 {
 		uc.log.Warn("resend otp rejected", "reason", "rate_limited", "retry_after_seconds", retryAfter)
-		return &ResendEmailOTPResponse{RetryAfterSeconds: retryAfter}, ErrRateLimited
+		return &ResendEmailOTPResponse{RetryAfterSeconds: retryAfter}, application.ErrRateLimited
 	}
 
 	u, err := uc.userRepo.FindByEmail(ctx, req.Email)

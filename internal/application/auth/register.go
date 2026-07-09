@@ -2,10 +2,10 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/application"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/guestsession"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/verificationtoken"
@@ -16,14 +16,6 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-)
-
-// Sentinel registration error definitions.
-var (
-	ErrEmailAlreadyRegistered = errors.New("email already registered")
-	ErrPasswordTooShort       = errors.New("password must be at least 10 characters")
-	ErrPasswordBreached       = errors.New("password found in known data breach lists")
-	ErrInvalidRegisterInput   = errors.New("INVALID_INPUT")
 )
 
 // RegisterRequest holds the validated input for account creation.
@@ -83,32 +75,29 @@ func NewRegisterUseCase(
 
 // Execute performs atomic multi-record mutations in a single transaction.
 func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
-	if req.Email == "" {
-		return nil, fmt.Errorf("%w: email is required", ErrInvalidRegisterInput)
+	if err := application.ValidateRequired("email", req.Email); err != nil {
+		return nil, err
 	}
-	if req.Password == "" {
-		return nil, fmt.Errorf("%w: password is required", ErrInvalidRegisterInput)
+	if err := application.ValidateRequired("password", req.Password); err != nil {
+		return nil, err
 	}
-	if len(req.Password) < 10 {
+	if err := application.ValidateMinLength("password", req.Password, 10); err != nil {
 		uc.log.Warn("registration rejected", "reason", "password_too_short")
-		return nil, ErrPasswordTooShort
+		return nil, application.ErrPasswordTooShort
 	}
-	switch req.PreferredLocale {
-	case "en", "id":
-		// valid
-	case "":
-		return nil, fmt.Errorf("%w: preferred_locale is required", ErrInvalidRegisterInput)
-	default:
-		return nil, fmt.Errorf("%w: preferred_locale must be one of: en, id", ErrInvalidRegisterInput)
+	if err := application.ValidateLocale("preferred_locale", req.PreferredLocale); err != nil {
+		return nil, err
 	}
 	if req.ReferralCode != nil && *req.ReferralCode == "" {
-		return nil, fmt.Errorf("%w: referral_code must not be an empty string — omit the field or pass null if you don't have one", ErrInvalidRegisterInput)
+		return nil, fmt.Errorf("%w: referral_code must not be an empty string — omit the field or pass null if you don't have one",
+			application.ErrInvalidInput,
+		)
 	}
 
 	// HIBP check — fail-open on HIBP API failure so signups are not blocked
 	if breached, err := uc.breachChecker.IsBreached(ctx, req.Password); err == nil && breached {
 		uc.log.Warn("registration rejected", "reason", "password_breached")
-		return nil, errors.New("password found in known breach database — please choose a different password")
+		return nil, application.ErrPasswordBreached
 	}
 
 	existing, err := uc.userRepo.FindByEmail(ctx, req.Email)
@@ -118,7 +107,7 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 	}
 	if existing != nil {
 		uc.log.Warn("registration rejected", "reason", "email_already_registered")
-		return nil, ErrEmailAlreadyRegistered
+		return nil, application.ErrEmailAlreadyRegistered
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -137,8 +126,6 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 	}
 
 	newUser := buildUser(req, hash, guest)
-
-	// Single atomic database transaction for multi-table writes
 	txErr := uc.db.Transaction(func(tx *gorm.DB) error {
 		txUserRepo := txUserRepository(tx, uc.log)
 		txGuestRepo := txGuestRepository(tx, uc.log)
@@ -203,7 +190,6 @@ func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*R
 			Locale: newUser.PreferredLocale,
 		}
 		if err := uc.dispatcher.EnqueueEmail(ctx, payload, taskqueue.QueueCritical); err != nil {
-			// Enqueue errors do not rollback the registration — users can click resend.
 			uc.log.Warn("failed to enqueue verification email, user can use resend", "user_id", newUser.ID, "error", err)
 		}
 
@@ -238,12 +224,19 @@ func buildUser(req RegisterRequest, hash []byte, guest *guestsession.GuestSessio
 	return u
 }
 
-func createReferralEvents(ctx context.Context, tx *gorm.DB, newUserID, referralCode, guestSessionID string, log logger.Logger) error { //nolint:unparam // always nil by design, see comment above
+func createReferralEvents(
+	ctx context.Context,
+	tx *gorm.DB,
+	newUserID,
+	referralCode,
+	guestSessionID string,
+	log logger.Logger,
+) error {
 	var referralCodeID string
 	if err := tx.Raw("SELECT id FROM referral_codes WHERE code = ?", referralCode).
 		Scan(&referralCodeID).Error; err != nil || referralCodeID == "" {
 		if err != nil {
-			log.Warn("referral event skipped", "reason", "lookup_failed", "error", err) //nolint:nilerr // best-effort, see func comment
+			log.Warn("referral event skipped", "reason", "lookup_failed", "error", err)
 		}
 		return nil
 	}
@@ -252,7 +245,7 @@ func createReferralEvents(ctx context.Context, tx *gorm.DB, newUserID, referralC
 		"INSERT INTO referral_events (id, referral_code_id, referred_user_id, event_type, created_at) VALUES (?, ?, ?, 'signup', NOW())",
 		uuid.New().String(), referralCodeID, newUserID,
 	).Error; err != nil {
-		log.Warn("referral signup event insert failed", "error", err) //nolint:nilerr // best-effort, see func comment
+		log.Warn("referral signup event insert failed", "error", err)
 		return nil
 	}
 
@@ -273,12 +266,12 @@ func createReferralEvents(ctx context.Context, tx *gorm.DB, newUserID, referralC
 	return nil
 }
 
-func createSignupEvent(ctx context.Context, tx *gorm.DB, newUserID, referralCode string, log logger.Logger) error { //nolint:unparam // always nil by design, see createReferralEvents
+func createSignupEvent(ctx context.Context, tx *gorm.DB, newUserID, referralCode string, log logger.Logger) error {
 	var referralCodeID string
 	if err := tx.Raw("SELECT id FROM referral_codes WHERE code = ?", referralCode).
 		Scan(&referralCodeID).Error; err != nil || referralCodeID == "" {
 		if err != nil {
-			log.Warn("signup referral event skipped", "reason", "lookup_failed", "error", err) //nolint:nilerr // best-effort, see createReferralEvents
+			log.Warn("signup referral event skipped", "reason", "lookup_failed", "error", err)
 		}
 		return nil
 	}
@@ -287,7 +280,7 @@ func createSignupEvent(ctx context.Context, tx *gorm.DB, newUserID, referralCode
 		uuid.New().String(), referralCodeID, newUserID,
 	).Error; err != nil {
 		log.Warn("signup referral event insert failed", "error", err)
-		return nil //nolint:nilerr // best-effort, see createReferralEvents
+		return nil
 	}
 	return nil
 }
