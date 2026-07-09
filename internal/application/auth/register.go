@@ -37,11 +37,6 @@ type RegisterResponse struct {
 	UserID string
 }
 
-// PasswordBreachChecker defines the contract for HIBP checks (FR-H1a).
-type PasswordBreachChecker interface {
-	IsBreached(ctx context.Context, password string) (bool, error)
-}
-
 // RegisterUseCase orchestrates account creation, data transitions, and referral conversions.
 type RegisterUseCase struct {
 	db             *gorm.DB
