@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,11 +12,31 @@ import (
 	"github.com/google/uuid"
 )
 
+// Sentinel errors for guest session creation.
+var (
+	ErrInvalidGuestInput = errors.New("INVALID_INPUT")
+)
+
+// validGuestStatuses is the exhaustive set of accepted status values.
+var validGuestStatuses = map[string]struct{}{
+	"student":    {},
+	"worker":     {},
+	"freelancer": {},
+	"unemployed": {},
+	"other":      {},
+}
+
+// validLocales is the exhaustive set of accepted locale values.
+var validLocales = map[string]struct{}{
+	"en": {},
+	"id": {},
+}
+
 // CreateGuestSessionRequest holds validated input from the onboarding form.
 type CreateGuestSessionRequest struct {
 	DisplayName string
 	Age         int
-	Status      string // student|undergraduate|employed|others
+	Status      string // student|worker|freelancer|unemployed|other
 	Locale      string // en|id
 	IPAddress   string // raw client IP (hashed and never stored directly)
 }
@@ -39,6 +60,24 @@ func NewCreateGuestSessionUseCase(repo guestsession.Repository, log logger.Logge
 
 // Execute handles the generation of a 14-day persistent guest session.
 func (uc *CreateGuestSessionUseCase) Execute(ctx context.Context, req CreateGuestSessionRequest) (*CreateGuestSessionResponse, error) {
+	if req.DisplayName == "" {
+		return nil, fmt.Errorf("%w: display_name is required", ErrInvalidGuestInput)
+	}
+	if req.Age < 13 {
+		return nil, fmt.Errorf("%w: age must be at least 13", ErrInvalidGuestInput)
+	}
+	if _, ok := validGuestStatuses[req.Status]; !ok {
+		if req.Status == "" {
+			return nil, fmt.Errorf("%w: status is required", ErrInvalidGuestInput)
+		}
+		return nil, fmt.Errorf("%w: status must be one of: student, worker, freelancer, unemployed, other", ErrInvalidGuestInput)
+	}
+	if _, ok := validLocales[req.Locale]; !ok {
+		if req.Locale == "" {
+			return nil, fmt.Errorf("%w: locale is required", ErrInvalidGuestInput)
+		}
+		return nil, fmt.Errorf("%w: locale must be one of: en, id", ErrInvalidGuestInput)
+	}
 	sessionID := uuid.New().String()
 	now := time.Now()
 	expiresAt := now.Add(14 * 24 * time.Hour)

@@ -22,6 +22,8 @@ import (
 var (
 	ErrEmailAlreadyRegistered = errors.New("email already registered")
 	ErrPasswordTooShort       = errors.New("password must be at least 10 characters")
+	ErrPasswordBreached       = errors.New("password found in known data breach lists")
+	ErrInvalidRegisterInput   = errors.New("INVALID_INPUT")
 )
 
 // RegisterRequest holds the validated input for account creation.
@@ -81,9 +83,26 @@ func NewRegisterUseCase(
 
 // Execute performs atomic multi-record mutations in a single transaction.
 func (uc *RegisterUseCase) Execute(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
+	if req.Email == "" {
+		return nil, fmt.Errorf("%w: email is required", ErrInvalidRegisterInput)
+	}
+	if req.Password == "" {
+		return nil, fmt.Errorf("%w: password is required", ErrInvalidRegisterInput)
+	}
 	if len(req.Password) < 10 {
 		uc.log.Warn("registration rejected", "reason", "password_too_short")
 		return nil, ErrPasswordTooShort
+	}
+	switch req.PreferredLocale {
+	case "en", "id":
+		// valid
+	case "":
+		return nil, fmt.Errorf("%w: preferred_locale is required", ErrInvalidRegisterInput)
+	default:
+		return nil, fmt.Errorf("%w: preferred_locale must be one of: en, id", ErrInvalidRegisterInput)
+	}
+	if req.ReferralCode != nil && *req.ReferralCode == "" {
+		return nil, fmt.Errorf("%w: referral_code must not be an empty string — omit the field or pass null if you don't have one", ErrInvalidRegisterInput)
 	}
 
 	// HIBP check — fail-open on HIBP API failure so signups are not blocked

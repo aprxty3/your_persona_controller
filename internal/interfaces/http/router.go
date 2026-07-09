@@ -1,6 +1,7 @@
 package http
 
 import (
+	_ "github.com/aprxty3/your_persona_controller.git/docs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -8,7 +9,6 @@ import (
 )
 
 // SetupRouter initializes the Echo instance, applies global middlewares,
-// and registers all API routes.
 func SetupRouter(assessmentHandler *handler.AssessmentHandler, authHandler *handler.AuthHandler) *echo.Echo {
 	e := echo.New()
 

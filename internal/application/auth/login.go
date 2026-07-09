@@ -16,6 +16,7 @@ import (
 var (
 	ErrInvalidCredentials = errors.New("INVALID_CREDENTIALS") // Scoped to prevent user enumeration
 	ErrAccountLocked      = errors.New("ACCOUNT_LOCKED")      // HTTP 423
+	ErrEmailNotVerified   = errors.New("EMAIL_NOT_VERIFIED")  // HTTP 403
 )
 
 const (
@@ -79,6 +80,12 @@ func (uc *LoginUseCase) Execute(ctx context.Context, req LoginRequest) (*LoginRe
 		return nil, ErrAccountLocked
 	}
 
+	// Block login until email is verified.
+	if !u.IsEmailVerified() {
+		uc.log.Warn("login rejected", "reason", "email_not_verified", "user_id", u.ID)
+		return nil, ErrEmailNotVerified
+	}
+
 	// Verify password hash
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
 		return nil, uc.handleFailedAttempt(ctx, u)
@@ -87,7 +94,6 @@ func (uc *LoginUseCase) Execute(ctx context.Context, req LoginRequest) (*LoginRe
 	// Clear failed login count upon successful authentication
 	if u.FailedLoginCount > 0 {
 		if err := uc.userRepo.UpdateLoginAttempt(ctx, u.ID, 0, nil); err != nil {
-			// Fail-open: do not block successful authentication
 			uc.log.Warn("failed to reset login attempt counter", "user_id", u.ID, "error", err)
 		}
 	}
@@ -122,7 +128,6 @@ func (uc *LoginUseCase) handleFailedAttempt(ctx context.Context, u *user.User) e
 	}
 
 	if err := uc.userRepo.UpdateLoginAttempt(ctx, u.ID, newCount, lockedUntil); err != nil {
-		// Prioritize raising incorrect credential signal to client over this failure
 		uc.log.Warn("failed to persist login attempt counter", "user_id", u.ID, "error", err)
 	}
 
