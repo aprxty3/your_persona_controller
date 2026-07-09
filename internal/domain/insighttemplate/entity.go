@@ -1,7 +1,5 @@
 package insighttemplate
 
-import "context"
-
 // ConditionType defines how a micro-insight is triggered.
 type ConditionType string
 
@@ -34,12 +32,4 @@ type InsightTemplate struct {
 	ThresholdValue *float64 // used for threshold; nil for increase/decrease
 	TemplateText   string   // supports {trait}, {delta} placeholders
 	IsActive       bool
-}
-
-// Repository defines the contract for InsightTemplate data persistence.
-type Repository interface {
-	// FindMatchingTemplates returns active templates for a given trait and locale
-	// that match the provided delta or score value. Falls back to "en" if the
-	// requested locale is not found (FR-I9).
-	FindMatchingTemplates(ctx context.Context, trait, locale string) ([]InsightTemplate, error)
 }
