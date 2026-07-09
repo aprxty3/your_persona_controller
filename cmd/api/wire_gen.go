@@ -13,6 +13,11 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/gemini"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/guestsession"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/referral"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/user"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/verificationtoken"
 	asynq2 "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http"
@@ -44,12 +49,12 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	if err != nil {
 		return nil, err
 	}
-	repository := postgres.NewGuestSessionRepository(db, loggerInstance)
+	repository := guestsession.NewGuestSessionRepository(db, loggerInstance)
 	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(repository, loggerInstance)
-	userRepository := postgres.NewUserRepository(db, loggerInstance)
-	verificationtokenRepository := postgres.NewVerificationTokenRepository(db, loggerInstance)
-	referralRepository := postgres.NewReferralRepository(db, loggerInstance)
-	testresultRepository := postgres.NewTestResultRepository(db, loggerInstance)
+	userRepository := user.NewUserRepository(db, loggerInstance)
+	verificationtokenRepository := verificationtoken.NewVerificationTokenRepository(db, loggerInstance)
+	referralRepository := referral.NewReferralRepository(db, loggerInstance)
+	testresultRepository := testresult.NewTestResultRepository(db, loggerInstance)
 	passwordBreachChecker := auth.NewNoopBreachChecker()
 	asynqClient, err := provideAsynqClient(redisAddr, redisPassword, redisDB)
 	if err != nil {

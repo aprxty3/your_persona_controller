@@ -1,4 +1,4 @@
-package postgres
+package testresult
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"gorm.io/gorm"
 )
@@ -25,7 +26,7 @@ func NewTestResultRepository(db *gorm.DB, log logger.Logger) testresult.Reposito
 
 // Create inserts a new test result.
 func (r *TestResultRepository) Create(ctx context.Context, res *testresult.TestResult) error {
-	m, err := toTestResultModel(res)
+	m, err := toModel(res)
 	if err != nil {
 		return err
 	}
@@ -38,7 +39,7 @@ func (r *TestResultRepository) Create(ctx context.Context, res *testresult.TestR
 
 // FindByID retrieves a test result by its UUID. Returns nil, nil if not found.
 func (r *TestResultRepository) FindByID(ctx context.Context, id string) (*testresult.TestResult, error) {
-	var m TestResultModel
+	var m postgres.TestResultModel
 	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -47,7 +48,7 @@ func (r *TestResultRepository) FindByID(ctx context.Context, id string) (*testre
 		r.log.Error("query failed", "op", "FindByID", "error", err)
 		return nil, err
 	}
-	res, err := toTestResultEntity(&m)
+	res, err := toEntity(&m)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +57,7 @@ func (r *TestResultRepository) FindByID(ctx context.Context, id string) (*testre
 
 // FindByShareToken retrieves a test result by its share token. Returns nil, nil if not found.
 func (r *TestResultRepository) FindByShareToken(ctx context.Context, shareToken string) (*testresult.TestResult, error) {
-	var m TestResultModel
+	var m postgres.TestResultModel
 	err := r.db.WithContext(ctx).First(&m, "share_token = ?", shareToken).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
@@ -65,7 +66,7 @@ func (r *TestResultRepository) FindByShareToken(ctx context.Context, shareToken 
 		r.log.Error("query failed", "op", "FindByShareToken", "error", err)
 		return nil, err
 	}
-	res, err := toTestResultEntity(&m)
+	res, err := toEntity(&m)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +75,7 @@ func (r *TestResultRepository) FindByShareToken(ctx context.Context, shareToken 
 
 // Update saves all mutable fields of the test result.
 func (r *TestResultRepository) Update(ctx context.Context, res *testresult.TestResult) error {
-	m, err := toTestResultModel(res)
+	m, err := toModel(res)
 	if err != nil {
 		return err
 	}
@@ -87,19 +88,16 @@ func (r *TestResultRepository) Update(ctx context.Context, res *testresult.TestR
 
 // CountMonthlyUsage counts completed/fallback_static results for the given user in the current month in Asia/Jakarta timezone.
 func (r *TestResultRepository) CountMonthlyUsage(ctx context.Context, userID string) (int64, error) {
-	// Monthly quota counts rows WHERE status IN ('completed', 'fallback_static')
-	// AND created_at >= start of current month in Asia/Jakarta timezone.
 	loc, err := time.LoadLocation("Asia/Jakarta")
 	if err != nil {
-		// fallback to local if Asia/Jakarta is missing, or return error
 		loc = time.Local
 	}
 	now := time.Now().In(loc)
 	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 
 	var count int64
-	err = r.db.WithContext(ctx).Model(&TestResultModel{}).
-		Where("(user_id = ? OR guest_session_id = ?) AND status IN (?, ?) AND created_at >= ?", 
+	err = r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
+		Where("(user_id = ? OR guest_session_id = ?) AND status IN (?, ?) AND created_at >= ?",
 			userID, userID, string(testresult.StatusCompleted), string(testresult.StatusFallbackStatic), startOfMonth).
 		Count(&count).Error
 	if err != nil {
@@ -111,7 +109,7 @@ func (r *TestResultRepository) CountMonthlyUsage(ctx context.Context, userID str
 
 // FindExpiredGuestResults returns guest results that have passed their expires_at.
 func (r *TestResultRepository) FindExpiredGuestResults(ctx context.Context) ([]testresult.TestResult, error) {
-	var models []TestResultModel
+	var models []postgres.TestResultModel
 	err := r.db.WithContext(ctx).
 		Where("guest_session_id IS NOT NULL AND expires_at < ?", time.Now()).
 		Find(&models).Error
@@ -122,7 +120,7 @@ func (r *TestResultRepository) FindExpiredGuestResults(ctx context.Context) ([]t
 
 	results := make([]testresult.TestResult, len(models))
 	for i, m := range models {
-		res, err := toTestResultEntity(&m)
+		res, err := toEntity(&m)
 		if err != nil {
 			return nil, err
 		}
@@ -133,7 +131,7 @@ func (r *TestResultRepository) FindExpiredGuestResults(ctx context.Context) ([]t
 
 // UpdatePDFStatus updates pdf_url and pdf_status.
 func (r *TestResultRepository) UpdatePDFStatus(ctx context.Context, id string, pdfURL *string, status testresult.PDFStatus) error {
-	err := r.db.WithContext(ctx).Model(&TestResultModel{}).
+	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
 			"pdf_url":    pdfURL,
@@ -147,7 +145,7 @@ func (r *TestResultRepository) UpdatePDFStatus(ctx context.Context, id string, p
 
 // ReassignGuestResults binds completed/fallback_static results owned by guestSessionID to userID.
 func (r *TestResultRepository) ReassignGuestResults(ctx context.Context, userID, guestSessionID string) error {
-	err := r.db.WithContext(ctx).Model(&TestResultModel{}).
+	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
 		Where("guest_session_id = ? AND status IN (?, ?)", guestSessionID, string(testresult.StatusCompleted), string(testresult.StatusFallbackStatic)).
 		Updates(map[string]interface{}{
 			"user_id":          userID,
@@ -163,7 +161,7 @@ func (r *TestResultRepository) ReassignGuestResults(ctx context.Context, userID,
 // CountCompletedByGuestSession counts test results for a guest session with completed or fallback_static status.
 func (r *TestResultRepository) CountCompletedByGuestSession(ctx context.Context, guestSessionID string) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).Model(&TestResultModel{}).
+	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
 		Where("guest_session_id = ? AND status IN (?, ?)", guestSessionID, string(testresult.StatusCompleted), string(testresult.StatusFallbackStatic)).
 		Count(&count).Error
 	if err != nil {
@@ -173,16 +171,16 @@ func (r *TestResultRepository) CountCompletedByGuestSession(ctx context.Context,
 	return count, nil
 }
 
-func toTestResultModel(res *testresult.TestResult) (TestResultModel, error) {
+func toModel(res *testresult.TestResult) (postgres.TestResultModel, error) {
 	var traits []byte
 	var err error
 	if res.TraitScores != nil {
 		traits, err = json.Marshal(res.TraitScores)
 		if err != nil {
-			return TestResultModel{}, fmt.Errorf("marshal trait scores: %w", err)
+			return postgres.TestResultModel{}, fmt.Errorf("marshal trait scores: %w", err)
 		}
 	}
-	return TestResultModel{
+	return postgres.TestResultModel{
 		ID:               res.ID,
 		UserID:           res.UserID,
 		GuestSessionID:   res.GuestSessionID,
@@ -205,7 +203,7 @@ func toTestResultModel(res *testresult.TestResult) (TestResultModel, error) {
 	}, nil
 }
 
-func toTestResultEntity(m *TestResultModel) (*testresult.TestResult, error) {
+func toEntity(m *postgres.TestResultModel) (*testresult.TestResult, error) {
 	var traits map[string]interface{}
 	if m.TraitScores != "" {
 		if err := json.Unmarshal([]byte(m.TraitScores), &traits); err != nil {

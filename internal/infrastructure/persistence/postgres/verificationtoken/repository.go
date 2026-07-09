@@ -1,4 +1,4 @@
-package postgres
+package verificationtoken
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/verificationtoken"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"gorm.io/gorm"
 )
@@ -23,7 +24,7 @@ func NewVerificationTokenRepository(db *gorm.DB, log logger.Logger) verification
 
 // Create inserts a new verification token record.
 func (r *VerificationTokenRepository) Create(ctx context.Context, t *verificationtoken.VerificationToken) error {
-	m := toVTModel(t)
+	m := toModel(t)
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
 		r.log.Error("query failed", "op", "Create", "error", err)
 		return err
@@ -32,9 +33,8 @@ func (r *VerificationTokenRepository) Create(ctx context.Context, t *verificatio
 }
 
 // FindActiveByUserAndType returns the single active (not expired, not used) token.
-// Lookup is scoped to (user_id, type) for index optimization and security.
 func (r *VerificationTokenRepository) FindActiveByUserAndType(ctx context.Context, userID string, tokenType verificationtoken.TokenType) (*verificationtoken.VerificationToken, error) {
-	var m VerificationTokenModel
+	var m postgres.VerificationTokenModel
 	err := r.db.WithContext(ctx).
 		Where("user_id = ? AND type = ? AND expires_at > ? AND used_at IS NULL", userID, string(tokenType), time.Now()).
 		Order("created_at DESC").
@@ -46,14 +46,14 @@ func (r *VerificationTokenRepository) FindActiveByUserAndType(ctx context.Contex
 		r.log.Error("query failed", "op", "FindActiveByUserAndType", "error", err)
 		return nil, err
 	}
-	t := toVTEntity(&m)
+	t := toEntity(&m)
 	return &t, nil
 }
 
 // IncrementAttemptCount atomically increments the attempt_count for a token.
 func (r *VerificationTokenRepository) IncrementAttemptCount(ctx context.Context, tokenID string) error {
 	err := r.db.WithContext(ctx).
-		Model(&VerificationTokenModel{}).
+		Model(&postgres.VerificationTokenModel{}).
 		Where("id = ?", tokenID).
 		UpdateColumn("attempt_count", gorm.Expr("attempt_count + 1")).
 		Error
@@ -67,7 +67,7 @@ func (r *VerificationTokenRepository) IncrementAttemptCount(ctx context.Context,
 func (r *VerificationTokenRepository) MarkUsed(ctx context.Context, tokenID string) error {
 	now := time.Now()
 	err := r.db.WithContext(ctx).
-		Model(&VerificationTokenModel{}).
+		Model(&postgres.VerificationTokenModel{}).
 		Where("id = ?", tokenID).
 		Update("used_at", now).
 		Error
@@ -78,10 +78,9 @@ func (r *VerificationTokenRepository) MarkUsed(ctx context.Context, tokenID stri
 }
 
 // ExpireAllActiveForUser force-expires all unused tokens of the given (user_id, type).
-// Called prior to OTP generation to ensure the single-valid-token invariant.
 func (r *VerificationTokenRepository) ExpireAllActiveForUser(ctx context.Context, userID string, tokenType verificationtoken.TokenType) error {
 	err := r.db.WithContext(ctx).
-		Model(&VerificationTokenModel{}).
+		Model(&postgres.VerificationTokenModel{}).
 		Where("user_id = ? AND type = ? AND used_at IS NULL AND expires_at > ?", userID, string(tokenType), time.Now()).
 		Update("expires_at", time.Now()).
 		Error
@@ -91,8 +90,8 @@ func (r *VerificationTokenRepository) ExpireAllActiveForUser(ctx context.Context
 	return err
 }
 
-func toVTModel(t *verificationtoken.VerificationToken) VerificationTokenModel {
-	return VerificationTokenModel{
+func toModel(t *verificationtoken.VerificationToken) postgres.VerificationTokenModel {
+	return postgres.VerificationTokenModel{
 		ID:           t.ID,
 		UserID:       t.UserID,
 		Token:        t.Token,
@@ -103,7 +102,7 @@ func toVTModel(t *verificationtoken.VerificationToken) VerificationTokenModel {
 	}
 }
 
-func toVTEntity(m *VerificationTokenModel) verificationtoken.VerificationToken {
+func toEntity(m *postgres.VerificationTokenModel) verificationtoken.VerificationToken {
 	return verificationtoken.VerificationToken{
 		ID:           m.ID,
 		UserID:       m.UserID,

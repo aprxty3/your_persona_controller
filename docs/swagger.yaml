@@ -22,21 +22,53 @@ definitions:
   dto.CreateGuestSessionRequestDTO:
     properties:
       age:
+        minimum: 13
         type: integer
       display_name:
         type: string
       locale:
-        description: e.g., en, id
-        type: string
+        allOf:
+        - $ref: '#/definitions/dto.Locale'
+        enum:
+        - en
+        - id
       status:
-        description: e.g., bekerja, mahasiswa
-        type: string
+        allOf:
+        - $ref: '#/definitions/dto.GuestStatus'
+        enum:
+        - student
+        - worker
+        - freelancer
+        - unemployed
+        - other
     required:
     - age
     - display_name
     - locale
     - status
     type: object
+  dto.GuestStatus:
+    enum:
+    - student
+    - worker
+    - freelancer
+    - unemployed
+    - other
+    type: string
+    x-enum-varnames:
+    - GuestStatusStudent
+    - GuestStatusWorker
+    - GuestStatusFreelancer
+    - GuestStatusUnemployed
+    - GuestStatusOther
+  dto.Locale:
+    enum:
+    - en
+    - id
+    type: string
+    x-enum-varnames:
+    - LocaleEnglish
+    - LocaleIndonesian
   dto.LoginRequestDTO:
     properties:
       email:
@@ -55,7 +87,11 @@ definitions:
         minLength: 10
         type: string
       preferred_locale:
-        type: string
+        allOf:
+        - $ref: '#/definitions/dto.Locale'
+        enum:
+        - en
+        - id
       referral_code:
         type: string
     required:
@@ -107,9 +143,18 @@ paths:
     post:
       consumes:
       - application/json
-      description: Authenticates member and returns JWT tokens
+      description: |-
+        Authenticates a registered and verified member account.
+        Returns a short-lived `access_token` (JWT) and a long-lived `refresh_token`.
+
+        **Account lockout:**
+        After **10 consecutive failed attempts**, the account is temporarily locked for **15 minutes**.
+        The locked response includes `meta.locked_until` (RFC 3339 timestamp) indicating when the
+        lock expires. Attempting to log in during a lockout will continue returning HTTP 423.
+
+        The email must be verified before login is permitted.
       parameters:
-      - description: Credentials
+      - description: Email and password credentials
         in: body
         name: request
         required: true
@@ -119,7 +164,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Login successful. Use access_token as Bearer token.
           schema:
             allOf:
             - $ref: '#/definitions/httpresponse.Response'
@@ -127,23 +172,48 @@ paths:
                 data:
                   $ref: '#/definitions/auth.LoginResponse'
               type: object
+        "400":
+          description: VALIDATION_ERROR — email or password field is missing
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
         "401":
-          description: Unauthorized
+          description: INVALID_CREDENTIALS — email or password is incorrect
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "403":
+          description: EMAIL_NOT_VERIFIED — account email is not yet verified
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "423":
-          description: Locked
+          description: ACCOUNT_LOCKED — account is temporarily locked. Check meta.locked_until.
           schema:
             $ref: '#/definitions/httpresponse.Response'
-      summary: User login
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Login
       tags:
       - Auth
   /v1/auth/register:
     post:
       consumes:
       - application/json
-      description: Registers a new member account. Claims any valid guest session
-        in cookies.
+      description: |-
+        Creates a new member account. If a valid `session_id` cookie from `/v1/guest-session`
+        is present, the guest session data (display name, age, status, locale) is automatically
+        linked to the new account — you do NOT need to re-submit that data here.
+
+        After successful registration, a 6-digit OTP is sent to the provided email address.
+        The account is not fully active until the OTP is verified via `/v1/auth/verify-email-otp`.
+
+        **preferred_locale** — accepted values:
+        - `en` — English
+        - `id` — Indonesian (Bahasa Indonesia)
+
+        **referral_code** — completely optional.
+        If you do not have a referral code, omit the field entirely or set it to `null`.
+        Do NOT send an empty string `""` — that will be treated as a validation error.
       parameters:
       - description: Registration Data
         in: body
@@ -155,7 +225,7 @@ paths:
       - application/json
       responses:
         "201":
-          description: Created
+          description: Account created. OTP sent to email. Verify via /auth/verify-email-otp.
           schema:
             allOf:
             - $ref: '#/definitions/httpresponse.Response'
@@ -164,24 +234,38 @@ paths:
                   $ref: '#/definitions/auth.RegisterResponse'
               type: object
         "400":
-          description: Bad Request
+          description: VALIDATION_ERROR | EMAIL_ALREADY_REGISTERED | PASSWORD_TOO_SHORT
+            | INVALID_REFERRAL_CODE
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "409":
+          description: EMAIL_ALREADY_REGISTERED — email is already in use
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "500":
-          description: Internal Server Error
+          description: INTERNAL_ERROR — unexpected server error
           schema:
             $ref: '#/definitions/httpresponse.Response'
-      summary: Register a new user
+      summary: Register a new user account
       tags:
       - Auth
   /v1/auth/resend-email-otp:
     post:
       consumes:
       - application/json
-      description: Generates and sends a new registration OTP code, invalidating previous
-        ones
+      description: |-
+        Generates a new 6-digit OTP and sends it to the provided email address,
+        invalidating any previously issued OTP for that address.
+
+        **Rate limiting:**
+        - There is a **60-second cooldown** between resend requests.
+        - Maximum **5 resend requests per 24 hours** per email address.
+        - When rate limited, the response includes `meta.retry_after_seconds` indicating how long to wait.
+
+        For security reasons, this endpoint returns HTTP 200 regardless of whether the email
+        address is registered, to prevent email enumeration attacks.
       parameters:
-      - description: Email Address
+      - description: Email address to resend OTP to
         in: body
         name: request
         required: true
@@ -191,23 +275,40 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: OTP sent (or silently skipped if email is not registered)
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "400":
+          description: VALIDATION_ERROR — email field is missing or invalid
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "429":
-          description: Too Many Requests
+          description: RATE_LIMITED — cooldown active or daily limit reached. Check
+            meta.retry_after_seconds.
           schema:
             $ref: '#/definitions/httpresponse.Response'
-      summary: Resend verification OTP
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Resend email verification OTP
       tags:
       - Auth
   /v1/auth/verify-email-otp:
     post:
       consumes:
       - application/json
-      description: Verifies registration OTP and marks email as verified
+      description: |-
+        Verifies the 6-digit OTP sent to the user's email address after registration.
+        The account is fully active only after this step succeeds.
+
+        **Attempt limits:**
+        - Maximum **5 wrong attempts** per OTP code. After that, you must request a new OTP.
+        - Each failed attempt returns the remaining attempt count in the `meta.attempts_remaining` field.
+
+        **OTP expiry:** OTP codes expire after 10 minutes. Request a new one via `/auth/resend-email-otp`.
       parameters:
-      - description: Email & OTP
+      - description: Email and OTP code
         in: body
         name: request
         required: true
@@ -217,26 +318,44 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Email verified successfully
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "400":
-          description: Bad Request
+          description: VALIDATION_ERROR | INVALID_OTP | OTP_EXPIRED
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "429":
-          description: Too Many Requests
+          description: OTP_MAX_ATTEMPTS — maximum wrong attempts exceeded. Request
+            a new OTP.
           schema:
             $ref: '#/definitions/httpresponse.Response'
-      summary: Verify email verification OTP
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Verify email OTP
       tags:
       - Auth
   /v1/guest-session:
     post:
       consumes:
       - application/json
-      description: Creates a guest session from onboarding data, sets session_id httpOnly
-        cookie
+      description: |-
+        Starts an anonymous onboarding session before the user registers an account.
+        Sets a `session_id` HttpOnly cookie that is automatically carried through to `/auth/register`
+        to link the guest session to the new account.
+
+        **status** — accepted values:
+        - `student`    — currently studying at school or university
+        - `worker`     — employed full-time or part-time
+        - `freelancer` — self-employed / project-based work
+        - `unemployed` — not currently working
+        - `other`      — anything that does not fit the options above
+
+        **locale** — accepted values:
+        - `en` — English (UI labels and email content will be in English)
+        - `id` — Indonesian (UI labels and email content will be in Bahasa Indonesia)
       parameters:
       - description: Guest Session Onboarding Data
         in: body
@@ -248,7 +367,7 @@ paths:
       - application/json
       responses:
         "201":
-          description: Created
+          description: Guest session created. session_id cookie is set.
           schema:
             allOf:
             - $ref: '#/definitions/httpresponse.Response'
@@ -257,11 +376,12 @@ paths:
                   $ref: '#/definitions/auth.CreateGuestSessionResponse'
               type: object
         "400":
-          description: Bad Request
+          description: VALIDATION_ERROR — one or more fields are missing or have an
+            invalid value (e.g., unrecognised status or locale)
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "500":
-          description: Internal Server Error
+          description: INTERNAL_ERROR — unexpected server error
           schema:
             $ref: '#/definitions/httpresponse.Response'
       summary: Create a guest session

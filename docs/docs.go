@@ -17,7 +17,7 @@ const docTemplate = `{
     "paths": {
         "/v1/auth/login": {
             "post": {
-                "description": "Authenticates member and returns JWT tokens",
+                "description": "Authenticates a registered and verified member account.\nReturns a short-lived ` + "`" + `access_token` + "`" + ` (JWT) and a long-lived ` + "`" + `refresh_token` + "`" + `.\n\n**Account lockout:**\nAfter **10 consecutive failed attempts**, the account is temporarily locked for **15 minutes**.\nThe locked response includes ` + "`" + `meta.locked_until` + "`" + ` (RFC 3339 timestamp) indicating when the\nlock expires. Attempting to log in during a lockout will continue returning HTTP 423.\n\nThe email must be verified before login is permitted.",
                 "consumes": [
                     "application/json"
                 ],
@@ -27,10 +27,10 @@ const docTemplate = `{
                 "tags": [
                     "Auth"
                 ],
-                "summary": "User login",
+                "summary": "Login",
                 "parameters": [
                     {
-                        "description": "Credentials",
+                        "description": "Email and password credentials",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -41,7 +41,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Login successful. Use access_token as Bearer token.",
                         "schema": {
                             "allOf": [
                                 {
@@ -58,14 +58,32 @@ const docTemplate = `{
                             ]
                         }
                     },
+                    "400": {
+                        "description": "VALIDATION_ERROR — email or password field is missing",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
                     "401": {
-                        "description": "Unauthorized",
+                        "description": "INVALID_CREDENTIALS — email or password is incorrect",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "EMAIL_NOT_VERIFIED — account email is not yet verified",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
                     },
                     "423": {
-                        "description": "Locked",
+                        "description": "ACCOUNT_LOCKED — account is temporarily locked. Check meta.locked_until.",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -75,7 +93,7 @@ const docTemplate = `{
         },
         "/v1/auth/register": {
             "post": {
-                "description": "Registers a new member account. Claims any valid guest session in cookies.",
+                "description": "Creates a new member account. If a valid ` + "`" + `session_id` + "`" + ` cookie from ` + "`" + `/v1/guest-session` + "`" + `\nis present, the guest session data (display name, age, status, locale) is automatically\nlinked to the new account — you do NOT need to re-submit that data here.\n\nAfter successful registration, a 6-digit OTP is sent to the provided email address.\nThe account is not fully active until the OTP is verified via ` + "`" + `/v1/auth/verify-email-otp` + "`" + `.\n\n**preferred_locale** — accepted values:\n- ` + "`" + `en` + "`" + ` — English\n- ` + "`" + `id` + "`" + ` — Indonesian (Bahasa Indonesia)\n\n**referral_code** — completely optional.\nIf you do not have a referral code, omit the field entirely or set it to ` + "`" + `null` + "`" + `.\nDo NOT send an empty string ` + "`" + `\"\"` + "`" + ` — that will be treated as a validation error.",
                 "consumes": [
                     "application/json"
                 ],
@@ -85,7 +103,7 @@ const docTemplate = `{
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Register a new user",
+                "summary": "Register a new user account",
                 "parameters": [
                     {
                         "description": "Registration Data",
@@ -99,7 +117,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "201": {
-                        "description": "Created",
+                        "description": "Account created. OTP sent to email. Verify via /auth/verify-email-otp.",
                         "schema": {
                             "allOf": [
                                 {
@@ -117,13 +135,19 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "VALIDATION_ERROR | EMAIL_ALREADY_REGISTERED | PASSWORD_TOO_SHORT | INVALID_REFERRAL_CODE",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "EMAIL_ALREADY_REGISTERED — email is already in use",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "INTERNAL_ERROR — unexpected server error",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -133,7 +157,7 @@ const docTemplate = `{
         },
         "/v1/auth/resend-email-otp": {
             "post": {
-                "description": "Generates and sends a new registration OTP code, invalidating previous ones",
+                "description": "Generates a new 6-digit OTP and sends it to the provided email address,\ninvalidating any previously issued OTP for that address.\n\n**Rate limiting:**\n- There is a **60-second cooldown** between resend requests.\n- Maximum **5 resend requests per 24 hours** per email address.\n- When rate limited, the response includes ` + "`" + `meta.retry_after_seconds` + "`" + ` indicating how long to wait.\n\nFor security reasons, this endpoint returns HTTP 200 regardless of whether the email\naddress is registered, to prevent email enumeration attacks.",
                 "consumes": [
                     "application/json"
                 ],
@@ -143,10 +167,10 @@ const docTemplate = `{
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Resend verification OTP",
+                "summary": "Resend email verification OTP",
                 "parameters": [
                     {
-                        "description": "Email Address",
+                        "description": "Email address to resend OTP to",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -157,13 +181,25 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "OTP sent (or silently skipped if email is not registered)",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "VALIDATION_ERROR — email field is missing or invalid",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
                     },
                     "429": {
-                        "description": "Too Many Requests",
+                        "description": "RATE_LIMITED — cooldown active or daily limit reached. Check meta.retry_after_seconds.",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -173,7 +209,7 @@ const docTemplate = `{
         },
         "/v1/auth/verify-email-otp": {
             "post": {
-                "description": "Verifies registration OTP and marks email as verified",
+                "description": "Verifies the 6-digit OTP sent to the user's email address after registration.\nThe account is fully active only after this step succeeds.\n\n**Attempt limits:**\n- Maximum **5 wrong attempts** per OTP code. After that, you must request a new OTP.\n- Each failed attempt returns the remaining attempt count in the ` + "`" + `meta.attempts_remaining` + "`" + ` field.\n\n**OTP expiry:** OTP codes expire after 10 minutes. Request a new one via ` + "`" + `/auth/resend-email-otp` + "`" + `.",
                 "consumes": [
                     "application/json"
                 ],
@@ -183,10 +219,10 @@ const docTemplate = `{
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Verify email verification OTP",
+                "summary": "Verify email OTP",
                 "parameters": [
                     {
-                        "description": "Email \u0026 OTP",
+                        "description": "Email and OTP code",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -197,19 +233,25 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Email verified successfully",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "VALIDATION_ERROR | INVALID_OTP | OTP_EXPIRED",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
                     },
                     "429": {
-                        "description": "Too Many Requests",
+                        "description": "OTP_MAX_ATTEMPTS — maximum wrong attempts exceeded. Request a new OTP.",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -219,7 +261,7 @@ const docTemplate = `{
         },
         "/v1/guest-session": {
             "post": {
-                "description": "Creates a guest session from onboarding data, sets session_id httpOnly cookie",
+                "description": "Starts an anonymous onboarding session before the user registers an account.\nSets a ` + "`" + `session_id` + "`" + ` HttpOnly cookie that is automatically carried through to ` + "`" + `/auth/register` + "`" + `\nto link the guest session to the new account.\n\n**status** — accepted values:\n- ` + "`" + `student` + "`" + `    — currently studying at school or university\n- ` + "`" + `worker` + "`" + `     — employed full-time or part-time\n- ` + "`" + `freelancer` + "`" + ` — self-employed / project-based work\n- ` + "`" + `unemployed` + "`" + ` — not currently working\n- ` + "`" + `other` + "`" + `      — anything that does not fit the options above\n\n**locale** — accepted values:\n- ` + "`" + `en` + "`" + ` — English (UI labels and email content will be in English)\n- ` + "`" + `id` + "`" + ` — Indonesian (UI labels and email content will be in Bahasa Indonesia)",
                 "consumes": [
                     "application/json"
                 ],
@@ -243,7 +285,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "201": {
-                        "description": "Created",
+                        "description": "Guest session created. session_id cookie is set.",
                         "schema": {
                             "allOf": [
                                 {
@@ -261,13 +303,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "VALIDATION_ERROR — one or more fields are missing or have an invalid value (e.g., unrecognised status or locale)",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "INTERNAL_ERROR — unexpected server error",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -317,20 +359,66 @@ const docTemplate = `{
             ],
             "properties": {
                 "age": {
-                    "type": "integer"
+                    "type": "integer",
+                    "minimum": 13
                 },
                 "display_name": {
                     "type": "string"
                 },
                 "locale": {
-                    "description": "e.g., en, id",
-                    "type": "string"
+                    "enum": [
+                        "en",
+                        "id"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.Locale"
+                        }
+                    ]
                 },
                 "status": {
-                    "description": "e.g., bekerja, mahasiswa",
-                    "type": "string"
+                    "enum": [
+                        "student",
+                        "worker",
+                        "freelancer",
+                        "unemployed",
+                        "other"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.GuestStatus"
+                        }
+                    ]
                 }
             }
+        },
+        "dto.GuestStatus": {
+            "type": "string",
+            "enum": [
+                "student",
+                "worker",
+                "freelancer",
+                "unemployed",
+                "other"
+            ],
+            "x-enum-varnames": [
+                "GuestStatusStudent",
+                "GuestStatusWorker",
+                "GuestStatusFreelancer",
+                "GuestStatusUnemployed",
+                "GuestStatusOther"
+            ]
+        },
+        "dto.Locale": {
+            "type": "string",
+            "enum": [
+                "en",
+                "id"
+            ],
+            "x-enum-varnames": [
+                "LocaleEnglish",
+                "LocaleIndonesian"
+            ]
         },
         "dto.LoginRequestDTO": {
             "type": "object",
@@ -363,7 +451,15 @@ const docTemplate = `{
                     "minLength": 10
                 },
                 "preferred_locale": {
-                    "type": "string"
+                    "enum": [
+                        "en",
+                        "id"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.Locale"
+                        }
+                    ]
                 },
                 "referral_code": {
                     "type": "string"
