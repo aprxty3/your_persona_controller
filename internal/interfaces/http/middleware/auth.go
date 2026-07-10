@@ -11,14 +11,10 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// Context keys set by RequireAuth for downstream handlers.
 const (
-	// ContextUserID holds the authenticated user's UUID (string).
 	ContextUserID = "auth_user_id"
 )
 
-// UserIDFromContext is the one canonical way for handlers to read the
-// authenticated user ID placed by RequireAuth.
 func UserIDFromContext(c echo.Context) string {
 	id, _ := c.Get(ContextUserID).(string)
 	return id
@@ -40,9 +36,7 @@ func NewAuthMiddleware(jwtService *jwtservice.JWTService, userRepo user.Reposito
 	}
 }
 
-// RequireAuth validates the Bearer access token AND its token_version claim
-// against the database — a version mismatch means the session was revoked by
-// logout-all or password reset (TECHNICAL_DOCUMENTATION Section 4.4).
+// RequireAuth validates the Bearer access token.
 func (m *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		const bearerPrefix = "Bearer "

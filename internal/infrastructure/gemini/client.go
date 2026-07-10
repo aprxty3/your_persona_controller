@@ -7,7 +7,6 @@ import (
 	"log"
 	"time"
 
-	// Menggunakan SDK Resmi terbaru dari Google (2025+)
 	"golang.org/x/sync/semaphore"
 	"google.golang.org/genai"
 )
@@ -49,7 +48,6 @@ func NewClient(apiKey string, modelName string, maxConcurrent int64) (*Client, e
 }
 
 // GenerateSummary calls the Gemini API to analyze the essay.
-// It implements the AIGeneratorService interface required by the Application layer.
 func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale string) (string, int, error) {
 	if c.client == nil {
 		return "", 0, errors.New("gemini client is unconfigured: GEMINI_API_KEY environment variable is empty")
@@ -63,7 +61,6 @@ func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale s
 	aiCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
 
-	// Security Rule: Role Separation (System vs User) & Locale Enforcement
 	sysInstruction := fmt.Sprintf(
 		"You are an expert psychologist. Analyze the following essay. "+
 			"Respond strictly in the '%s' language. "+

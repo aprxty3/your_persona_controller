@@ -33,7 +33,6 @@ func NewSMTPMailer(host string, port int, username, password, from string) *SMTP
 }
 
 // SendEmail sends a plain-text email with the given subject and body.
-// It is context-aware to respect client timeouts and graceful shutdowns.
 func (m *SMTPMailer) SendEmail(ctx context.Context, to, subject, body string) error {
 	addr := fmt.Sprintf("%s:%d", m.host, m.port)
 
@@ -65,9 +64,7 @@ func (m *SMTPMailer) SendEmail(ctx context.Context, to, subject, body string) er
 }
 
 // SendOTP formats and sends an OTP email based on the purpose and locale.
-// Fallback locale is always English ("en").
 func (m *SMTPMailer) SendOTP(ctx context.Context, to, otp, purpose, locale string) error {
-	// Locale fallback
 	if locale != "en" && locale != "id" {
 		locale = "en"
 	}

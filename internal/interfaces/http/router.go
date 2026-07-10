@@ -37,13 +37,9 @@ func SetupRouter(
 	authGroup.POST("/resend-email-otp", authHandler.ResendEmailOTP)
 	authGroup.POST("/login", authHandler.Login)
 	authGroup.POST("/refresh", authHandler.RefreshToken)
-
-	// Forgot/Reset Password — 3 separate endpoints by design (FR-H4)
 	authGroup.POST("/forgot-password", authHandler.ForgotPassword)
 	authGroup.POST("/verify-reset-otp", authHandler.VerifyResetOTP)
 	authGroup.POST("/reset-password", authHandler.ResetPassword)
-
-	// Auth: Required (Bearer access token + token_version guard)
 	authGroup.POST("/logout", authHandler.Logout, authMiddleware.RequireAuth)
 	authGroup.POST("/logout-all", authHandler.LogoutAll, authMiddleware.RequireAuth)
 
