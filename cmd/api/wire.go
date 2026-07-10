@@ -95,6 +95,7 @@ func InitializeAPI(
 
 		// Redis Services
 		redis.NewOTPRateLimitService,
+		redis.NewIPRateLimitService,
 		redis.NewTokenStore,
 
 		// ---------------------------------------------------------

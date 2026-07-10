@@ -131,6 +131,7 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 // @Success      201 {object} httpresponse.Response{data=auth.RegisterResponse} "Account created. OTP sent to email. Verify via /auth/verify-email-otp."
 // @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR | EMAIL_ALREADY_REGISTERED | PASSWORD_TOO_SHORT | INVALID_REFERRAL_CODE"
 // @Failure      409 {object} httpresponse.Response "EMAIL_ALREADY_REGISTERED — email is already in use"
+// @Failure      429 {object} httpresponse.Response "RATE_LIMITED — too many registration attempts from this IP. Check meta.retry_after_seconds."
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
 // @Router       /v1/auth/register [post]
 func (h *AuthHandler) Register(c echo.Context) error {
@@ -153,6 +154,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		PreferredLocale: payload.PreferredLocale,
 		ReferralCode:    payload.ReferralCode,
 		GuestSessionID:  guestSessionID,
+		IPAddress:       c.RealIP(),
 	}
 
 	resp, err := h.accountUseCase.Register(c.Request().Context(), ucReq)
@@ -166,6 +168,16 @@ func (h *AuthHandler) Register(c echo.Context) error {
 			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_TOO_SHORT", "Password must be at least 10 characters long")
 		case errors.Is(err, application.ErrPasswordBreached):
 			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_BREACHED", "This password has appeared in known data breaches. Please choose a different password")
+		case errors.Is(err, application.ErrRateLimited):
+			meta := map[string]interface{}{}
+			if resp != nil {
+				meta["retry_after_seconds"] = resp.RetryAfterSeconds
+			}
+			return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
+				Success: false,
+				Error:   &httpresponse.ErrorDetail{Code: "RATE_LIMITED", Message: "Too many registration attempts from this network. Please wait before trying again"},
+				Meta:    meta,
+			})
 		default:
 			h.log.Error("register failed", "error", err)
 			return httpcallError(c, err)
@@ -324,6 +336,7 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 // @Failure      401 {object} httpresponse.Response "INVALID_CREDENTIALS — email or password is incorrect"
 // @Failure      403 {object} httpresponse.Response "EMAIL_NOT_VERIFIED — account email is not yet verified"
 // @Failure      423 {object} httpresponse.Response "ACCOUNT_LOCKED — account is temporarily locked. Check meta.locked_until."
+// @Failure      429 {object} httpresponse.Response "RATE_LIMITED — too many login attempts from this IP (separate from ACCOUNT_LOCKED). Check meta.retry_after_seconds."
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
 // @Router       /v1/auth/login [post]
 func (h *AuthHandler) Login(c echo.Context) error {
@@ -339,8 +352,9 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	}
 
 	ucReq := auth.LoginRequest{
-		Email:    payload.Email,
-		Password: payload.Password,
+		Email:     payload.Email,
+		Password:  payload.Password,
+		IPAddress: c.RealIP(),
 	}
 
 	resp, err := h.sessionUseCase.Login(c.Request().Context(), ucReq)
@@ -352,6 +366,16 @@ func (h *AuthHandler) Login(c echo.Context) error {
 			return httpcallErrorCustom(c, http.StatusLocked, "ACCOUNT_LOCKED", "Account is temporarily locked due to too many failed login attempts. Please try again later.")
 		case errors.Is(err, application.ErrEmailNotVerified):
 			return httpcallErrorCustom(c, http.StatusForbidden, "EMAIL_NOT_VERIFIED", "Please verify your email address before logging in. Check your inbox or request a new OTP via /auth/resend-email-otp")
+		case errors.Is(err, application.ErrRateLimited):
+			meta := map[string]interface{}{}
+			if resp != nil {
+				meta["retry_after_seconds"] = resp.RetryAfterSeconds
+			}
+			return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
+				Success: false,
+				Error:   &httpresponse.ErrorDetail{Code: "RATE_LIMITED", Message: "Too many login attempts from this network. Please wait before trying again"},
+				Meta:    meta,
+			})
 		default:
 			h.log.Error("login failed", "error", err)
 			return httpcallError(c, err)
@@ -547,7 +571,7 @@ func (h *AuthHandler) VerifyResetOTP(c echo.Context) error {
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
 	}
 
-	resp, err := h.accountUseCase.VerifyResetOTP(c.Request().Context(), auth.VerifyResetOTPRequest{
+	resp, err := h.sessionUseCase.VerifyResetOTP(c.Request().Context(), auth.VerifyResetOTPRequest{
 		Email: payload.Email,
 		OTP:   payload.OTP,
 	})
@@ -614,7 +638,7 @@ func (h *AuthHandler) ResetPassword(c echo.Context) error {
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
 	}
 
-	resp, err := h.accountUseCase.ResetPassword(c.Request().Context(), auth.ResetPasswordRequest{
+	resp, err := h.sessionUseCase.ResetPassword(c.Request().Context(), auth.ResetPasswordRequest{
 		ResetToken:  payload.ResetToken,
 		NewPassword: payload.NewPassword,
 	})

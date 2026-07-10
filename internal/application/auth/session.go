@@ -1,7 +1,11 @@
 package auth
 
-// Session lifecycle: login → refresh (rotation) → logout / logout-all.
-// Everything that mints or revokes a session pair lives in this file.
+// Session & token lifecycle: everything that mints, validates, rotates, or
+// revokes a JWT lives here — access/refresh tokens (login, refresh, logout,
+// logout-all) AND the password-reset token (verify-reset-otp, reset-password).
+// VerifyResetOTP/ResetPassword belong in this family, not in account.go,
+// because they lean on the exact same jwtService/tokenStore machinery as
+// every other method here, not on the OTP-dispatch machinery in account.go.
 
 import (
 	"context"
@@ -10,38 +14,13 @@ import (
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/verificationtoken"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	jwtservice "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
-
-// SessionUseCase manages authentication sessions, JWT issuance, and revocation.
-type SessionUseCase struct {
-	userRepo         user.Repository
-	jwtService       *jwtservice.JWTService
-	tokenStore       *redis.TokenStore
-	log              logger.Logger
-	loginMaxAttempts int
-	lockDuration     time.Duration
-}
-
-// NewSessionUseCase creates a new SessionUseCase.
-func NewSessionUseCase(
-	userRepo user.Repository,
-	jwtService *jwtservice.JWTService,
-	tokenStore *redis.TokenStore,
-	log logger.Logger,
-) *SessionUseCase {
-	return &SessionUseCase{
-		userRepo:         userRepo,
-		jwtService:       jwtService,
-		tokenStore:       tokenStore,
-		log:              log.With("usecase", "session"),
-		loginMaxAttempts: defaultLoginMaxAttempts,
-		lockDuration:     defaultLockDuration,
-	}
-}
 
 // Session token TTLs shared by every flow that issues a session
 const (
@@ -54,38 +33,12 @@ const (
 	defaultLockDuration     = 15 * time.Minute
 )
 
+// ResetTokenTTL is the validity window of the short-lived reset_token JWT
+const ResetTokenTTL = 15 * time.Minute
+
 // TokenPair carries one full JWT session credential set.
 type TokenPair struct {
 	AccessToken  string
-	RefreshToken string
-}
-
-// LoginRequest is the payload for the authenticate user endpoint.
-type LoginRequest struct {
-	Email    string
-	Password string
-}
-
-// LoginResponse carries JWT credentials on successful login.
-type LoginResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-}
-
-// RefreshTokenRequest carries the long-lived credential to be exchanged.
-type RefreshTokenRequest struct {
-	RefreshToken string
-}
-
-// RefreshTokenResponse returns a fresh session pair (refresh token rotation).
-type RefreshTokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-}
-
-// LogoutRequest carries the refresh token of the session being terminated.
-type LogoutRequest struct {
-	UserID       string
 	RefreshToken string
 }
 
@@ -102,8 +55,110 @@ func IssueTokenPair(jwtService *jwtservice.JWTService, userID string, tokenVersi
 	return &TokenPair{AccessToken: accessToken, RefreshToken: refreshToken}, nil
 }
 
-// LoginUseCase validates password hashes and generates session JWTs.
+// LoginRequest is the payload for the authenticate user endpoint.
+type LoginRequest struct {
+	Email     string
+	Password  string
+	IPAddress string // raw client IP, used for per-IP rate limiting only (not persisted)
+}
+
+// LoginResponse carries JWT credentials on successful login.
+type LoginResponse struct {
+	AccessToken       string `json:"access_token"`
+	RefreshToken      string `json:"refresh_token"`
+	RetryAfterSeconds int    `json:"-"` // set only when login itself returned ErrRateLimited
+}
+
+// RefreshTokenRequest carries the long-lived credential to be exchanged.
+type RefreshTokenRequest struct {
+	RefreshToken string
+}
+
+// RefreshTokenResponse returns a fresh session pair (refresh token rotation).
+type RefreshTokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+// LogoutRequest carries the refresh token of the session being terminated.
+type LogoutRequest struct {
+	UserID       string // from the access token (auth middleware)
+	RefreshToken string
+}
+
+// VerifyResetOTPRequest carries the reset OTP to be exchanged.
+type VerifyResetOTPRequest struct {
+	Email string
+	OTP   string
+}
+
+// VerifyResetOTPResponse returns the short-lived single-use reset_token.
+type VerifyResetOTPResponse struct {
+	ResetToken        string `json:"reset_token"`
+	AttemptsRemaining int    `json:"-"`
+}
+
+// ResetPasswordRequest carries the single-use reset_token and the new password.
+type ResetPasswordRequest struct {
+	ResetToken  string
+	NewPassword string
+}
+
+// ResetPasswordResponse auto-logs the user in after a successful reset.
+type ResetPasswordResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+// SessionUseCase manages authentication sessions
+type SessionUseCase struct {
+	db               *gorm.DB
+	userRepo         user.Repository
+	tokenRepo        verificationtoken.Repository
+	breachChecker    PasswordBreachChecker
+	jwtService       *jwtservice.JWTService
+	tokenStore       *redis.TokenStore
+	ipRateLimiter    *redis.IPRateLimitService
+	log              logger.Logger
+	loginMaxAttempts int
+	lockDuration     time.Duration
+}
+
+// NewSessionUseCase creates a new SessionUseCase.
+func NewSessionUseCase(
+	db *gorm.DB,
+	userRepo user.Repository,
+	tokenRepo verificationtoken.Repository,
+	breachChecker PasswordBreachChecker,
+	jwtService *jwtservice.JWTService,
+	tokenStore *redis.TokenStore,
+	ipRateLimiter *redis.IPRateLimitService,
+	log logger.Logger,
+) *SessionUseCase {
+	return &SessionUseCase{
+		db:               db,
+		userRepo:         userRepo,
+		tokenRepo:        tokenRepo,
+		breachChecker:    breachChecker,
+		jwtService:       jwtService,
+		tokenStore:       tokenStore,
+		ipRateLimiter:    ipRateLimiter,
+		log:              log.With("usecase", "session"),
+		loginMaxAttempts: defaultLoginMaxAttempts,
+		lockDuration:     defaultLockDuration,
+	}
+}
+
+// Login authenticates a user and increments or resets login lockout policies.
 func (uc *SessionUseCase) Login(ctx context.Context, req LoginRequest) (*LoginResponse, error) {
+	allowed, retryAfter, err := uc.ipRateLimiter.Allow(ctx, redis.ScopeLoginIP, req.IPAddress)
+	if err != nil {
+		uc.log.Warn("login ip rate limit check skipped", "reason", "redis_error", "error", err)
+	} else if !allowed {
+		uc.log.Warn("login rejected", "reason", "rate_limited", "retry_after_seconds", retryAfter)
+		return &LoginResponse{RetryAfterSeconds: retryAfter}, application.ErrRateLimited
+	}
+
 	u, err := uc.userRepo.FindByEmail(ctx, req.Email)
 	if err != nil {
 		uc.log.Error("login failed", "step", "query_email", "error", err)
@@ -168,7 +223,7 @@ func (uc *SessionUseCase) handleFailedAttempt(ctx context.Context, u *user.User)
 	return application.ErrInvalidCredentials
 }
 
-// RefreshTokenUseCase exchanges a valid refresh token for a brand-new session
+// RefreshToken exchanges a valid refresh token for a brand-new session pair.
 func (uc *SessionUseCase) RefreshToken(ctx context.Context, req RefreshTokenRequest) (*RefreshTokenResponse, error) {
 	if err := application.ValidateRequired("refresh_token", req.RefreshToken); err != nil {
 		return nil, err
@@ -179,7 +234,6 @@ func (uc *SessionUseCase) RefreshToken(ctx context.Context, req RefreshTokenRequ
 		uc.log.Warn("refresh rejected", "reason", "invalid_token", "error", err)
 		return nil, application.ErrInvalidToken
 	}
-
 	denied, err := uc.tokenStore.IsRefreshJTIDenylisted(ctx, claims.ID)
 	if err != nil {
 		uc.log.Warn("refresh denylist check skipped", "reason", "redis_error", "error", err)
@@ -208,7 +262,6 @@ func (uc *SessionUseCase) RefreshToken(ctx context.Context, req RefreshTokenRequ
 		uc.log.Error("refresh failed", "step", "issue_tokens", "user_id", u.ID, "error", err)
 		return nil, fmt.Errorf("refresh: %w", err)
 	}
-
 	if claims.ExpiresAt != nil {
 		if err := uc.tokenStore.DenylistRefreshJTI(ctx, claims.ID, time.Until(claims.ExpiresAt.Time)); err != nil {
 			uc.log.Warn("failed to denylist rotated refresh token", "user_id", u.ID, "error", err)
@@ -219,7 +272,7 @@ func (uc *SessionUseCase) RefreshToken(ctx context.Context, req RefreshTokenRequ
 	return &RefreshTokenResponse{AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken}, nil
 }
 
-// LogoutUseCase terminates ONE session: the presented refresh token
+// Logout terminates ONE session: the presented refresh token is denylisted until its natural expiry
 func (uc *SessionUseCase) Logout(ctx context.Context, req LogoutRequest) error {
 	if err := application.ValidateRequired("refresh_token", req.RefreshToken); err != nil {
 		return err
@@ -246,7 +299,7 @@ func (uc *SessionUseCase) Logout(ctx context.Context, req LogoutRequest) error {
 	return nil
 }
 
-// LogoutAllUseCase terminates EVERY session of a user
+// LogoutAll terminates EVERY session of a user by incrementing USER.token_ver
 func (uc *SessionUseCase) LogoutAll(ctx context.Context, userID string) error {
 	if err := uc.userRepo.IncrementTokenVersion(ctx, userID); err != nil {
 		uc.log.Error("logout-all failed", "step", "increment_token_version", "user_id", userID, "error", err)
@@ -254,4 +307,121 @@ func (uc *SessionUseCase) LogoutAll(ctx context.Context, userID string) error {
 	}
 	uc.log.Info("all sessions revoked", "user_id", userID)
 	return nil
+}
+
+// VerifyResetOTP exchanges a valid reset OTP for a reset_token JWT.
+func (uc *SessionUseCase) VerifyResetOTP(ctx context.Context, req VerifyResetOTPRequest) (*VerifyResetOTPResponse, error) {
+	if err := application.ValidateRequired("email", req.Email); err != nil {
+		return nil, err
+	}
+	if err := application.ValidateRequired("otp", req.OTP); err != nil {
+		return nil, err
+	}
+
+	u, err := uc.userRepo.FindByEmail(ctx, req.Email)
+	if err != nil {
+		uc.log.Error("verify reset otp failed", "step", "lookup_user", "error", err)
+		return nil, fmt.Errorf("verify_reset_otp: lookup user: %w", err)
+	}
+	if u == nil {
+		uc.log.Warn("verify reset otp rejected", "reason", "user_not_found")
+		return nil, application.ErrInvalidOTP
+	}
+
+	token, remaining, err := validateOTPAttempt(ctx, uc.tokenRepo, u.ID, req.OTP, verificationtoken.TokenTypePasswordReset, uc.log)
+	if err != nil {
+		return &VerifyResetOTPResponse{AttemptsRemaining: remaining}, err
+	}
+
+	if err := uc.tokenRepo.MarkUsed(ctx, token.ID); err != nil {
+		uc.log.Error("verify reset otp failed", "step", "mark_token_used", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("verify_reset_otp: mark token used: %w", err)
+	}
+
+	jti, resetToken, err := uc.jwtService.GenerateResetToken(u.ID, ResetTokenTTL)
+	if err != nil {
+		uc.log.Error("verify reset otp failed", "step", "issue_reset_token", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("verify_reset_otp: issue reset token: %w", err)
+	}
+
+	if err := uc.tokenStore.StoreResetJTI(ctx, jti, u.ID, ResetTokenTTL); err != nil {
+		uc.log.Error("verify reset otp failed", "step", "store_reset_jti", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("verify_reset_otp: store reset jti: %w", err)
+	}
+
+	uc.log.Info("reset otp verified", "user_id", u.ID)
+	return &VerifyResetOTPResponse{ResetToken: resetToken, AttemptsRemaining: MaxWrongOTPAttempts}, nil
+}
+
+// ResetPassword consumes a reset_token (atomically, single-use)
+func (uc *SessionUseCase) ResetPassword(ctx context.Context, req ResetPasswordRequest) (*ResetPasswordResponse, error) {
+	if err := application.ValidateRequired("reset_token", req.ResetToken); err != nil {
+		return nil, err
+	}
+	if err := ValidateNewPassword(ctx, uc.breachChecker, "new_password", req.NewPassword); err != nil {
+		uc.log.Warn("reset password rejected", "reason", "password_policy", "error", err)
+		return nil, err
+	}
+
+	claims, err := uc.jwtService.ParseResetToken(req.ResetToken)
+	if err != nil {
+		uc.log.Warn("reset password rejected", "reason", "invalid_reset_token", "error", err)
+		return nil, application.ErrInvalidToken
+	}
+
+	consumedUserID, err := uc.tokenStore.ConsumeResetJTI(ctx, claims.ID)
+	if err != nil {
+		uc.log.Error("reset password failed", "step", "consume_reset_jti", "error", err)
+		return nil, fmt.Errorf("reset_password: consume reset jti: %w", err)
+	}
+	if consumedUserID == "" || consumedUserID != claims.Subject {
+		uc.log.Warn("reset password rejected", "reason", "reset_token_consumed_or_mismatched")
+		return nil, application.ErrInvalidToken
+	}
+
+	u, err := uc.userRepo.FindByID(ctx, claims.Subject)
+	if err != nil {
+		uc.log.Error("reset password failed", "step", "lookup_user", "error", err)
+		return nil, fmt.Errorf("reset_password: lookup user: %w", err)
+	}
+	if u == nil {
+		uc.log.Warn("reset password rejected", "reason", "user_not_found")
+		return nil, application.ErrInvalidToken
+	}
+
+	hash, err := HashPassword(req.NewPassword)
+	if err != nil {
+		uc.log.Error("reset password failed", "step", "hash_password", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("reset_password: %w", err)
+	}
+
+	err = uc.db.Transaction(func(tx *gorm.DB) error {
+		txUserRepo := txUserRepository(tx, uc.log)
+
+		u.PasswordHash = hash
+		if err := txUserRepo.Update(ctx, u); err != nil {
+			return fmt.Errorf("update password: %w", err)
+		}
+
+		if err := txUserRepo.IncrementTokenVersion(ctx, u.ID); err != nil {
+			return fmt.Errorf("increment token version: %w", err)
+		}
+		if err := txUserRepo.UpdateLoginAttempt(ctx, u.ID, 0, nil); err != nil {
+			return fmt.Errorf("clear login lockout: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		uc.log.Error("reset password failed", "step", "transaction", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("reset_password: %w", err)
+	}
+
+	pair, err := IssueTokenPair(uc.jwtService, u.ID, u.TokenVersion+1)
+	if err != nil {
+		uc.log.Error("reset password failed", "step", "issue_tokens", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("reset_password: %w", err)
+	}
+
+	uc.log.Info("password reset completed", "user_id", u.ID)
+	return &ResetPasswordResponse{AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken}, nil
 }

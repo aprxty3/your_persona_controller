@@ -67,10 +67,11 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 		return nil, err
 	}
 	otpRateLimitService := redis.NewOTPRateLimitService(redisClient)
+	ipRateLimitService := redis.NewIPRateLimitService(redisClient)
 	jwtService := provideJWTService(jwtSecret)
 	tokenStore := redis.NewTokenStore(redisClient)
-	accountUseCase := auth.NewAccountUseCase(db, userRepository, repository, verificationtokenRepository, referralRepository, testresultRepository, passwordBreachChecker, dispatcher, otpRateLimitService, jwtService, tokenStore, loggerInstance)
-	sessionUseCase := auth.NewSessionUseCase(userRepository, jwtService, tokenStore, loggerInstance)
+	accountUseCase := auth.NewAccountUseCase(db, userRepository, repository, verificationtokenRepository, referralRepository, testresultRepository, passwordBreachChecker, dispatcher, otpRateLimitService, ipRateLimitService, loggerInstance)
+	sessionUseCase := auth.NewSessionUseCase(db, userRepository, verificationtokenRepository, passwordBreachChecker, jwtService, tokenStore, ipRateLimitService, loggerInstance)
 	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, accountUseCase, sessionUseCase, loggerInstance)
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)
 	echoEcho := http.SetupRouter(assessmentHandler, authHandler, authMiddleware)
