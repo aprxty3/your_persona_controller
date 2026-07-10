@@ -15,6 +15,58 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/v1/auth/forgot-password": {
+            "post": {
+                "description": "Sends a 6-digit password reset OTP to the given email address.\n\n**Anti-enumeration:** this endpoint ALWAYS returns the same generic 200 response,\nwhether or not the email is registered. Do not use it to probe for accounts.\n\n**Rate limiting:** 60-second cooldown + max 5 requests per 24 hours per email\n(separate budget from ` + "`" + `/auth/resend-email-otp` + "`" + `). When throttled, the response\nincludes ` + "`" + `meta.retry_after_seconds` + "`" + `.\n\nFlow: ` + "`" + `/forgot-password` + "`" + ` → ` + "`" + `/verify-reset-otp` + "`" + ` → ` + "`" + `/reset-password` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Request a password reset OTP (step 1 of 3)",
+                "parameters": [
+                    {
+                        "description": "Account email",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ForgotPasswordRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Generic response — OTP sent if the email is registered",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "VALIDATION_ERROR — email field is missing",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "429": {
+                        "description": "RATE_LIMITED — check meta.retry_after_seconds",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/auth/login": {
             "post": {
                 "description": "Authenticates a registered and verified member account.\nReturns a short-lived ` + "`" + `access_token` + "`" + ` (JWT) and a long-lived ` + "`" + `refresh_token` + "`" + `.\n\n**Account lockout:**\nAfter **10 consecutive failed attempts**, the account is temporarily locked for **15 minutes**.\nThe locked response includes ` + "`" + `meta.locked_until` + "`" + ` (RFC 3339 timestamp) indicating when the\nlock expires. Attempting to log in during a lockout will continue returning HTTP 423.\n\nThe email must be verified before login is permitted.",
@@ -78,6 +130,164 @@ const docTemplate = `{
                     },
                     "423": {
                         "description": "ACCOUNT_LOCKED — account is temporarily locked. Check meta.locked_until.",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/auth/logout": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Terminates the CURRENT session: the provided ` + "`" + `refresh_token` + "`" + ` is revoked and can no longer\nbe exchanged for new access tokens. The current access token simply expires on its own\n(≤15 minutes). Other devices/sessions stay logged in — use ` + "`" + `/auth/logout-all` + "`" + ` to revoke everything.\n\nLogout is idempotent: an already-expired refresh token still returns 200.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Logout (this session)",
+                "parameters": [
+                    {
+                        "description": "Refresh token of the session being terminated",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.LogoutRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Session terminated",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "400": {
+                        "description": "VALIDATION_ERROR — refresh_token field is missing",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH — access token invalid, or refresh token belongs to another account",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/auth/logout-all": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Revokes EVERY session of the account (FR-H8) by incrementing the internal token version.\nAll previously issued access AND refresh tokens become invalid on their next use,\nincluding the one used to call this endpoint.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Logout from all devices",
+                "responses": {
+                    "200": {
+                        "description": "All sessions revoked",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/auth/refresh": {
+            "post": {
+                "description": "Exchanges a valid ` + "`" + `refresh_token` + "`" + ` for a brand-new ` + "`" + `access_token` + "`" + ` + ` + "`" + `refresh_token` + "`" + ` pair.\nThe presented refresh token is **rotated**: it is revoked immediately after the exchange\nand cannot be used a second time.\n\nReturns ` + "`" + `TOKEN_VERSION_MISMATCH` + "`" + ` when the session was revoked by logout-all or a\npassword reset — the client must redirect the user to login.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Refresh session tokens",
+                "parameters": [
+                    {
+                        "description": "Refresh token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.RefreshTokenRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "New token pair issued",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/auth.RefreshTokenResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "VALIDATION_ERROR — refresh_token field is missing",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -207,6 +417,70 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/auth/reset-password": {
+            "post": {
+                "description": "Changes the account password using the single-use ` + "`" + `reset_token` + "`" + ` from ` + "`" + `/auth/verify-reset-otp` + "`" + `.\n\nOn success:\n- The ` + "`" + `reset_token` + "`" + ` is consumed permanently (replaying it returns 401).\n- ALL existing sessions on every device are revoked.\n- A fresh ` + "`" + `access_token` + "`" + ` + ` + "`" + `refresh_token` + "`" + ` pair is returned (auto-login).\n\nThe new password follows the same policy as registration: minimum 10 characters and\nchecked against known breach databases.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Reset password (step 3 of 3)",
+                "parameters": [
+                    {
+                        "description": "Reset token and new password",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ResetPasswordRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Password changed. New session issued.",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/auth.ResetPasswordResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "VALIDATION_ERROR | PASSWORD_TOO_SHORT | PASSWORD_BREACHED",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED — reset_token invalid, expired, or already used",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/auth/verify-email-otp": {
             "post": {
                 "description": "Verifies the 6-digit OTP sent to the user's email address after registration.\nThe account is fully active only after this step succeeds.\n\n**Attempt limits:**\n- Maximum **5 wrong attempts** per OTP code. After that, you must request a new OTP.\n- Each failed attempt returns the remaining attempt count in the ` + "`" + `meta.attempts_remaining` + "`" + ` field.\n\n**OTP expiry:** OTP codes expire after 10 minutes. Request a new one via ` + "`" + `/auth/resend-email-otp` + "`" + `.",
@@ -246,6 +520,70 @@ const docTemplate = `{
                     },
                     "429": {
                         "description": "OTP_MAX_ATTEMPTS — maximum wrong attempts exceeded. Request a new OTP.",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/auth/verify-reset-otp": {
+            "post": {
+                "description": "Exchanges a valid reset OTP for a short-lived (~15 minutes) single-use ` + "`" + `reset_token` + "`" + `.\nPass that token to ` + "`" + `/auth/reset-password` + "`" + ` to actually change the password.\n\n**Attempt limits:** maximum 5 wrong attempts per OTP; then a new code must be requested\nvia ` + "`" + `/auth/forgot-password` + "`" + `. Failed attempts return ` + "`" + `meta.attempts_remaining` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Verify password reset OTP (step 2 of 3)",
+                "parameters": [
+                    {
+                        "description": "Email and reset OTP code",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.VerifyResetOTPRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "reset_token issued (single-use, ~15 min)",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/auth.VerifyResetOTPResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "VALIDATION_ERROR | INVALID_OTP | OTP_EXPIRED",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "429": {
+                        "description": "OTP_MAX_ATTEMPTS — request a new OTP via /auth/forgot-password",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -333,10 +671,21 @@ const docTemplate = `{
         "auth.LoginResponse": {
             "type": "object",
             "properties": {
-                "accessToken": {
+                "access_token": {
                     "type": "string"
                 },
-                "refreshToken": {
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.RefreshTokenResponse": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "refresh_token": {
                     "type": "string"
                 }
             }
@@ -345,6 +694,25 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "userID": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.ResetPasswordResponse": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.VerifyResetOTPResponse": {
+            "type": "object",
+            "properties": {
+                "reset_token": {
                     "type": "string"
                 }
             }
@@ -392,6 +760,17 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ForgotPasswordRequestDTO": {
+            "type": "object",
+            "required": [
+                "email"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.GuestStatus": {
             "type": "string",
             "enum": [
@@ -431,6 +810,28 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "password": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.LogoutRequestDTO": {
+            "type": "object",
+            "required": [
+                "refresh_token"
+            ],
+            "properties": {
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.RefreshTokenRequestDTO": {
+            "type": "object",
+            "required": [
+                "refresh_token"
+            ],
+            "properties": {
+                "refresh_token": {
                     "type": "string"
                 }
             }
@@ -477,7 +878,38 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ResetPasswordRequestDTO": {
+            "type": "object",
+            "required": [
+                "new_password",
+                "reset_token"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 10
+                },
+                "reset_token": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.VerifyEmailOTPRequestDTO": {
+            "type": "object",
+            "required": [
+                "email",
+                "otp"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "otp": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.VerifyResetOTPRequestDTO": {
             "type": "object",
             "required": [
                 "email",
