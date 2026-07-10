@@ -4,25 +4,25 @@ import (
 	"context"
 	"errors"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/guestsession"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"gorm.io/gorm"
 )
 
-// GuestSessionRepository implements guestsession.Repository backed by PostgreSQL via GORM.
+// GuestSessionRepository implements account.GuestSessionRepository backed by PostgreSQL via GORM.
 type GuestSessionRepository struct {
 	db  *gorm.DB
 	log logger.Logger
 }
 
 // NewGuestSessionRepository constructs a new GuestSessionRepository.
-func NewGuestSessionRepository(db *gorm.DB, log logger.Logger) guestsession.Repository {
+func NewGuestSessionRepository(db *gorm.DB, log logger.Logger) account.GuestSessionRepository {
 	return &GuestSessionRepository{db: db, log: log.With("repository", "guestsession")}
 }
 
 // Create inserts a new guest session record.
-func (r *GuestSessionRepository) Create(ctx context.Context, s *guestsession.GuestSession) error {
+func (r *GuestSessionRepository) Create(ctx context.Context, s *account.GuestSession) error {
 	m := toModel(s)
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
 		r.log.Error("query failed", "op", "Create", "error", err)
@@ -32,7 +32,7 @@ func (r *GuestSessionRepository) Create(ctx context.Context, s *guestsession.Gue
 }
 
 // FindBySessionID retrieves a guest session by its UUID. Returns nil, nil if not found.
-func (r *GuestSessionRepository) FindBySessionID(ctx context.Context, sessionID string) (*guestsession.GuestSession, error) {
+func (r *GuestSessionRepository) FindBySessionID(ctx context.Context, sessionID string) (*account.GuestSession, error) {
 	var m postgres.GuestSessionModel
 	err := r.db.WithContext(ctx).First(&m, "session_id = ?", sessionID).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -47,7 +47,7 @@ func (r *GuestSessionRepository) FindBySessionID(ctx context.Context, sessionID 
 }
 
 // Update saves all mutable fields of the guest session.
-func (r *GuestSessionRepository) Update(ctx context.Context, s *guestsession.GuestSession) error {
+func (r *GuestSessionRepository) Update(ctx context.Context, s *account.GuestSession) error {
 	m := toModel(s)
 	if err := r.db.WithContext(ctx).Save(&m).Error; err != nil {
 		r.log.Error("query failed", "op", "Update", "error", err)
@@ -57,7 +57,7 @@ func (r *GuestSessionRepository) Update(ctx context.Context, s *guestsession.Gue
 }
 
 // FindExpiredUnclaimed retrieves guest sessions that are expired and unclaimed.
-func (r *GuestSessionRepository) FindExpiredUnclaimed(ctx context.Context) ([]guestsession.GuestSession, error) {
+func (r *GuestSessionRepository) FindExpiredUnclaimed(ctx context.Context) ([]account.GuestSession, error) {
 	var models []postgres.GuestSessionModel
 	err := r.db.WithContext(ctx).
 		Where("expires_at < NOW() AND claimed_by_user_id IS NULL").
@@ -66,7 +66,7 @@ func (r *GuestSessionRepository) FindExpiredUnclaimed(ctx context.Context) ([]gu
 		r.log.Error("query failed", "op", "FindExpiredUnclaimed", "error", err)
 		return nil, err
 	}
-	sessions := make([]guestsession.GuestSession, len(models))
+	sessions := make([]account.GuestSession, len(models))
 	for i, m := range models {
 		sessions[i] = toEntity(&m)
 	}
@@ -83,7 +83,7 @@ func (r *GuestSessionRepository) DeleteBySessionID(ctx context.Context, sessionI
 	return err
 }
 
-func toModel(s *guestsession.GuestSession) postgres.GuestSessionModel {
+func toModel(s *account.GuestSession) postgres.GuestSessionModel {
 	return postgres.GuestSessionModel{
 		SessionID:       s.SessionID,
 		IPHash:          s.IPHash,
@@ -97,8 +97,8 @@ func toModel(s *guestsession.GuestSession) postgres.GuestSessionModel {
 	}
 }
 
-func toEntity(m *postgres.GuestSessionModel) guestsession.GuestSession {
-	return guestsession.GuestSession{
+func toEntity(m *postgres.GuestSessionModel) account.GuestSession {
+	return account.GuestSession{
 		SessionID:       m.SessionID,
 		IPHash:          m.IPHash,
 		DisplayName:     m.DisplayName,

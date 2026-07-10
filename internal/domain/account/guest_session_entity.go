@@ -1,4 +1,4 @@
-package guestsession
+package account
 
 import (
 	"time"

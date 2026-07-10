@@ -13,8 +13,7 @@ import (
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/verificationtoken"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	jwtservice "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
@@ -113,8 +112,8 @@ type ResetPasswordResponse struct {
 // SessionUseCase manages authentication sessions
 type SessionUseCase struct {
 	db               *gorm.DB
-	userRepo         user.Repository
-	tokenRepo        verificationtoken.Repository
+	userRepo         account.UserRepository
+	tokenRepo        account.VerificationTokenRepository
 	breachChecker    PasswordBreachChecker
 	jwtService       *jwtservice.JWTService
 	tokenStore       *redis.TokenStore
@@ -127,8 +126,8 @@ type SessionUseCase struct {
 // NewSessionUseCase creates a new SessionUseCase.
 func NewSessionUseCase(
 	db *gorm.DB,
-	userRepo user.Repository,
-	tokenRepo verificationtoken.Repository,
+	userRepo account.UserRepository,
+	tokenRepo account.VerificationTokenRepository,
 	breachChecker PasswordBreachChecker,
 	jwtService *jwtservice.JWTService,
 	tokenStore *redis.TokenStore,
@@ -202,7 +201,7 @@ func (uc *SessionUseCase) Login(ctx context.Context, req LoginRequest) (*LoginRe
 	}, nil
 }
 
-func (uc *SessionUseCase) handleFailedAttempt(ctx context.Context, u *user.User) error {
+func (uc *SessionUseCase) handleFailedAttempt(ctx context.Context, u *account.User) error {
 	newCount := u.FailedLoginCount + 1
 	var lockedUntil *time.Time
 
@@ -328,7 +327,7 @@ func (uc *SessionUseCase) VerifyResetOTP(ctx context.Context, req VerifyResetOTP
 		return nil, application.ErrInvalidOTP
 	}
 
-	token, remaining, err := validateOTPAttempt(ctx, uc.tokenRepo, u.ID, req.OTP, verificationtoken.TokenTypePasswordReset, uc.log)
+	token, remaining, err := validateOTPAttempt(ctx, uc.tokenRepo, u.ID, req.OTP, account.TokenTypePasswordReset, uc.log)
 	if err != nil {
 		return &VerifyResetOTPResponse{AttemptsRemaining: remaining}, err
 	}

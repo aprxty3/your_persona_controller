@@ -5,25 +5,25 @@ import (
 	"errors"
 	"time"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/verificationtoken"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"gorm.io/gorm"
 )
 
-// VerificationTokenRepository implements verificationtoken.Repository backed by PostgreSQL via GORM.
+// VerificationTokenRepository implements account.VerificationTokenRepository backed by PostgreSQL via GORM.
 type VerificationTokenRepository struct {
 	db  *gorm.DB
 	log logger.Logger
 }
 
 // NewVerificationTokenRepository constructs a new VerificationTokenRepository.
-func NewVerificationTokenRepository(db *gorm.DB, log logger.Logger) verificationtoken.Repository {
+func NewVerificationTokenRepository(db *gorm.DB, log logger.Logger) account.VerificationTokenRepository {
 	return &VerificationTokenRepository{db: db, log: log.With("repository", "verificationtoken")}
 }
 
 // Create inserts a new verification token record.
-func (r *VerificationTokenRepository) Create(ctx context.Context, t *verificationtoken.VerificationToken) error {
+func (r *VerificationTokenRepository) Create(ctx context.Context, t *account.VerificationToken) error {
 	m := toModel(t)
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
 		r.log.Error("query failed", "op", "Create", "error", err)
@@ -33,7 +33,7 @@ func (r *VerificationTokenRepository) Create(ctx context.Context, t *verificatio
 }
 
 // FindActiveByUserAndType returns the single active (not expired, not used) token.
-func (r *VerificationTokenRepository) FindActiveByUserAndType(ctx context.Context, userID string, tokenType verificationtoken.TokenType) (*verificationtoken.VerificationToken, error) {
+func (r *VerificationTokenRepository) FindActiveByUserAndType(ctx context.Context, userID string, tokenType account.TokenType) (*account.VerificationToken, error) {
 	var m postgres.VerificationTokenModel
 	err := r.db.WithContext(ctx).
 		Where("user_id = ? AND type = ? AND expires_at > ? AND used_at IS NULL", userID, string(tokenType), time.Now()).
@@ -78,7 +78,7 @@ func (r *VerificationTokenRepository) MarkUsed(ctx context.Context, tokenID stri
 }
 
 // ExpireAllActiveForUser force-expires all unused tokens of the given (user_id, type).
-func (r *VerificationTokenRepository) ExpireAllActiveForUser(ctx context.Context, userID string, tokenType verificationtoken.TokenType) error {
+func (r *VerificationTokenRepository) ExpireAllActiveForUser(ctx context.Context, userID string, tokenType account.TokenType) error {
 	err := r.db.WithContext(ctx).
 		Model(&postgres.VerificationTokenModel{}).
 		Where("user_id = ? AND type = ? AND used_at IS NULL AND expires_at > ?", userID, string(tokenType), time.Now()).
@@ -90,7 +90,7 @@ func (r *VerificationTokenRepository) ExpireAllActiveForUser(ctx context.Context
 	return err
 }
 
-func toModel(t *verificationtoken.VerificationToken) postgres.VerificationTokenModel {
+func toModel(t *account.VerificationToken) postgres.VerificationTokenModel {
 	return postgres.VerificationTokenModel{
 		ID:           t.ID,
 		UserID:       t.UserID,
@@ -102,12 +102,12 @@ func toModel(t *verificationtoken.VerificationToken) postgres.VerificationTokenM
 	}
 }
 
-func toEntity(m *postgres.VerificationTokenModel) verificationtoken.VerificationToken {
-	return verificationtoken.VerificationToken{
+func toEntity(m *postgres.VerificationTokenModel) account.VerificationToken {
+	return account.VerificationToken{
 		ID:           m.ID,
 		UserID:       m.UserID,
 		Token:        m.Token,
-		Type:         verificationtoken.TokenType(m.Type),
+		Type:         account.TokenType(m.Type),
 		AttemptCount: m.AttemptCount,
 		ExpiresAt:    m.ExpiresAt,
 		UsedAt:       m.UsedAt,

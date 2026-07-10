@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/guestsession"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/google/uuid"
 )
@@ -29,12 +29,12 @@ type CreateGuestSessionResponse struct {
 
 // CreateGuestSessionUseCase orchestrates guest session lifecycle creation.
 type CreateGuestSessionUseCase struct {
-	repo guestsession.Repository
+	repo account.GuestSessionRepository
 	log  logger.Logger
 }
 
 // NewCreateGuestSessionUseCase creates a new CreateGuestSessionUseCase.
-func NewCreateGuestSessionUseCase(repo guestsession.Repository, log logger.Logger) *CreateGuestSessionUseCase {
+func NewCreateGuestSessionUseCase(repo account.GuestSessionRepository, log logger.Logger) *CreateGuestSessionUseCase {
 	return &CreateGuestSessionUseCase{repo: repo, log: log.With("usecase", "create_guest_session")}
 }
 
@@ -57,7 +57,7 @@ func (uc *CreateGuestSessionUseCase) Execute(ctx context.Context, req CreateGues
 	now := time.Now()
 	expiresAt := now.Add(14 * 24 * time.Hour)
 
-	session := &guestsession.GuestSession{
+	session := &account.GuestSession{
 		SessionID:   sessionID,
 		IPHash:      hashIP(req.IPAddress),
 		DisplayName: req.DisplayName,

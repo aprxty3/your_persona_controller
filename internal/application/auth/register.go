@@ -1,16 +1,21 @@
 package auth
 
+// Register: account creation. Kept as its own struct/file, separate from
+// AccountUseCase (account.go), because the dependency sets barely overlap —
+// Register runs a 5-repo multi-table transaction (user, guest-session claim,
+// referral events, test-result reassignment) plus one OTP dispatch as a side
+// effect, while AccountUseCase's methods are all "look up user, touch a
+// verification token, maybe send email" with no transaction and no referral/
+// guest-session/test-result repos involved.
+
 import (
 	"context"
 	"fmt"
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/guestsession"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/referral"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/verificationtoken"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	pgguestsession "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/guestsession"
 	pgreferral "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/referral"
@@ -24,19 +29,22 @@ import (
 	"gorm.io/gorm"
 )
 
-func txUserRepository(tx *gorm.DB, log logger.Logger) user.Repository {
+// tx*Repository helpers construct repositories bound to an in-flight
+// transaction — used by Register's transaction below, and by ResetPassword's
+// transaction in session.go (txUserRepository only; same package, no import needed).
+func txUserRepository(tx *gorm.DB, log logger.Logger) account.UserRepository {
 	return pguser.NewUserRepository(tx, log)
 }
 
-func txGuestRepository(tx *gorm.DB, log logger.Logger) guestsession.Repository {
+func txGuestRepository(tx *gorm.DB, log logger.Logger) account.GuestSessionRepository {
 	return pgguestsession.NewGuestSessionRepository(tx, log)
 }
 
-func txTokenRepository(tx *gorm.DB, log logger.Logger) verificationtoken.Repository {
+func txTokenRepository(tx *gorm.DB, log logger.Logger) account.VerificationTokenRepository {
 	return pgverificationtoken.NewVerificationTokenRepository(tx, log)
 }
 
-func txReferralRepository(tx *gorm.DB, log logger.Logger) referral.Repository {
+func txReferralRepository(tx *gorm.DB, log logger.Logger) account.ReferralRepository {
 	return pgreferral.NewReferralRepository(tx, log)
 }
 
@@ -63,10 +71,10 @@ type RegisterResponse struct {
 // RegisterUseCase orchestrates account creation, data transitions, and referral conversions.
 type RegisterUseCase struct {
 	db             *gorm.DB
-	userRepo       user.Repository
-	guestRepo      guestsession.Repository
-	tokenRepo      verificationtoken.Repository
-	referralRepo   referral.Repository
+	userRepo       account.UserRepository
+	guestRepo      account.GuestSessionRepository
+	tokenRepo      account.VerificationTokenRepository
+	referralRepo   account.ReferralRepository
 	testResultRepo testresult.Repository
 	breachChecker  PasswordBreachChecker
 	dispatcher     taskqueue.Dispatcher
@@ -79,10 +87,10 @@ type RegisterUseCase struct {
 // NewRegisterUseCase creates a new RegisterUseCase.
 func NewRegisterUseCase(
 	db *gorm.DB,
-	userRepo user.Repository,
-	guestRepo guestsession.Repository,
-	tokenRepo verificationtoken.Repository,
-	referralRepo referral.Repository,
+	userRepo account.UserRepository,
+	guestRepo account.GuestSessionRepository,
+	tokenRepo account.VerificationTokenRepository,
+	referralRepo account.ReferralRepository,
 	testResultRepo testresult.Repository,
 	breachChecker PasswordBreachChecker,
 	dispatcher taskqueue.Dispatcher,
@@ -107,6 +115,10 @@ func NewRegisterUseCase(
 
 // Register orchestrates account creation, data transitions, and referral conversions.
 func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
+	// Per-IP throttle (FR-H6-style second layer, independent of email uniqueness):
+	// email can only be used once per account, so a same-email cooldown like
+	// resend/forgot-password doesn't help here — an attacker just rotates emails.
+	// Checked first, before any DB/bcrypt work, to fail cheap under abuse.
 	allowed, retryAfter, err := uc.ipRateLimiter.Allow(ctx, redis.ScopeRegisterIP, req.IPAddress)
 	if err != nil {
 		uc.log.Warn("register ip rate limit check skipped", "reason", "redis_error", "error", err)
@@ -127,6 +139,7 @@ func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*
 		)
 	}
 
+	// Shared password policy (FR-H1a): required, min length, HIBP breach check.
 	if err := ValidateNewPassword(ctx, uc.breachChecker, "password", req.Password); err != nil {
 		uc.log.Warn("registration rejected", "reason", "password_policy", "error", err)
 		return nil, err
@@ -148,7 +161,7 @@ func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*
 		return nil, fmt.Errorf("register: %w", err)
 	}
 
-	var guest *guestsession.GuestSession
+	var guest *account.GuestSession
 	if req.GuestSessionID != nil {
 		guest, err = uc.guestRepo.FindBySessionID(ctx, *req.GuestSessionID)
 		if err != nil {
@@ -197,11 +210,11 @@ func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*
 			return fmt.Errorf("tx: generate verification code: %w", err)
 		}
 
-		token := &verificationtoken.VerificationToken{
+		token := &account.VerificationToken{
 			ID:        uuid.New().String(),
 			UserID:    newUser.ID,
 			Token:     otpCode,
-			Type:      verificationtoken.TokenTypeEmailVerification,
+			Type:      account.TokenTypeEmailVerification,
 			ExpiresAt: time.Now().Add(time.Duration(uc.otpExpiryMins) * time.Minute),
 		}
 		if err := txTokenRepo.Create(ctx, token); err != nil {
@@ -231,9 +244,9 @@ func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*
 	return &RegisterResponse{UserID: newUser.ID}, nil
 }
 
-// buildUser assembles a new user.User domain entity from registration input.
-func buildUser(req RegisterRequest, hash string, guest *guestsession.GuestSession) *user.User {
-	u := &user.User{
+// buildUser assembles a new account.User domain entity from registration input.
+func buildUser(req RegisterRequest, hash string, guest *account.GuestSession) *account.User {
+	u := &account.User{
 		ID:              uuid.New().String(),
 		Email:           req.Email,
 		PasswordHash:    hash,
@@ -252,10 +265,11 @@ func buildUser(req RegisterRequest, hash string, guest *guestsession.GuestSessio
 	return u
 }
 
-// recordReferralConversion records signup
+// recordReferralConversion records signup + optionally test_completed events
+// when a guest session with completed tests is claimed during registration.
 func recordReferralConversion(
 	ctx context.Context,
-	refRepo referral.Repository,
+	refRepo account.ReferralRepository,
 	trRepo testresult.Repository,
 	newUserID,
 	referralCode,
@@ -271,11 +285,11 @@ func recordReferralConversion(
 		return nil
 	}
 
-	event := &referral.ReferralEvent{
+	event := &account.ReferralEvent{
 		ID:             uuid.New().String(),
 		ReferralCodeID: refCode.ID,
 		ReferredUserID: newUserID,
-		EventType:      referral.EventTypeSignup,
+		EventType:      account.EventTypeSignup,
 		CreatedAt:      time.Now(),
 	}
 	if err := refRepo.CreateEvent(ctx, event); err != nil {
@@ -289,11 +303,11 @@ func recordReferralConversion(
 		return nil
 	}
 	if count > 0 {
-		completedEvent := &referral.ReferralEvent{
+		completedEvent := &account.ReferralEvent{
 			ID:             uuid.New().String(),
 			ReferralCodeID: refCode.ID,
 			ReferredUserID: newUserID,
-			EventType:      referral.EventTypeTestCompleted,
+			EventType:      account.EventTypeTestCompleted,
 			CreatedAt:      time.Now(),
 		}
 		if err := refRepo.CreateEvent(ctx, completedEvent); err != nil {
@@ -305,7 +319,8 @@ func recordReferralConversion(
 }
 
 // recordSignupEvent records a signup referral event when there is no guest session.
-func recordSignupEvent(ctx context.Context, refRepo referral.Repository, newUserID, referralCode string, log logger.Logger) {
+// Best-effort: a lookup/insert failure here must not fail registration.
+func recordSignupEvent(ctx context.Context, refRepo account.ReferralRepository, newUserID, referralCode string, log logger.Logger) {
 	refCode, err := refRepo.FindCodeByCode(ctx, referralCode)
 	if err != nil {
 		log.Warn("signup referral event skipped", "reason", "lookup_failed", "error", err)
@@ -315,11 +330,11 @@ func recordSignupEvent(ctx context.Context, refRepo referral.Repository, newUser
 		return
 	}
 
-	event := &referral.ReferralEvent{
+	event := &account.ReferralEvent{
 		ID:             uuid.New().String(),
 		ReferralCodeID: refCode.ID,
 		ReferredUserID: newUserID,
-		EventType:      referral.EventTypeSignup,
+		EventType:      account.EventTypeSignup,
 		CreatedAt:      time.Now(),
 	}
 	if err := refRepo.CreateEvent(ctx, event); err != nil {

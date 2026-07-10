@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	jwtservice "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/pkg/httpresponse"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
@@ -23,12 +23,12 @@ func UserIDFromContext(c echo.Context) string {
 // AuthMiddleware guards endpoints marked "Auth: Required" in the API spec.
 type AuthMiddleware struct {
 	jwtService *jwtservice.JWTService
-	userRepo   user.Repository
+	userRepo   account.UserRepository
 	log        logger.Logger
 }
 
 // NewAuthMiddleware constructs the middleware with its dependencies.
-func NewAuthMiddleware(jwtService *jwtservice.JWTService, userRepo user.Repository, log logger.Logger) *AuthMiddleware {
+func NewAuthMiddleware(jwtService *jwtservice.JWTService, userRepo account.UserRepository, log logger.Logger) *AuthMiddleware {
 	return &AuthMiddleware{
 		jwtService: jwtService,
 		userRepo:   userRepo,

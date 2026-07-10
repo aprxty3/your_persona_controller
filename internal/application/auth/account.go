@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/verificationtoken"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/aprxty3/your_persona_controller.git/pkg/otp"
@@ -66,12 +65,12 @@ func HashPassword(password string) (string, error) {
 // validateOTPAttempt is the single shared OTP validation gate
 func validateOTPAttempt(
 	ctx context.Context,
-	tokenRepo verificationtoken.Repository,
+	tokenRepo account.VerificationTokenRepository,
 	userID string,
 	code string,
-	tokenType verificationtoken.TokenType,
+	tokenType account.TokenType,
 	log logger.Logger,
-) (token *verificationtoken.VerificationToken, attemptsRemaining int, err error) {
+) (token *account.VerificationToken, attemptsRemaining int, err error) {
 	token, err = tokenRepo.FindActiveByUserAndType(ctx, userID, tokenType)
 	if err != nil {
 		log.Error("otp validation failed", "step", "find_token", "user_id", userID, "error", err)
@@ -141,8 +140,8 @@ type ForgotPasswordResponse struct {
 
 // AccountUseCase manages the OTP lifecycle for an existing account.
 type AccountUseCase struct {
-	userRepo      user.Repository
-	tokenRepo     verificationtoken.Repository
+	userRepo      account.UserRepository
+	tokenRepo     account.VerificationTokenRepository
 	dispatcher    taskqueue.Dispatcher
 	rateLimiter   *redis.OTPRateLimitService
 	log           logger.Logger
@@ -152,8 +151,8 @@ type AccountUseCase struct {
 
 // NewAccountUseCase creates a new AccountUseCase.
 func NewAccountUseCase(
-	userRepo user.Repository,
-	tokenRepo verificationtoken.Repository,
+	userRepo account.UserRepository,
+	tokenRepo account.VerificationTokenRepository,
 	dispatcher taskqueue.Dispatcher,
 	rateLimiter *redis.OTPRateLimitService,
 	log logger.Logger,
@@ -181,7 +180,7 @@ func (uc *AccountUseCase) VerifyEmailOTP(ctx context.Context, req VerifyEmailOTP
 		return nil, application.ErrInvalidOTP
 	}
 
-	token, remaining, err := validateOTPAttempt(ctx, uc.tokenRepo, u.ID, req.OTP, verificationtoken.TokenTypeEmailVerification, uc.log)
+	token, remaining, err := validateOTPAttempt(ctx, uc.tokenRepo, u.ID, req.OTP, account.TokenTypeEmailVerification, uc.log)
 	if err != nil {
 		return &VerifyEmailOTPResponse{AttemptsRemaining: remaining}, err
 	}
@@ -224,7 +223,7 @@ func (uc *AccountUseCase) ResendEmailOTP(ctx context.Context, req ResendEmailOTP
 		return &ResendEmailOTPResponse{}, nil
 	}
 
-	if err := uc.tokenRepo.ExpireAllActiveForUser(ctx, u.ID, verificationtoken.TokenTypeEmailVerification); err != nil {
+	if err := uc.tokenRepo.ExpireAllActiveForUser(ctx, u.ID, account.TokenTypeEmailVerification); err != nil {
 		uc.log.Error("resend otp failed", "step", "invalidate_previous_tokens", "user_id", u.ID, "error", err)
 		return nil, fmt.Errorf("resend_otp: invalidate previous tokens: %w", err)
 	}
@@ -235,11 +234,11 @@ func (uc *AccountUseCase) ResendEmailOTP(ctx context.Context, req ResendEmailOTP
 		return nil, fmt.Errorf("resend_otp: generate code: %w", err)
 	}
 
-	token := &verificationtoken.VerificationToken{
+	token := &account.VerificationToken{
 		ID:        uuid.New().String(),
 		UserID:    u.ID,
 		Token:     otpCode,
-		Type:      verificationtoken.TokenTypeEmailVerification,
+		Type:      account.TokenTypeEmailVerification,
 		ExpiresAt: time.Now().Add(time.Duration(uc.otpExpiryMins) * time.Minute),
 	}
 	if err := uc.tokenRepo.Create(ctx, token); err != nil {
@@ -291,7 +290,7 @@ func (uc *AccountUseCase) ForgotPassword(ctx context.Context, req ForgotPassword
 		uc.log.Info("forgot password no-op", "reason", "user_not_found")
 		return &ForgotPasswordResponse{}, nil
 	}
-	if err := uc.tokenRepo.ExpireAllActiveForUser(ctx, u.ID, verificationtoken.TokenTypePasswordReset); err != nil {
+	if err := uc.tokenRepo.ExpireAllActiveForUser(ctx, u.ID, account.TokenTypePasswordReset); err != nil {
 		uc.log.Error("forgot password failed", "step", "invalidate_previous_tokens", "user_id", u.ID, "error", err)
 		return nil, fmt.Errorf("forgot_password: invalidate previous tokens: %w", err)
 	}
@@ -302,11 +301,11 @@ func (uc *AccountUseCase) ForgotPassword(ctx context.Context, req ForgotPassword
 		return nil, fmt.Errorf("forgot_password: generate code: %w", err)
 	}
 
-	token := &verificationtoken.VerificationToken{
+	token := &account.VerificationToken{
 		ID:        uuid.New().String(),
 		UserID:    u.ID,
 		Token:     otpCode,
-		Type:      verificationtoken.TokenTypePasswordReset,
+		Type:      account.TokenTypePasswordReset,
 		ExpiresAt: time.Now().Add(time.Duration(uc.otpExpiryMins) * time.Minute),
 	}
 	if err := uc.tokenRepo.Create(ctx, token); err != nil {

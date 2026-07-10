@@ -5,25 +5,25 @@ import (
 	"errors"
 	"time"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/user"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"gorm.io/gorm"
 )
 
-// UserRepository implements user.Repository backed by PostgreSQL via GORM.
+// UserRepository implements account.UserRepository backed by PostgreSQL via GORM.
 type UserRepository struct {
 	db  *gorm.DB
 	log logger.Logger
 }
 
 // NewUserRepository constructs a new UserRepository.
-func NewUserRepository(db *gorm.DB, log logger.Logger) user.Repository {
+func NewUserRepository(db *gorm.DB, log logger.Logger) account.UserRepository {
 	return &UserRepository{db: db, log: log.With("repository", "user")}
 }
 
 // Create inserts a new user record.
-func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
+func (r *UserRepository) Create(ctx context.Context, u *account.User) error {
 	m := toModel(u)
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
 		r.log.Error("query failed", "op", "Create", "error", err)
@@ -33,7 +33,7 @@ func (r *UserRepository) Create(ctx context.Context, u *user.User) error {
 }
 
 // FindByID retrieves a user by their UUID. Returns nil, nil if not found.
-func (r *UserRepository) FindByID(ctx context.Context, id string) (*user.User, error) {
+func (r *UserRepository) FindByID(ctx context.Context, id string) (*account.User, error) {
 	var m postgres.UserModel
 	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -48,7 +48,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*user.User, e
 }
 
 // FindByEmail retrieves a user by email address. Returns nil, nil if not found.
-func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*user.User, error) {
+func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*account.User, error) {
 	var m postgres.UserModel
 	err := r.db.WithContext(ctx).First(&m, "email = ?", email).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -63,7 +63,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*user.U
 }
 
 // Update saves all mutable fields of the user.
-func (r *UserRepository) Update(ctx context.Context, u *user.User) error {
+func (r *UserRepository) Update(ctx context.Context, u *account.User) error {
 	m := toModel(u)
 	if err := r.db.WithContext(ctx).Save(&m).Error; err != nil {
 		r.log.Error("query failed", "op", "Update", "error", err)
@@ -102,7 +102,7 @@ func (r *UserRepository) UpdateLoginAttempt(ctx context.Context, id string, fail
 	return err
 }
 
-func toModel(u *user.User) postgres.UserModel {
+func toModel(u *account.User) postgres.UserModel {
 	return postgres.UserModel{
 		ID:               u.ID,
 		Email:            u.Email,
@@ -120,12 +120,12 @@ func toModel(u *user.User) postgres.UserModel {
 	}
 }
 
-func toEntity(m *postgres.UserModel) user.User {
+func toEntity(m *postgres.UserModel) account.User {
 	var deletedAt *time.Time
 	if m.DeletedAt.Valid {
 		deletedAt = &m.DeletedAt.Time
 	}
-	return user.User{
+	return account.User{
 		ID:               m.ID,
 		Email:            m.Email,
 		PasswordHash:     m.PasswordHash,
