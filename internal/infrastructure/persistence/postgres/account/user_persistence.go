@@ -12,7 +12,6 @@ import (
 )
 
 // UserRepository implements account.UserRepository backed by PostgreSQL via GORM.
-// The GORM schema (postgres.UserModel) is shared/global — see persistence/postgres/models.go.
 type UserRepository struct {
 	db  *gorm.DB
 	log logger.Logger

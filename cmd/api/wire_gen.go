@@ -13,7 +13,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/gemini"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
-	pgaccount "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
 	asynq2 "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
@@ -47,12 +47,12 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	if err != nil {
 		return nil, err
 	}
-	repository := pgaccount.NewGuestSessionRepository(db, loggerInstance)
-	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(repository, loggerInstance)
-	userRepository := pgaccount.NewUserRepository(db, loggerInstance)
-	verificationtokenRepository := pgaccount.NewVerificationTokenRepository(db, loggerInstance)
-	referralRepository := pgaccount.NewReferralRepository(db, loggerInstance)
-	testresultRepository := testresult.NewTestResultRepository(db, loggerInstance)
+	guestSessionRepository := account.NewGuestSessionRepository(db, loggerInstance)
+	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(guestSessionRepository, loggerInstance)
+	userRepository := account.NewUserRepository(db, loggerInstance)
+	verificationTokenRepository := account.NewVerificationTokenRepository(db, loggerInstance)
+	referralRepository := account.NewReferralRepository(db, loggerInstance)
+	repository := testresult.NewTestResultRepository(db, loggerInstance)
 	passwordBreachChecker := auth.NewNoopBreachChecker()
 	asynqClient, err := provideAsynqClient(redisAddr, redisPassword, redisDB)
 	if err != nil {
@@ -63,13 +63,13 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	if err != nil {
 		return nil, err
 	}
-	otpRateLimitService := redis.NewOTPRateLimitService(redisClient)
 	ipRateLimitService := redis.NewIPRateLimitService(redisClient)
+	registerUseCase := auth.NewRegisterUseCase(db, userRepository, guestSessionRepository, verificationTokenRepository, referralRepository, repository, passwordBreachChecker, dispatcher, ipRateLimitService, loggerInstance)
+	otpRateLimitService := redis.NewOTPRateLimitService(redisClient)
+	accountUseCase := auth.NewAccountUseCase(userRepository, verificationTokenRepository, dispatcher, otpRateLimitService, loggerInstance)
 	jwtService := provideJWTService(jwtSecret)
 	tokenStore := redis.NewTokenStore(redisClient)
-	registerUseCase := auth.NewRegisterUseCase(db, userRepository, repository, verificationtokenRepository, referralRepository, testresultRepository, passwordBreachChecker, dispatcher, ipRateLimitService, loggerInstance)
-	accountUseCase := auth.NewAccountUseCase(userRepository, verificationtokenRepository, dispatcher, otpRateLimitService, loggerInstance)
-	sessionUseCase := auth.NewSessionUseCase(db, userRepository, verificationtokenRepository, passwordBreachChecker, jwtService, tokenStore, ipRateLimitService, loggerInstance)
+	sessionUseCase := auth.NewSessionUseCase(db, userRepository, verificationTokenRepository, passwordBreachChecker, jwtService, tokenStore, ipRateLimitService, loggerInstance)
 	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, accountUseCase, sessionUseCase, loggerInstance)
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)
 	echoEcho := http.SetupRouter(assessmentHandler, authHandler, authMiddleware)

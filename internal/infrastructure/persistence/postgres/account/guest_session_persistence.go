@@ -11,7 +11,6 @@ import (
 )
 
 // GuestSessionRepository implements account.GuestSessionRepository backed by PostgreSQL via GORM.
-// The GORM schema (postgres.GuestSessionModel) is shared/global — see persistence/postgres/models.go.
 type GuestSessionRepository struct {
 	db  *gorm.DB
 	log logger.Logger

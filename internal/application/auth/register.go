@@ -1,13 +1,5 @@
 package auth
 
-// Register: account creation. Kept as its own struct/file, separate from
-// AccountUseCase (account.go), because the dependency sets barely overlap —
-// Register runs a 5-repo multi-table transaction (user, guest-session claim,
-// referral events, test-result reassignment) plus one OTP dispatch as a side
-// effect, while AccountUseCase's methods are all "look up user, touch a
-// verification token, maybe send email" with no transaction and no referral/
-// guest-session/test-result repos involved.
-
 import (
 	"context"
 	"fmt"
@@ -26,9 +18,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// tx*Repository helpers construct repositories bound to an in-flight
-// transaction — used by Register's transaction below, and by ResetPassword's
-// transaction in session.go (txUserRepository only; same package, no import needed).
 func txUserRepository(tx *gorm.DB, log logger.Logger) account.UserRepository {
 	return pgaccount.NewUserRepository(tx, log)
 }
@@ -112,10 +101,6 @@ func NewRegisterUseCase(
 
 // Register orchestrates account creation, data transitions, and referral conversions.
 func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
-	// Per-IP throttle (FR-H6-style second layer, independent of email uniqueness):
-	// email can only be used once per account, so a same-email cooldown like
-	// resend/forgot-password doesn't help here — an attacker just rotates emails.
-	// Checked first, before any DB/bcrypt work, to fail cheap under abuse.
 	allowed, retryAfter, err := uc.ipRateLimiter.Allow(ctx, redis.ScopeRegisterIP, req.IPAddress)
 	if err != nil {
 		uc.log.Warn("register ip rate limit check skipped", "reason", "redis_error", "error", err)
@@ -136,7 +121,6 @@ func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*
 		)
 	}
 
-	// Shared password policy (FR-H1a): required, min length, HIBP breach check.
 	if err := ValidateNewPassword(ctx, uc.breachChecker, "password", req.Password); err != nil {
 		uc.log.Warn("registration rejected", "reason", "password_policy", "error", err)
 		return nil, err
@@ -262,8 +246,7 @@ func buildUser(req RegisterRequest, hash string, guest *account.GuestSession) *a
 	return u
 }
 
-// recordReferralConversion records signup + optionally test_completed events
-// when a guest session with completed tests is claimed during registration.
+// recordReferralConversion records signup
 func recordReferralConversion(
 	ctx context.Context,
 	refRepo account.ReferralRepository,
@@ -316,7 +299,6 @@ func recordReferralConversion(
 }
 
 // recordSignupEvent records a signup referral event when there is no guest session.
-// Best-effort: a lookup/insert failure here must not fail registration.
 func recordSignupEvent(ctx context.Context, refRepo account.ReferralRepository, newUserID, referralCode string, log logger.Logger) {
 	refCode, err := refRepo.FindCodeByCode(ctx, referralCode)
 	if err != nil {

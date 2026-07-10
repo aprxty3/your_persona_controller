@@ -134,6 +134,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/httpresponse.Response"
                         }
                     },
+                    "429": {
+                        "description": "RATE_LIMITED — too many login attempts from this IP (separate from ACCOUNT_LOCKED). Check meta.retry_after_seconds.",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
                     "500": {
                         "description": "INTERNAL_ERROR — unexpected server error",
                         "schema": {
@@ -352,6 +358,12 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "EMAIL_ALREADY_REGISTERED — email is already in use",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "429": {
+                        "description": "RATE_LIMITED — too many registration attempts from this IP. Check meta.retry_after_seconds.",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }

@@ -12,7 +12,6 @@ import (
 )
 
 // VerificationTokenRepository implements account.VerificationTokenRepository backed by PostgreSQL via GORM.
-// The GORM schema (postgres.VerificationTokenModel) is shared/global — see persistence/postgres/models.go.
 type VerificationTokenRepository struct {
 	db  *gorm.DB
 	log logger.Logger
@@ -34,7 +33,6 @@ func (r *VerificationTokenRepository) Create(ctx context.Context, t *account.Ver
 }
 
 // FindActiveByUserAndType returns the single active (not expired, not used) token.
-// Lookup is scoped to (user_id, type) for index optimization and security.
 func (r *VerificationTokenRepository) FindActiveByUserAndType(ctx context.Context, userID string, tokenType account.TokenType) (*account.VerificationToken, error) {
 	var m postgres.VerificationTokenModel
 	err := r.db.WithContext(ctx).
@@ -80,7 +78,6 @@ func (r *VerificationTokenRepository) MarkUsed(ctx context.Context, tokenID stri
 }
 
 // ExpireAllActiveForUser force-expires all unused tokens of the given (user_id, type).
-// Called prior to OTP generation to ensure the single-valid-token invariant.
 func (r *VerificationTokenRepository) ExpireAllActiveForUser(ctx context.Context, userID string, tokenType account.TokenType) error {
 	err := r.db.WithContext(ctx).
 		Model(&postgres.VerificationTokenModel{}).
