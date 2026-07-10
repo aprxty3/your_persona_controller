@@ -1,4 +1,4 @@
-package user
+package account
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 )
 
 // UserRepository implements account.UserRepository backed by PostgreSQL via GORM.
+// The GORM schema (postgres.UserModel) is shared/global — see persistence/postgres/models.go.
 type UserRepository struct {
 	db  *gorm.DB
 	log logger.Logger
@@ -24,7 +25,7 @@ func NewUserRepository(db *gorm.DB, log logger.Logger) account.UserRepository {
 
 // Create inserts a new user record.
 func (r *UserRepository) Create(ctx context.Context, u *account.User) error {
-	m := toModel(u)
+	m := toUserModel(u)
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
 		r.log.Error("query failed", "op", "Create", "error", err)
 		return err
@@ -43,7 +44,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*account.User
 		r.log.Error("query failed", "op", "FindByID", "error", err)
 		return nil, err
 	}
-	u := toEntity(&m)
+	u := toUserEntity(&m)
 	return &u, nil
 }
 
@@ -58,13 +59,13 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*accoun
 		r.log.Error("query failed", "op", "FindByEmail", "error", err)
 		return nil, err
 	}
-	u := toEntity(&m)
+	u := toUserEntity(&m)
 	return &u, nil
 }
 
 // Update saves all mutable fields of the user.
 func (r *UserRepository) Update(ctx context.Context, u *account.User) error {
-	m := toModel(u)
+	m := toUserModel(u)
 	if err := r.db.WithContext(ctx).Save(&m).Error; err != nil {
 		r.log.Error("query failed", "op", "Update", "error", err)
 		return err
@@ -102,7 +103,7 @@ func (r *UserRepository) UpdateLoginAttempt(ctx context.Context, id string, fail
 	return err
 }
 
-func toModel(u *account.User) postgres.UserModel {
+func toUserModel(u *account.User) postgres.UserModel {
 	return postgres.UserModel{
 		ID:               u.ID,
 		Email:            u.Email,
@@ -120,7 +121,7 @@ func toModel(u *account.User) postgres.UserModel {
 	}
 }
 
-func toEntity(m *postgres.UserModel) account.User {
+func toUserEntity(m *postgres.UserModel) account.User {
 	var deletedAt *time.Time
 	if m.DeletedAt.Valid {
 		deletedAt = &m.DeletedAt.Time

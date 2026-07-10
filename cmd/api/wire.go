@@ -10,11 +10,8 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/gemini"
 	jwtservice "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
-	pgguestsession "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/guestsession"
-	pgreferral "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/referral"
+	pgaccount "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
 	pgtestresult "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
-	pguser "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/user"
-	pgverificationtoken "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/verificationtoken"
 	asynqclient "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http"
@@ -80,10 +77,10 @@ func InitializeAPI(
 		// Repositories
 		// ---------------------------------------------------------
 		// Postgres Repositories
-		pguser.NewUserRepository,
-		pgguestsession.NewGuestSessionRepository,
-		pgverificationtoken.NewVerificationTokenRepository,
-		pgreferral.NewReferralRepository,
+		pgaccount.NewUserRepository,
+		pgaccount.NewGuestSessionRepository,
+		pgaccount.NewVerificationTokenRepository,
+		pgaccount.NewReferralRepository,
 		pgtestresult.NewTestResultRepository,
 
 		// Stubs for assessment interfaces

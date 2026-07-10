@@ -11,9 +11,9 @@ type User struct {
 	PasswordHash    string
 	DisplayName     string
 	Age             int
-	Status          string  // student|undergraduate|employed|others
-	ReferredByCode  *string // FK to REFERRAL_CODE.code — nullable
-	PreferredLocale string  // default "en"
+	Status          string
+	ReferredByCode  *string
+	PreferredLocale string
 	EmailVerifiedAt *time.Time
 	CreatedAt       time.Time
 	DeletedAt       *time.Time

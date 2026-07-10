@@ -17,11 +17,8 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
-	pgguestsession "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/guestsession"
-	pgreferral "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/referral"
+	pgaccount "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
 	pgtestresult "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
-	pguser "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/user"
-	pgverificationtoken "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/verificationtoken"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/aprxty3/your_persona_controller.git/pkg/otp"
 	"github.com/aprxty3/your_persona_controller.git/pkg/taskqueue"
@@ -33,19 +30,19 @@ import (
 // transaction — used by Register's transaction below, and by ResetPassword's
 // transaction in session.go (txUserRepository only; same package, no import needed).
 func txUserRepository(tx *gorm.DB, log logger.Logger) account.UserRepository {
-	return pguser.NewUserRepository(tx, log)
+	return pgaccount.NewUserRepository(tx, log)
 }
 
 func txGuestRepository(tx *gorm.DB, log logger.Logger) account.GuestSessionRepository {
-	return pgguestsession.NewGuestSessionRepository(tx, log)
+	return pgaccount.NewGuestSessionRepository(tx, log)
 }
 
 func txTokenRepository(tx *gorm.DB, log logger.Logger) account.VerificationTokenRepository {
-	return pgverificationtoken.NewVerificationTokenRepository(tx, log)
+	return pgaccount.NewVerificationTokenRepository(tx, log)
 }
 
 func txReferralRepository(tx *gorm.DB, log logger.Logger) account.ReferralRepository {
-	return pgreferral.NewReferralRepository(tx, log)
+	return pgaccount.NewReferralRepository(tx, log)
 }
 
 func txTestResultRepository(tx *gorm.DB, log logger.Logger) testresult.Repository {

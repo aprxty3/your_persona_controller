@@ -1,4 +1,4 @@
-package referral
+package account
 
 import (
 	"context"
@@ -11,6 +11,8 @@ import (
 )
 
 // ReferralRepository implements account.ReferralRepository backed by PostgreSQL via GORM.
+// The GORM schema (postgres.ReferralCodeModel / ReferralEventModel) is shared/global
+// — see persistence/postgres/models.go.
 type ReferralRepository struct {
 	db  *gorm.DB
 	log logger.Logger

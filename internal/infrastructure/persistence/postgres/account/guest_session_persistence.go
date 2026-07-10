@@ -1,4 +1,4 @@
-package guestsession
+package account
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 )
 
 // GuestSessionRepository implements account.GuestSessionRepository backed by PostgreSQL via GORM.
+// The GORM schema (postgres.GuestSessionModel) is shared/global — see persistence/postgres/models.go.
 type GuestSessionRepository struct {
 	db  *gorm.DB
 	log logger.Logger
@@ -23,7 +24,7 @@ func NewGuestSessionRepository(db *gorm.DB, log logger.Logger) account.GuestSess
 
 // Create inserts a new guest session record.
 func (r *GuestSessionRepository) Create(ctx context.Context, s *account.GuestSession) error {
-	m := toModel(s)
+	m := toGuestSessionModel(s)
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
 		r.log.Error("query failed", "op", "Create", "error", err)
 		return err
@@ -42,13 +43,13 @@ func (r *GuestSessionRepository) FindBySessionID(ctx context.Context, sessionID 
 		r.log.Error("query failed", "op", "FindBySessionID", "error", err)
 		return nil, err
 	}
-	s := toEntity(&m)
+	s := toGuestSessionEntity(&m)
 	return &s, nil
 }
 
 // Update saves all mutable fields of the guest session.
 func (r *GuestSessionRepository) Update(ctx context.Context, s *account.GuestSession) error {
-	m := toModel(s)
+	m := toGuestSessionModel(s)
 	if err := r.db.WithContext(ctx).Save(&m).Error; err != nil {
 		r.log.Error("query failed", "op", "Update", "error", err)
 		return err
@@ -68,7 +69,7 @@ func (r *GuestSessionRepository) FindExpiredUnclaimed(ctx context.Context) ([]ac
 	}
 	sessions := make([]account.GuestSession, len(models))
 	for i, m := range models {
-		sessions[i] = toEntity(&m)
+		sessions[i] = toGuestSessionEntity(&m)
 	}
 	return sessions, nil
 }
@@ -83,7 +84,7 @@ func (r *GuestSessionRepository) DeleteBySessionID(ctx context.Context, sessionI
 	return err
 }
 
-func toModel(s *account.GuestSession) postgres.GuestSessionModel {
+func toGuestSessionModel(s *account.GuestSession) postgres.GuestSessionModel {
 	return postgres.GuestSessionModel{
 		SessionID:       s.SessionID,
 		IPHash:          s.IPHash,
@@ -97,7 +98,7 @@ func toModel(s *account.GuestSession) postgres.GuestSessionModel {
 	}
 }
 
-func toEntity(m *postgres.GuestSessionModel) account.GuestSession {
+func toGuestSessionEntity(m *postgres.GuestSessionModel) account.GuestSession {
 	return account.GuestSession{
 		SessionID:       m.SessionID,
 		IPHash:          m.IPHash,
