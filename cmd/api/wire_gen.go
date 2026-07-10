@@ -62,24 +62,16 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 		return nil, err
 	}
 	dispatcher := taskqueue.NewAsynqDispatcher(asynqClient)
-	registerUseCase := auth.NewRegisterUseCase(db, userRepository, repository, verificationtokenRepository, referralRepository, testresultRepository, passwordBreachChecker, dispatcher, loggerInstance)
-	verifyEmailOTPUseCase := auth.NewVerifyEmailOTPUseCase(userRepository, verificationtokenRepository, loggerInstance)
 	redisClient, err := provideRedisClient(redisAddr, redisPassword, redisDB)
 	if err != nil {
 		return nil, err
 	}
 	otpRateLimitService := redis.NewOTPRateLimitService(redisClient)
-	resendEmailOTPUseCase := auth.NewResendEmailOTPUseCase(userRepository, verificationtokenRepository, otpRateLimitService, dispatcher, loggerInstance)
 	jwtService := provideJWTService(jwtSecret)
-	loginUseCase := auth.NewLoginUseCase(userRepository, jwtService, loggerInstance)
 	tokenStore := redis.NewTokenStore(redisClient)
-	refreshTokenUseCase := auth.NewRefreshTokenUseCase(userRepository, jwtService, tokenStore, loggerInstance)
-	logoutUseCase := auth.NewLogoutUseCase(jwtService, tokenStore, loggerInstance)
-	logoutAllUseCase := auth.NewLogoutAllUseCase(userRepository, loggerInstance)
-	forgotPasswordUseCase := auth.NewForgotPasswordUseCase(userRepository, verificationtokenRepository, otpRateLimitService, dispatcher, loggerInstance)
-	verifyResetOTPUseCase := auth.NewVerifyResetOTPUseCase(userRepository, verificationtokenRepository, jwtService, tokenStore, loggerInstance)
-	resetPasswordUseCase := auth.NewResetPasswordUseCase(db, userRepository, passwordBreachChecker, jwtService, tokenStore, loggerInstance)
-	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, verifyEmailOTPUseCase, resendEmailOTPUseCase, loginUseCase, refreshTokenUseCase, logoutUseCase, logoutAllUseCase, forgotPasswordUseCase, verifyResetOTPUseCase, resetPasswordUseCase, loggerInstance)
+	accountUseCase := auth.NewAccountUseCase(db, userRepository, repository, verificationtokenRepository, referralRepository, testresultRepository, passwordBreachChecker, dispatcher, otpRateLimitService, jwtService, tokenStore, loggerInstance)
+	sessionUseCase := auth.NewSessionUseCase(userRepository, jwtService, tokenStore, loggerInstance)
+	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, accountUseCase, sessionUseCase, loggerInstance)
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)
 	echoEcho := http.SetupRouter(assessmentHandler, authHandler, authMiddleware)
 	return echoEcho, nil

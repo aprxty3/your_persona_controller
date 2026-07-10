@@ -102,16 +102,8 @@ func InitializeAPI(
 		// ---------------------------------------------------------
 		assessment.NewSubmitAssessmentUseCase,
 		auth.NewCreateGuestSessionUseCase,
-		auth.NewRegisterUseCase,
-		auth.NewVerifyEmailOTPUseCase,
-		auth.NewResendEmailOTPUseCase,
-		auth.NewLoginUseCase,
-		auth.NewRefreshTokenUseCase,
-		auth.NewLogoutUseCase,
-		auth.NewLogoutAllUseCase,
-		auth.NewForgotPasswordUseCase,
-		auth.NewVerifyResetOTPUseCase,
-		auth.NewResetPasswordUseCase,
+		auth.NewAccountUseCase,
+		auth.NewSessionUseCase,
 
 		// ---------------------------------------------------------
 		// Delivery (HTTP) Providers

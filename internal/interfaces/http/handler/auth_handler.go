@@ -16,46 +16,22 @@ import (
 // AuthHandler handles HTTP requests for authentication and account onboarding.
 type AuthHandler struct {
 	createGuestSessionUseCase *auth.CreateGuestSessionUseCase
-	registerUseCase           *auth.RegisterUseCase
-	verifyEmailOTPUseCase     *auth.VerifyEmailOTPUseCase
-	resendEmailOTPUseCase     *auth.ResendEmailOTPUseCase
-	loginUseCase              *auth.LoginUseCase
-	refreshTokenUseCase       *auth.RefreshTokenUseCase
-	logoutUseCase             *auth.LogoutUseCase
-	logoutAllUseCase          *auth.LogoutAllUseCase
-	forgotPasswordUseCase     *auth.ForgotPasswordUseCase
-	verifyResetOTPUseCase     *auth.VerifyResetOTPUseCase
-	resetPasswordUseCase      *auth.ResetPasswordUseCase
+	accountUseCase            *auth.AccountUseCase
+	sessionUseCase            *auth.SessionUseCase
 	log                       logger.Logger
 }
 
 // NewAuthHandler is the constructor for Dependency Injection.
 func NewAuthHandler(
 	createGuestSessionUseCase *auth.CreateGuestSessionUseCase,
-	registerUseCase *auth.RegisterUseCase,
-	verifyEmailOTPUseCase *auth.VerifyEmailOTPUseCase,
-	resendEmailOTPUseCase *auth.ResendEmailOTPUseCase,
-	loginUseCase *auth.LoginUseCase,
-	refreshTokenUseCase *auth.RefreshTokenUseCase,
-	logoutUseCase *auth.LogoutUseCase,
-	logoutAllUseCase *auth.LogoutAllUseCase,
-	forgotPasswordUseCase *auth.ForgotPasswordUseCase,
-	verifyResetOTPUseCase *auth.VerifyResetOTPUseCase,
-	resetPasswordUseCase *auth.ResetPasswordUseCase,
+	accountUseCase *auth.AccountUseCase,
+	sessionUseCase *auth.SessionUseCase,
 	log logger.Logger,
 ) *AuthHandler {
 	return &AuthHandler{
 		createGuestSessionUseCase: createGuestSessionUseCase,
-		registerUseCase:           registerUseCase,
-		verifyEmailOTPUseCase:     verifyEmailOTPUseCase,
-		resendEmailOTPUseCase:     resendEmailOTPUseCase,
-		loginUseCase:              loginUseCase,
-		refreshTokenUseCase:       refreshTokenUseCase,
-		logoutUseCase:             logoutUseCase,
-		logoutAllUseCase:          logoutAllUseCase,
-		forgotPasswordUseCase:     forgotPasswordUseCase,
-		verifyResetOTPUseCase:     verifyResetOTPUseCase,
-		resetPasswordUseCase:      resetPasswordUseCase,
+		accountUseCase:            accountUseCase,
+		sessionUseCase:            sessionUseCase,
 		log:                       log.With("handler", "auth"),
 	}
 }
@@ -179,7 +155,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		GuestSessionID:  guestSessionID,
 	}
 
-	resp, err := h.registerUseCase.Execute(c.Request().Context(), ucReq)
+	resp, err := h.accountUseCase.Register(c.Request().Context(), ucReq)
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInvalidInput):
@@ -235,7 +211,7 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 		OTP:   payload.OTP,
 	}
 
-	resp, err := h.verifyEmailOTPUseCase.Execute(c.Request().Context(), ucReq)
+	resp, err := h.accountUseCase.VerifyEmailOTP(c.Request().Context(), ucReq)
 	if err != nil {
 		meta := map[string]interface{}{}
 		if resp != nil {
@@ -307,7 +283,7 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 		Email: payload.Email,
 	}
 
-	resp, err := h.resendEmailOTPUseCase.Execute(c.Request().Context(), ucReq)
+	resp, err := h.accountUseCase.ResendEmailOTP(c.Request().Context(), ucReq)
 	if err != nil {
 		if errors.Is(err, application.ErrRateLimited) {
 			meta := map[string]interface{}{}
@@ -367,7 +343,7 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		Password: payload.Password,
 	}
 
-	resp, err := h.loginUseCase.Execute(c.Request().Context(), ucReq)
+	resp, err := h.sessionUseCase.Login(c.Request().Context(), ucReq)
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInvalidCredentials):
@@ -409,7 +385,7 @@ func (h *AuthHandler) RefreshToken(c echo.Context) error {
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
 	}
 
-	resp, err := h.refreshTokenUseCase.Execute(c.Request().Context(), auth.RefreshTokenRequest{
+	resp, err := h.sessionUseCase.RefreshToken(c.Request().Context(), auth.RefreshTokenRequest{
 		RefreshToken: payload.RefreshToken,
 	})
 	if err != nil {
@@ -453,7 +429,7 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
 	}
 
-	err := h.logoutUseCase.Execute(c.Request().Context(), auth.LogoutRequest{
+	err := h.sessionUseCase.Logout(c.Request().Context(), auth.LogoutRequest{
 		UserID:       middleware.UserIDFromContext(c),
 		RefreshToken: payload.RefreshToken,
 	})
@@ -485,7 +461,7 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
 // @Router       /v1/auth/logout-all [post]
 func (h *AuthHandler) LogoutAll(c echo.Context) error {
-	if err := h.logoutAllUseCase.Execute(c.Request().Context(), middleware.UserIDFromContext(c)); err != nil {
+	if err := h.sessionUseCase.LogoutAll(c.Request().Context(), middleware.UserIDFromContext(c)); err != nil {
 		h.log.Error("logout-all failed", "error", err)
 		return httpcallError(c, err)
 	}
@@ -521,7 +497,7 @@ func (h *AuthHandler) ForgotPassword(c echo.Context) error {
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
 	}
 
-	resp, err := h.forgotPasswordUseCase.Execute(c.Request().Context(), auth.ForgotPasswordRequest{
+	resp, err := h.accountUseCase.ForgotPassword(c.Request().Context(), auth.ForgotPasswordRequest{
 		Email: payload.Email,
 	})
 	if err != nil {
@@ -571,7 +547,7 @@ func (h *AuthHandler) VerifyResetOTP(c echo.Context) error {
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
 	}
 
-	resp, err := h.verifyResetOTPUseCase.Execute(c.Request().Context(), auth.VerifyResetOTPRequest{
+	resp, err := h.accountUseCase.VerifyResetOTP(c.Request().Context(), auth.VerifyResetOTPRequest{
 		Email: payload.Email,
 		OTP:   payload.OTP,
 	})
@@ -638,7 +614,7 @@ func (h *AuthHandler) ResetPassword(c echo.Context) error {
 		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
 	}
 
-	resp, err := h.resetPasswordUseCase.Execute(c.Request().Context(), auth.ResetPasswordRequest{
+	resp, err := h.accountUseCase.ResetPassword(c.Request().Context(), auth.ResetPasswordRequest{
 		ResetToken:  payload.ResetToken,
 		NewPassword: payload.NewPassword,
 	})
