@@ -103,6 +103,7 @@ func InitializeAPI(
 		// ---------------------------------------------------------
 		assessment.NewSubmitAssessmentUseCase,
 		auth.NewCreateGuestSessionUseCase,
+		auth.NewRegisterUseCase,
 		auth.NewAccountUseCase,
 		auth.NewSessionUseCase,
 

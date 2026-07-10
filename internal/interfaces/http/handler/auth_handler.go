@@ -16,6 +16,7 @@ import (
 // AuthHandler handles HTTP requests for authentication and account onboarding.
 type AuthHandler struct {
 	createGuestSessionUseCase *auth.CreateGuestSessionUseCase
+	registerUseCase           *auth.RegisterUseCase
 	accountUseCase            *auth.AccountUseCase
 	sessionUseCase            *auth.SessionUseCase
 	log                       logger.Logger
@@ -24,12 +25,14 @@ type AuthHandler struct {
 // NewAuthHandler is the constructor for Dependency Injection.
 func NewAuthHandler(
 	createGuestSessionUseCase *auth.CreateGuestSessionUseCase,
+	registerUseCase *auth.RegisterUseCase,
 	accountUseCase *auth.AccountUseCase,
 	sessionUseCase *auth.SessionUseCase,
 	log logger.Logger,
 ) *AuthHandler {
 	return &AuthHandler{
 		createGuestSessionUseCase: createGuestSessionUseCase,
+		registerUseCase:           registerUseCase,
 		accountUseCase:            accountUseCase,
 		sessionUseCase:            sessionUseCase,
 		log:                       log.With("handler", "auth"),
@@ -157,7 +160,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		IPAddress:       c.RealIP(),
 	}
 
-	resp, err := h.accountUseCase.Register(c.Request().Context(), ucReq)
+	resp, err := h.registerUseCase.Register(c.Request().Context(), ucReq)
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInvalidInput):

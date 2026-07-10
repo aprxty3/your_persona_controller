@@ -70,9 +70,10 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	ipRateLimitService := redis.NewIPRateLimitService(redisClient)
 	jwtService := provideJWTService(jwtSecret)
 	tokenStore := redis.NewTokenStore(redisClient)
-	accountUseCase := auth.NewAccountUseCase(db, userRepository, repository, verificationtokenRepository, referralRepository, testresultRepository, passwordBreachChecker, dispatcher, otpRateLimitService, ipRateLimitService, loggerInstance)
+	registerUseCase := auth.NewRegisterUseCase(db, userRepository, repository, verificationtokenRepository, referralRepository, testresultRepository, passwordBreachChecker, dispatcher, ipRateLimitService, loggerInstance)
+	accountUseCase := auth.NewAccountUseCase(userRepository, verificationtokenRepository, dispatcher, otpRateLimitService, loggerInstance)
 	sessionUseCase := auth.NewSessionUseCase(db, userRepository, verificationtokenRepository, passwordBreachChecker, jwtService, tokenStore, ipRateLimitService, loggerInstance)
-	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, accountUseCase, sessionUseCase, loggerInstance)
+	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, accountUseCase, sessionUseCase, loggerInstance)
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)
 	echoEcho := http.SetupRouter(assessmentHandler, authHandler, authMiddleware)
 	return echoEcho, nil
