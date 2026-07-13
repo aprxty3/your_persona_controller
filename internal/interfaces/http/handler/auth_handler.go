@@ -387,6 +387,61 @@ func (h *AuthHandler) Login(c echo.Context) error {
 	return httpcallSuccess(c, http.StatusOK, resp, nil)
 }
 
+// ChangePassword handles POST /v1/auth/change-password
+// @Summary      Change password (authenticated)
+// @Description  Changes the password of the currently logged-in account by verifying `old_password`.
+// @Description  `retry_new_password` must exactly match `new_password`.
+// @Description
+// @Description  On success:
+// @Description  - ALL existing sessions on every device are revoked (same as `/auth/reset-password`).
+// @Description  - A fresh `access_token` + `refresh_token` pair is returned for THIS device so the caller isn't logged out.
+// @Description
+// @Description  The new password follows the same policy as registration: minimum 10 characters and
+// @Description  checked against known breach databases.
+// @Tags         Auth
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body dto.ChangePasswordRequestDTO true "Old password, new password, and confirmation"
+// @Success      200 {object} httpresponse.Response{data=auth.ChangePasswordResponse} "Password changed. New session issued for this device."
+// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR | PASSWORD_TOO_SHORT | PASSWORD_BREACHED | PASSWORD_CONFIRMATION_MISMATCH"
+// @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | INVALID_CREDENTIALS — access token invalid, or old_password is incorrect"
+// @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
+// @Router       /v1/auth/change-password [post]
+func (h *AuthHandler) ChangePassword(c echo.Context) error {
+	var payload dto.ChangePasswordRequestDTO
+	if err := c.Bind(&payload); err != nil {
+		h.log.Warn("change password rejected", "reason", "bind_error", "error", err)
+		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	}
+
+	resp, err := h.sessionUseCase.ChangePassword(c.Request().Context(), auth.ChangePasswordRequest{
+		UserID:           middleware.UserIDFromContext(c),
+		OldPassword:      payload.OldPassword,
+		NewPassword:      payload.NewPassword,
+		RetryNewPassword: payload.RetryNewPassword,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, application.ErrInvalidInput):
+			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+		case errors.Is(err, application.ErrPasswordConfirmationMismatch):
+			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_CONFIRMATION_MISMATCH", "new_password and retry_new_password do not match")
+		case errors.Is(err, application.ErrPasswordTooShort):
+			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_TOO_SHORT", "Password must be at least 10 characters long")
+		case errors.Is(err, application.ErrPasswordBreached):
+			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_BREACHED", "This password has appeared in known data breaches. Please choose a different password")
+		case errors.Is(err, application.ErrInvalidCredentials):
+			return httpcallErrorCustom(c, http.StatusUnauthorized, "INVALID_CREDENTIALS", "Old password is incorrect")
+		default:
+			h.log.Error("change password failed", "error", err)
+			return httpcallError(c, err)
+		}
+	}
+
+	return httpcallSuccess(c, http.StatusOK, resp, nil)
+}
+
 // RefreshToken handles POST /v1/auth/refresh
 // @Summary      Refresh session tokens
 // @Description  Exchanges a valid `refresh_token` for a brand-new `access_token` + `refresh_token` pair.
@@ -476,7 +531,7 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 
 // LogoutAll handles POST /v1/auth/logout-all
 // @Summary      Logout from all devices
-// @Description  Revokes EVERY session of the account (FR-H8) by incrementing the internal token version.
+// @Description  Revokes EVERY session of the account by incrementing the internal token version.
 // @Description  All previously issued access AND refresh tokens become invalid on their next use,
 // @Description  including the one used to call this endpoint.
 // @Tags         Auth

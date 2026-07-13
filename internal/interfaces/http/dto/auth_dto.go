@@ -64,3 +64,9 @@ type ResetPasswordRequestDTO struct {
 	ResetToken  string `json:"reset_token" validate:"required"`
 	NewPassword string `json:"new_password" validate:"required,min=10"`
 }
+
+type ChangePasswordRequestDTO struct {
+	OldPassword      string `json:"old_password" validate:"required"`
+	NewPassword      string `json:"new_password" validate:"required,min=10"`
+	RetryNewPassword string `json:"retry_new_password" validate:"required"`
+}

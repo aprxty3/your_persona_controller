@@ -42,6 +42,7 @@ func SetupRouter(
 	authGroup.POST("/reset-password", authHandler.ResetPassword)
 	authGroup.POST("/logout", authHandler.Logout, authMiddleware.RequireAuth)
 	authGroup.POST("/logout-all", authHandler.LogoutAll, authMiddleware.RequireAuth)
+	authGroup.POST("/change-password", authHandler.ChangePassword, authMiddleware.RequireAuth)
 
 	// Assessment Group
 	assessmentGroup := v1.Group("/assessment")

@@ -109,6 +109,20 @@ type ResetPasswordResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+// ChangePasswordRequest carries the credentials for an authenticated password change.
+type ChangePasswordRequest struct {
+	UserID           string // from the access token (auth middleware)
+	OldPassword      string
+	NewPassword      string
+	RetryNewPassword string
+}
+
+// ChangePasswordResponse re-issues a session pair for the CURRENT device
+type ChangePasswordResponse struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
 // SessionUseCase manages authentication sessions
 type SessionUseCase struct {
 	db               *gorm.DB
@@ -423,4 +437,66 @@ func (uc *SessionUseCase) ResetPassword(ctx context.Context, req ResetPasswordRe
 
 	uc.log.Info("password reset completed", "user_id", u.ID)
 	return &ResetPasswordResponse{AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken}, nil
+}
+
+// ChangePassword lets an already-authenticated user change their password
+func (uc *SessionUseCase) ChangePassword(ctx context.Context, req ChangePasswordRequest) (*ChangePasswordResponse, error) {
+	if err := application.ValidateRequired("old_password", req.OldPassword); err != nil {
+		return nil, err
+	}
+	if req.NewPassword != req.RetryNewPassword {
+		uc.log.Warn("change password rejected", "reason", "confirmation_mismatch", "user_id", req.UserID)
+		return nil, application.ErrPasswordConfirmationMismatch
+	}
+	if err := ValidateNewPassword(ctx, uc.breachChecker, "new_password", req.NewPassword); err != nil {
+		uc.log.Warn("change password rejected", "reason", "password_policy", "error", err)
+		return nil, err
+	}
+
+	u, err := uc.userRepo.FindByID(ctx, req.UserID)
+	if err != nil {
+		uc.log.Error("change password failed", "step", "lookup_user", "error", err)
+		return nil, fmt.Errorf("change_password: lookup user: %w", err)
+	}
+	if u == nil {
+		uc.log.Warn("change password rejected", "reason", "user_not_found")
+		return nil, application.ErrInvalidCredentials
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.OldPassword)); err != nil {
+		uc.log.Warn("change password rejected", "reason", "old_password_mismatch", "user_id", u.ID)
+		return nil, application.ErrInvalidCredentials
+	}
+
+	hash, err := HashPassword(req.NewPassword)
+	if err != nil {
+		uc.log.Error("change password failed", "step", "hash_password", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("change_password: %w", err)
+	}
+
+	err = uc.db.Transaction(func(tx *gorm.DB) error {
+		txUserRepo := txUserRepository(tx, uc.log)
+
+		u.PasswordHash = hash
+		if err := txUserRepo.Update(ctx, u); err != nil {
+			return fmt.Errorf("update password: %w", err)
+		}
+		if err := txUserRepo.IncrementTokenVersion(ctx, u.ID); err != nil {
+			return fmt.Errorf("increment token version: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		uc.log.Error("change password failed", "step", "transaction", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("change_password: %w", err)
+	}
+
+	pair, err := IssueTokenPair(uc.jwtService, u.ID, u.TokenVersion+1)
+	if err != nil {
+		uc.log.Error("change password failed", "step", "issue_tokens", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("change_password: %w", err)
+	}
+
+	uc.log.Info("password changed", "user_id", u.ID)
+	return &ChangePasswordResponse{AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken}, nil
 }

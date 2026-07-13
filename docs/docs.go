@@ -15,6 +15,75 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/v1/auth/change-password": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Changes the password of the currently logged-in account by verifying ` + "`" + `old_password` + "`" + `.\n` + "`" + `retry_new_password` + "`" + ` must exactly match ` + "`" + `new_password` + "`" + `.\n\nOn success:\n- ALL existing sessions on every device are revoked (same as ` + "`" + `/auth/reset-password` + "`" + `).\n- A fresh ` + "`" + `access_token` + "`" + ` + ` + "`" + `refresh_token` + "`" + ` pair is returned for THIS device so the caller isn't logged out.\n\nThe new password follows the same policy as registration: minimum 10 characters and\nchecked against known breach databases.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Change password (authenticated)",
+                "parameters": [
+                    {
+                        "description": "Old password, new password, and confirmation",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ChangePasswordRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Password changed. New session issued for this device.",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/auth.ChangePasswordResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "VALIDATION_ERROR | PASSWORD_TOO_SHORT | PASSWORD_BREACHED | PASSWORD_CONFIRMATION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | INVALID_CREDENTIALS — access token invalid, or old_password is incorrect",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/auth/forgot-password": {
             "post": {
                 "description": "Sends a 6-digit password reset OTP to the given email address.\n\n**Anti-enumeration:** this endpoint ALWAYS returns the same generic 200 response,\nwhether or not the email is registered. Do not use it to probe for accounts.\n\n**Rate limiting:** 60-second cooldown + max 5 requests per 24 hours per email\n(separate budget from ` + "`" + `/auth/resend-email-otp` + "`" + `). When throttled, the response\nincludes ` + "`" + `meta.retry_after_seconds` + "`" + `.\n\nFlow: ` + "`" + `/forgot-password` + "`" + ` → ` + "`" + `/verify-reset-otp` + "`" + ` → ` + "`" + `/reset-password` + "`" + `.",
@@ -213,7 +282,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Revokes EVERY session of the account (FR-H8) by incrementing the internal token version.\nAll previously issued access AND refresh tokens become invalid on their next use,\nincluding the one used to call this endpoint.",
+                "description": "Revokes EVERY session of the account by incrementing the internal token version.\nAll previously issued access AND refresh tokens become invalid on their next use,\nincluding the one used to call this endpoint.",
                 "produces": [
                     "application/json"
                 ],
@@ -669,6 +738,17 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "auth.ChangePasswordResponse": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
         "auth.CreateGuestSessionResponse": {
             "type": "object",
             "properties": {
@@ -725,6 +805,26 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "reset_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ChangePasswordRequestDTO": {
+            "type": "object",
+            "required": [
+                "new_password",
+                "old_password",
+                "retry_new_password"
+            ],
+            "properties": {
+                "new_password": {
+                    "type": "string",
+                    "minLength": 10
+                },
+                "old_password": {
+                    "type": "string"
+                },
+                "retry_new_password": {
                     "type": "string"
                 }
             }
