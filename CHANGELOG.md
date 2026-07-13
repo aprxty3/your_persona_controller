@@ -5,7 +5,37 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
-## [UNRELEASED] — 2026-07-13
+## [UNRELEASED] — 2026-07-14
+
+### Domain layer reorganization — assessment aggregate vs. content catalog
+
+#### [C] `internal/domain/testresult` absorbs `answer` and `promptauditlog`
+- `TestResult`, `Answer`, and `PromptAuditLog` merged into one domain package (files: `test_result_entity.go`, `answer_entity.go`, `promptauditlog_entity.go`, `testresult_repository.go`) — mirrors the `account_repository.go` pattern (multiple interfaces, one file), applied here on real evidence: all three are always mutated inside the same `db.Transaction` in `SubmitAssessmentUseCase.Execute` (TICKET-03), and `Answer`/`PromptAuditLog` both FK into `TestResultID`. `TestResult` is the aggregate root.
+- `testresult.Repository` renamed to `testresult.TestResultRepository` (interface now needs an explicit prefix since the package holds three repositories, not one — matches `account`'s `UserRepository`/`GuestSessionRepository`/etc. naming)
+- `answer.Repository` → `testresult.AnswerRepository`; `promptauditlog.Repository` → `testresult.PromptAuditLogRepository`
+- Persistence layer (`internal/infrastructure/persistence/postgres/assessment/`) already lived together from the TICKET-01 review pass and an earlier manual move — this makes the domain layer match that same evidence-based grouping
+
+#### [A] `internal/domain/content` — new package for `question`+`questiontranslation`+`insighttemplate`
+- Deliberately kept **separate** from `testresult` despite living in the same infra directory: `Question`/`InsightTemplate` are locale-aware, read-only reference/catalog data — seeded once (TICKET-10), read by many `TestResult`s, never mutated inside the submit transaction. Merging them into `testresult` would have been "feels quiz-related," not evidence of shared mutation/dependency — the same anti-pattern this whole reorganization is meant to avoid.
+- Real evidence *for* this specific merge: both already share the exact same fallback-resolution algorithm (`pkg/locale.PickWithFallback`), are seeded together in one ticket/binary (`cmd/seed/main.go`), and are both consumed as pure lookup tables.
+- Deduplicated `QuestionTranslation`: it existed as two byte-for-byte identical struct definitions (`question.QuestionTranslation` and `questiontranslation.QuestionTranslation`) — now a single `content.QuestionTranslation`. Two identical mapper functions in the persistence layer collapsed into one as a result.
+- `question.Repository` → `content.QuestionRepository`, `questiontranslation.Repository` → `content.QuestionTranslationRepository`, `insighttemplate.Repository` → `content.InsightTemplateRepository`
+
+### Assessment — Submit Usecase & AI Output Validation (TICKET-03, TICKET-05)
+
+#### [A] `SubmitAssessmentUseCase.Execute` fully implemented — was a skeleton of placeholder comments
+- Idempotency check (SHA-256 hash of the answer set, order-independent) → distributed lock (`quota_lock:{session_id}`, held for the full submission, TTL 20s > Gemini's own 15s timeout) → monthly quota check (Members only, `>= 3` rejected) → per-essay 4000-char cap + crisis-keyword wellbeing scan → Gemini call (skipped entirely if there are no essay answers, rather than spending a call on empty input) → single `db.Transaction` for TestResult + Answers + PromptAuditLog + referral event → best-effort PDF enqueue → idempotency cache save (TTL 24h)
+- New sentinel `application.ErrQuotaExceeded`; reuses `ErrLockNotAcquired`/`ErrIdempotencyKeyReused` from TICKET-02
+- Referral event (FR-G1): fires `test_completed` only for a Member's first-ever completed/fallback_static result — new `TestResultRepository.CountCompletedByUser` (all-time, distinct from the existing month-scoped `CountMonthlyUsage`)
+- New `QuestionRepository.FindByIDs` (bulk, single query) to classify which answers are essays without an N+1 lookup per answer
+- **Known gap, not invented**: `MBTIType`/`GritScore`/`TraitScores` are left at zero-value — no ticket in the roadmap defines the psychometric scoring algorithm yet. Flagged in-code and here rather than guessing a formula.
+- **Fixed pre-existing bug found while wiring this up**: `TestResultRepository.toModel` marshaled a nil `TraitScores` map into an empty Go string, but the column is `jsonb` — Postgres rejects `''` as invalid JSON. Would have broken the very first real insert into this table. Now defaults to `"{}"`.
+- **Architecture fix**: removed `redis.QuotaLockKey` (added in the TICKET-02 pass) — having the application layer import an infra package just to format a string violated the dependency-inversion rule that layer's own local interfaces exist to enforce. The key is now formatted inline in the usecase.
+
+#### [A] `pkg/aivalidator.ValidateOutput` — Gemini output sanity check (TICKET-05)
+- Rejects output under 20 chars, and known refusal phrases (locale-specific list + English always checked as a safety net, since a refusal can come back in English regardless of requested locale)
+- **Fixed a real false-positive bug in the pre-existing scaffold**: the original patterns included bare `"i'm sorry"` and `"maaf"` — both are common words that would trip on legitimate empathetic analysis text (e.g. "I'm sorry to hear about the challenges you faced..."). Replaced with more specific multi-word phrases; verified against both refusal and legitimate-empathetic-text cases.
+- `gemini.Client.GenerateSummary` signature changed to also return the exact `rawPrompt` sent (system_instruction + essay text), even on error — so `PROMPT_AUDIT_LOG.raw_prompt` reflects what was *actually* sent rather than a second, potentially-drifted reconstruction of it. Audit log entry (with `FlaggedAnomaly`) is written inside the same transaction as the TestResult it references, for every call that was actually made (skipped when there was no essay content to send).
 
 ### Platform Services — Redis Lock/Idempotency, Locale Negotiation, HIBP (TICKET-02, TICKET-15, TICKET-16)
 

@@ -51,4 +51,5 @@ var (
 var (
 	ErrLockNotAcquired      = errors.New("LOCK_NOT_ACQUIRED")
 	ErrIdempotencyKeyReused = errors.New("IDEMPOTENCY_KEY_REUSED")
+	ErrQuotaExceeded        = errors.New("QUOTA_EXCEEDED")
 )

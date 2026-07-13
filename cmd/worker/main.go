@@ -13,8 +13,8 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/mailer"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	pgaccount "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
+	pgassessment "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/assessment"
 	pgdeletionrequest "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/deletionrequest"
-	pgtestresult "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/storage/s3"
 	workerhandler "github.com/aprxty3/your_persona_controller.git/internal/interfaces/worker"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
@@ -90,7 +90,7 @@ func main() {
 		pgdeletionrequest.NewRepository(db, logInstance),
 		pgaccount.NewUserRepository(db, logInstance),
 		pgaccount.NewGuestSessionRepository(db, logInstance),
-		pgtestresult.NewTestResultRepository(db, logInstance),
+		pgassessment.NewTestResultRepository(db, logInstance),
 		s3Client,
 		dispatcher,
 		logInstance,

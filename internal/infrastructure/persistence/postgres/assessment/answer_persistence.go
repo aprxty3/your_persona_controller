@@ -3,7 +3,7 @@ package assessment
 import (
 	"context"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/answer"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"gorm.io/gorm"
@@ -15,7 +15,7 @@ type AnswerRepository struct {
 	log logger.Logger
 }
 
-var _ answer.Repository = (*AnswerRepository)(nil)
+var _ testresult.AnswerRepository = (*AnswerRepository)(nil)
 
 func NewAnswerRepository(db *gorm.DB, log logger.Logger) *AnswerRepository {
 	return &AnswerRepository{
@@ -24,7 +24,7 @@ func NewAnswerRepository(db *gorm.DB, log logger.Logger) *AnswerRepository {
 	}
 }
 
-func toAnswerModel(entity *answer.Answer) postgres.AnswerModel {
+func toAnswerModel(entity *testresult.Answer) postgres.AnswerModel {
 	return postgres.AnswerModel{
 		ID:           entity.ID,
 		TestResultID: entity.TestResultID,
@@ -35,8 +35,8 @@ func toAnswerModel(entity *answer.Answer) postgres.AnswerModel {
 	}
 }
 
-func toAnswerEntity(model *postgres.AnswerModel) answer.Answer {
-	return answer.Answer{
+func toAnswerEntity(model *postgres.AnswerModel) testresult.Answer {
+	return testresult.Answer{
 		ID:           model.ID,
 		TestResultID: model.TestResultID,
 		QuestionID:   model.QuestionID,
@@ -46,7 +46,7 @@ func toAnswerEntity(model *postgres.AnswerModel) answer.Answer {
 	}
 }
 
-func (r *AnswerRepository) UpsertAnswers(ctx context.Context, testResultID string, answers []answer.Answer) error {
+func (r *AnswerRepository) UpsertAnswers(ctx context.Context, testResultID string, answers []testresult.Answer) error {
 	if len(answers) == 0 {
 		return nil
 	}
@@ -71,7 +71,7 @@ func (r *AnswerRepository) UpsertAnswers(ctx context.Context, testResultID strin
 	return nil
 }
 
-func (r *AnswerRepository) FindByTestResultID(ctx context.Context, testResultID string) ([]answer.Answer, error) {
+func (r *AnswerRepository) FindByTestResultID(ctx context.Context, testResultID string) ([]testresult.Answer, error) {
 	var models []postgres.AnswerModel
 	err := r.db.WithContext(ctx).
 		Where("test_result_id = ?", testResultID).
@@ -83,7 +83,7 @@ func (r *AnswerRepository) FindByTestResultID(ctx context.Context, testResultID 
 		return nil, err
 	}
 
-	entities := make([]answer.Answer, len(models))
+	entities := make([]testresult.Answer, len(models))
 	for i, m := range models {
 		entities[i] = toAnswerEntity(&m)
 	}

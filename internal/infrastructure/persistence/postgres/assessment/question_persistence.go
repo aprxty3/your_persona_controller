@@ -4,8 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/question"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/questiontranslation"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/pkg/locale"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
@@ -19,8 +18,8 @@ type QuestionRepository struct {
 }
 
 var (
-	_ question.Repository            = (*QuestionRepository)(nil)
-	_ questiontranslation.Repository = (*QuestionRepository)(nil)
+	_ content.QuestionRepository            = (*QuestionRepository)(nil)
+	_ content.QuestionTranslationRepository = (*QuestionRepository)(nil)
 )
 
 func NewQuestionRepository(db *gorm.DB, log logger.Logger) *QuestionRepository {
@@ -30,19 +29,19 @@ func NewQuestionRepository(db *gorm.DB, log logger.Logger) *QuestionRepository {
 	}
 }
 
-func toQuestionEntity(model *postgres.QuestionModel) question.Question {
-	return question.Question{
+func toQuestionEntity(model *postgres.QuestionModel) content.Question {
+	return content.Question{
 		ID:               model.ID,
-		Section:          question.QuestionSection(model.Section),
-		Type:             question.QuestionType(model.Type),
+		Section:          content.QuestionSection(model.Section),
+		Type:             content.QuestionType(model.Type),
 		IsReverseScored:  model.IsReverseScored,
 		IsAttentionCheck: model.IsAttentionCheck,
 		DisplayOrder:     model.DisplayOrder,
 	}
 }
 
-func toTranslationEntity(model *postgres.QuestionTranslationModel) question.QuestionTranslation {
-	return question.QuestionTranslation{
+func toQuestionTranslationEntity(model *postgres.QuestionTranslationModel) content.QuestionTranslation {
+	return content.QuestionTranslation{
 		ID:           model.ID,
 		QuestionID:   model.QuestionID,
 		Locale:       model.Locale,
@@ -51,7 +50,7 @@ func toTranslationEntity(model *postgres.QuestionTranslationModel) question.Ques
 	}
 }
 
-func toQuestionTranslationModel(entity *questiontranslation.QuestionTranslation) postgres.QuestionTranslationModel {
+func toQuestionTranslationModel(entity *content.QuestionTranslation) postgres.QuestionTranslationModel {
 	return postgres.QuestionTranslationModel{
 		ID:           entity.ID,
 		QuestionID:   entity.QuestionID,
@@ -61,17 +60,7 @@ func toQuestionTranslationModel(entity *questiontranslation.QuestionTranslation)
 	}
 }
 
-func toQuestionTranslationEntity(model *postgres.QuestionTranslationModel) questiontranslation.QuestionTranslation {
-	return questiontranslation.QuestionTranslation{
-		ID:           model.ID,
-		QuestionID:   model.QuestionID,
-		Locale:       model.Locale,
-		QuestionText: model.QuestionText,
-		Options:      model.Options,
-	}
-}
-
-func (r *QuestionRepository) FindByID(ctx context.Context, id string) (*question.Question, error) {
+func (r *QuestionRepository) FindByID(ctx context.Context, id string) (*content.Question, error) {
 	var m postgres.QuestionModel
 	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -85,7 +74,27 @@ func (r *QuestionRepository) FindByID(ctx context.Context, id string) (*question
 	return &q, nil
 }
 
-func (r *QuestionRepository) FindAllWithTranslation(ctx context.Context, loc string) ([]question.Question, map[string]question.QuestionTranslation, error) {
+// FindByIDs returns questions matching any of ids in a single query.
+func (r *QuestionRepository) FindByIDs(ctx context.Context, ids []string) ([]content.Question, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	var models []postgres.QuestionModel
+	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&models).Error
+	if err != nil {
+		r.log.Error("query failed", "op", "FindByIDs", "error", err)
+		return nil, err
+	}
+
+	questions := make([]content.Question, len(models))
+	for i, m := range models {
+		questions[i] = toQuestionEntity(&m)
+	}
+	return questions, nil
+}
+
+func (r *QuestionRepository) FindAllWithTranslation(ctx context.Context, loc string) ([]content.Question, map[string]content.QuestionTranslation, error) {
 	var questionModels []postgres.QuestionModel
 	err := r.db.WithContext(ctx).
 		Order("section asc, display_order asc").
@@ -95,7 +104,7 @@ func (r *QuestionRepository) FindAllWithTranslation(ctx context.Context, loc str
 		return nil, nil, err
 	}
 
-	questions := make([]question.Question, len(questionModels))
+	questions := make([]content.Question, len(questionModels))
 	questionIDs := make([]string, len(questionModels))
 	for i, m := range questionModels {
 		questions[i] = toQuestionEntity(&m)
@@ -116,15 +125,15 @@ func (r *QuestionRepository) FindAllWithTranslation(ctx context.Context, loc str
 		func(m postgres.QuestionTranslationModel) string { return m.Locale },
 		loc)
 
-	translationMap := make(map[string]question.QuestionTranslation, len(picked))
+	translationMap := make(map[string]content.QuestionTranslation, len(picked))
 	for questionID, tr := range picked {
-		translationMap[questionID] = toTranslationEntity(&tr)
+		translationMap[questionID] = toQuestionTranslationEntity(&tr)
 	}
 
 	return questions, translationMap, nil
 }
 
-func (r *QuestionRepository) FindByQuestionAndLocale(ctx context.Context, questionID, locale string) (*questiontranslation.QuestionTranslation, error) {
+func (r *QuestionRepository) FindByQuestionAndLocale(ctx context.Context, questionID, locale string) (*content.QuestionTranslation, error) {
 	var m postgres.QuestionTranslationModel
 	err := r.db.WithContext(ctx).
 		First(&m, "question_id = ? AND locale = ?", questionID, locale).
@@ -142,7 +151,7 @@ func (r *QuestionRepository) FindByQuestionAndLocale(ctx context.Context, questi
 	return &entity, nil
 }
 
-func (r *QuestionRepository) UpsertTranslation(ctx context.Context, tr *questiontranslation.QuestionTranslation) error {
+func (r *QuestionRepository) UpsertTranslation(ctx context.Context, tr *content.QuestionTranslation) error {
 	m := toQuestionTranslationModel(tr)
 	err := r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{

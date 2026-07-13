@@ -48,25 +48,26 @@ func NewClient(apiKey string, modelName string, maxConcurrent int64) (*Client, e
 }
 
 // GenerateSummary calls the Gemini API to analyze the essay.
-func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale string) (string, int, error) {
-	if c.client == nil {
-		return "", 0, errors.New("gemini client is unconfigured: GEMINI_API_KEY environment variable is empty")
-	}
-
-	if err := c.sem.Acquire(ctx, 1); err != nil {
-		return "", 0, errors.New("request aborted while waiting for AI slot or context canceled")
-	}
-	defer c.sem.Release(1)
-
-	aiCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
-	defer cancel()
-
+func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale string) (summary string, rawPrompt string, tokens int, err error) {
 	sysInstruction := fmt.Sprintf(
 		"You are an expert psychologist. Analyze the following essay. "+
 			"Respond strictly in the '%s' language. "+
 			"Focus on GRIT and MBTI traits. Do not provide clinical diagnosis.",
 		locale,
 	)
+	rawPrompt = sysInstruction + "\n\n---\n\n" + essayText
+
+	if c.client == nil {
+		return "", rawPrompt, 0, errors.New("gemini client is unconfigured: GEMINI_API_KEY environment variable is empty")
+	}
+
+	if err := c.sem.Acquire(ctx, 1); err != nil {
+		return "", rawPrompt, 0, errors.New("request aborted while waiting for AI slot or context canceled")
+	}
+	defer c.sem.Release(1)
+
+	aiCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+	defer cancel()
 
 	genConfig := &genai.GenerateContentConfig{
 		SystemInstruction: &genai.Content{
@@ -83,23 +84,22 @@ func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale s
 			},
 		},
 	}
-	resp, err := c.client.Models.GenerateContent(
+	resp, genErr := c.client.Models.GenerateContent(
 		aiCtx,
 		c.modelName,
 		userContents,
 		genConfig,
 	)
 
-	if err != nil {
-		log.Printf("[Gemini API] Failed to generate content: %v\n", err)
-		return "", 0, err
+	if genErr != nil {
+		log.Printf("[Gemini API] Failed to generate content: %v\n", genErr)
+		return "", rawPrompt, 0, genErr
 	}
 
 	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return "", 0, errors.New("empty response from Gemini")
+		return "", rawPrompt, 0, errors.New("empty response from Gemini")
 	}
 
-	var summary string
 	for _, part := range resp.Candidates[0].Content.Parts {
 		if part.Text != "" {
 			summary += part.Text
@@ -111,7 +111,7 @@ func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale s
 		totalTokens = int(resp.UsageMetadata.TotalTokenCount)
 	}
 
-	return summary, totalTokens, nil
+	return summary, rawPrompt, totalTokens, nil
 }
 
 // Close gracefully shuts down the Gemini client if needed (SDK baru menangani resource secara efisien).

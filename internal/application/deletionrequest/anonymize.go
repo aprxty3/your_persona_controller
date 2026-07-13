@@ -9,7 +9,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	pgaccount "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
-	pgtestresult "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
+	pgassessment "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/assessment"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/aprxty3/your_persona_controller.git/pkg/taskqueue"
 	"gorm.io/gorm"
@@ -32,7 +32,7 @@ type AnonymizeUseCase struct {
 	deleteRepo     deletionrequest.Repository
 	userRepo       account.UserRepository
 	guestRepo      account.GuestSessionRepository
-	testResultRepo testresult.Repository
+	testResultRepo testresult.TestResultRepository
 	pdfStorage     PDFStorage
 	dispatcher     taskqueue.Dispatcher
 	log            logger.Logger
@@ -44,7 +44,7 @@ func NewAnonymizeUseCase(
 	deleteRepo deletionrequest.Repository,
 	userRepo account.UserRepository,
 	guestRepo account.GuestSessionRepository,
-	testResultRepo testresult.Repository,
+	testResultRepo testresult.TestResultRepository,
 	pdfStorage PDFStorage,
 	dispatcher taskqueue.Dispatcher,
 	log logger.Logger,
@@ -142,7 +142,7 @@ func (uc *AnonymizeUseCase) Anonymize(ctx context.Context, req AnonymizeRequest)
 		if err := pgaccount.NewGuestSessionRepository(tx, uc.log).AnonymizeClaimedByUser(ctx, dr.UserID); err != nil {
 			return fmt.Errorf("tx: anonymize guest sessions: %w", err)
 		}
-		if err := pgtestresult.NewTestResultRepository(tx, uc.log).ScrubPersonalDataByUser(ctx, dr.UserID); err != nil {
+		if err := pgassessment.NewTestResultRepository(tx, uc.log).ScrubPersonalDataByUser(ctx, dr.UserID); err != nil {
 			return fmt.Errorf("tx: scrub test results: %w", err)
 		}
 		return nil

@@ -32,11 +32,6 @@ func NewDistributedLockService(client *redis.Client) assessment.DistributedLockS
 	return &DistributedLockService{client: client}
 }
 
-// QuotaLockKey builds the canonical quota-lock Redis key for a user or guest session ID, so callers never hand-format this string themselves.
-func QuotaLockKey(id string) string {
-	return fmt.Sprintf("quota_lock:%s", id)
-}
-
 // AcquireLock attempts to atomically claim the key via SETNX. Returns false (no error) if another request already holds the lock.
 func (s *DistributedLockService) AcquireLock(ctx context.Context, key string, ttl time.Duration) (bool, error) {
 	token := uuid.New().String()

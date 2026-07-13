@@ -1,4 +1,4 @@
-package testresult
+package assessment
 
 import (
 	"context"
@@ -13,14 +13,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestResultRepository implements testresult.Repository backed by PostgreSQL via GORM.
+// TestResultRepository implements testresult.TestResultRepository backed by PostgreSQL via GORM.
 type TestResultRepository struct {
 	db  *gorm.DB
 	log logger.Logger
 }
 
 // NewTestResultRepository constructs a TestResultRepository.
-func NewTestResultRepository(db *gorm.DB, log logger.Logger) testresult.Repository {
+func NewTestResultRepository(db *gorm.DB, log logger.Logger) testresult.TestResultRepository {
 	return &TestResultRepository{db: db, log: log.With("repository", "testresult")}
 }
 
@@ -103,6 +103,21 @@ func (r *TestResultRepository) CountMonthlyUsage(ctx context.Context, userID str
 	if err != nil {
 		r.log.Error("query failed", "op", "CountMonthlyUsage", "error", err)
 		return 0, err
+	}
+	return count, nil
+}
+
+// CountCompletedByUser counts every completed/fallback_static result the user
+// has ever submitted (all-time, unlike CountMonthlyUsage) — used to detect a
+// member's very first completed assessment for the signup-referral bonus (FR-G1).
+func (r *TestResultRepository) CountCompletedByUser(ctx context.Context, userID string) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
+		Where("user_id = ? AND status IN (?, ?)", userID, string(testresult.StatusCompleted), string(testresult.StatusFallbackStatic)).
+		Count(&count).Error
+	if err != nil {
+		r.log.Error("query failed", "op", "CountCompletedByUser", "error", err)
+		return 0, fmt.Errorf("count completed by user: %w", err)
 	}
 	return count, nil
 }
@@ -199,9 +214,12 @@ func (r *TestResultRepository) ScrubPersonalDataByUser(ctx context.Context, user
 }
 
 func toModel(res *testresult.TestResult) (postgres.TestResultModel, error) {
-	var traits []byte
-	var err error
+	// TraitScores is a jsonb column — an empty Go string ("") is not valid
+	// JSON and Postgres rejects it on insert, so an unset map must become
+	// the literal "{}", never left blank.
+	traits := []byte("{}")
 	if res.TraitScores != nil {
+		var err error
 		traits, err = json.Marshal(res.TraitScores)
 		if err != nil {
 			return postgres.TestResultModel{}, fmt.Errorf("marshal trait scores: %w", err)

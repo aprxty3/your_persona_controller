@@ -3,7 +3,7 @@ package assessment
 import (
 	"context"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/insighttemplate"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/pkg/locale"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
@@ -15,20 +15,20 @@ type InsightTemplateRepository struct {
 	log logger.Logger
 }
 
-func NewInsightTemplateRepository(db *gorm.DB, log logger.Logger) insighttemplate.Repository {
+func NewInsightTemplateRepository(db *gorm.DB, log logger.Logger) content.InsightTemplateRepository {
 	return &InsightTemplateRepository{
 		db:  db,
 		log: log.With("repository", "insighttemplate"),
 	}
 }
 
-func toInsightTemplateEntity(model *postgres.InsightTemplateModel) insighttemplate.InsightTemplate {
-	return insighttemplate.InsightTemplate{
+func toInsightTemplateEntity(model *postgres.InsightTemplateModel) content.InsightTemplate {
+	return content.InsightTemplate{
 		ID:             model.ID,
 		InsightKey:     model.InsightKey,
 		Locale:         model.Locale,
 		Trait:          model.Trait,
-		ConditionType:  insighttemplate.ConditionType(model.ConditionType),
+		ConditionType:  content.ConditionType(model.ConditionType),
 		MinDelta:       model.MinDelta,
 		ThresholdValue: model.ThresholdValue,
 		TemplateText:   model.TemplateText,
@@ -36,7 +36,7 @@ func toInsightTemplateEntity(model *postgres.InsightTemplateModel) insighttempla
 	}
 }
 
-func (r *InsightTemplateRepository) FindMatchingTemplates(ctx context.Context, trait, loc string) ([]insighttemplate.InsightTemplate, error) {
+func (r *InsightTemplateRepository) FindMatchingTemplates(ctx context.Context, trait, loc string) ([]content.InsightTemplate, error) {
 	var models []postgres.InsightTemplateModel
 
 	err := r.db.WithContext(ctx).
@@ -53,7 +53,7 @@ func (r *InsightTemplateRepository) FindMatchingTemplates(ctx context.Context, t
 		func(m postgres.InsightTemplateModel) string { return m.Locale },
 		loc)
 
-	entities := make([]insighttemplate.InsightTemplate, 0, len(picked))
+	entities := make([]content.InsightTemplate, 0, len(picked))
 	for _, m := range picked {
 		entities = append(entities, toInsightTemplateEntity(&m))
 	}

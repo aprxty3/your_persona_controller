@@ -18,7 +18,6 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/assessment"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/deletionrequest"
-	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
 	asynq2 "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/security"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
@@ -41,8 +40,9 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	if err != nil {
 		return nil, err
 	}
-	repository := testresult.NewTestResultRepository(db, loggerInstance)
-	answerRepository := assessment.NewAnswerRepository(db, loggerInstance)
+	testResultRepository := assessment.NewTestResultRepository(db, loggerInstance)
+	questionRepository := assessment.NewQuestionRepository(db, loggerInstance)
+	userRepository := account.NewUserRepository(db, loggerInstance)
 	client, err := provideGeminiClient(geminiAPIKey, geminiModel, maxConcurrent)
 	if err != nil {
 		return nil, err
@@ -54,11 +54,10 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	distributedLockService := redis.NewDistributedLockService(redisClient)
 	idempotencyService := redis.NewIdempotencyService(redisClient, loggerInstance)
 	pdfQueueService := stubs.NewStubPDFQueueService()
-	submitAssessmentUseCase := assessment2.NewSubmitAssessmentUseCase(repository, answerRepository, client, distributedLockService, idempotencyService, pdfQueueService)
+	submitAssessmentUseCase := assessment2.NewSubmitAssessmentUseCase(db, testResultRepository, questionRepository, userRepository, client, distributedLockService, idempotencyService, pdfQueueService, loggerInstance)
 	assessmentHandler := handler.NewAssessmentHandler(submitAssessmentUseCase)
 	guestSessionRepository := account.NewGuestSessionRepository(db, loggerInstance)
 	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(guestSessionRepository, loggerInstance)
-	userRepository := account.NewUserRepository(db, loggerInstance)
 	verificationTokenRepository := account.NewVerificationTokenRepository(db, loggerInstance)
 	referralRepository := account.NewReferralRepository(db, loggerInstance)
 	passwordBreachChecker := security.NewHIBPBreachChecker(loggerInstance)
@@ -68,7 +67,7 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	}
 	dispatcher := taskqueue.NewAsynqDispatcher(asynqClient)
 	ipRateLimitService := redis.NewIPRateLimitService(redisClient)
-	registerUseCase := auth.NewRegisterUseCase(db, userRepository, guestSessionRepository, verificationTokenRepository, referralRepository, repository, passwordBreachChecker, dispatcher, ipRateLimitService, loggerInstance)
+	registerUseCase := auth.NewRegisterUseCase(db, userRepository, guestSessionRepository, verificationTokenRepository, referralRepository, testResultRepository, passwordBreachChecker, dispatcher, ipRateLimitService, loggerInstance)
 	otpRateLimitService := redis.NewOTPRateLimitService(redisClient)
 	accountUseCase := auth.NewAccountUseCase(userRepository, verificationTokenRepository, dispatcher, otpRateLimitService, loggerInstance)
 	jwtService := provideJWTService(jwtSecret)
@@ -76,8 +75,8 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	sessionUseCase := auth.NewSessionUseCase(db, userRepository, verificationTokenRepository, passwordBreachChecker, jwtService, tokenStore, ipRateLimitService, loggerInstance)
 	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, accountUseCase, sessionUseCase, loggerInstance)
 	profileUseCase := profile.NewProfileUseCase(userRepository, referralRepository, loggerInstance)
-	deletionrequestRepository := deletionrequest.NewRepository(db, loggerInstance)
-	deletionUseCase := deletionrequest2.NewDeletionUseCase(userRepository, deletionrequestRepository, loggerInstance)
+	repository := deletionrequest.NewRepository(db, loggerInstance)
+	deletionUseCase := deletionrequest2.NewDeletionUseCase(userRepository, repository, loggerInstance)
 	accountHandler := handler.NewAccountHandler(profileUseCase, deletionUseCase, loggerInstance)
 	healthHandler := handler.NewHealthHandler(db, redisClient)
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)

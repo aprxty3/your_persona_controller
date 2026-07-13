@@ -79,3 +79,11 @@ func ValidateMinLength(fieldName, value string, minLen int) error {
 	}
 	return nil
 }
+
+// ValidateMaxLength returns an ErrInvalidInput error if the value is longer than maxLen characters.
+func ValidateMaxLength(fieldName, value string, maxLen int) error {
+	if len(value) > maxLen {
+		return fmt.Errorf("%w: %s must not exceed %d characters", ErrInvalidInput, fieldName, maxLen)
+	}
+	return nil
+}

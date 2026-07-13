@@ -10,7 +10,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	pgaccount "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
-	pgtestresult "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
+	pgassessment "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/assessment"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/aprxty3/your_persona_controller.git/pkg/otp"
 	"github.com/aprxty3/your_persona_controller.git/pkg/taskqueue"
@@ -34,8 +34,8 @@ func txReferralRepository(tx *gorm.DB, log logger.Logger) account.ReferralReposi
 	return pgaccount.NewReferralRepository(tx, log)
 }
 
-func txTestResultRepository(tx *gorm.DB, log logger.Logger) testresult.Repository {
-	return pgtestresult.NewTestResultRepository(tx, log)
+func txTestResultRepository(tx *gorm.DB, log logger.Logger) testresult.TestResultRepository {
+	return pgassessment.NewTestResultRepository(tx, log)
 }
 
 // RegisterRequest holds the validated input for account creation.
@@ -61,7 +61,7 @@ type RegisterUseCase struct {
 	guestRepo      account.GuestSessionRepository
 	tokenRepo      account.VerificationTokenRepository
 	referralRepo   account.ReferralRepository
-	testResultRepo testresult.Repository
+	testResultRepo testresult.TestResultRepository
 	breachChecker  PasswordBreachChecker
 	dispatcher     taskqueue.Dispatcher
 	ipRateLimiter  *redis.IPRateLimitService
@@ -77,7 +77,7 @@ func NewRegisterUseCase(
 	guestRepo account.GuestSessionRepository,
 	tokenRepo account.VerificationTokenRepository,
 	referralRepo account.ReferralRepository,
-	testResultRepo testresult.Repository,
+	testResultRepo testresult.TestResultRepository,
 	breachChecker PasswordBreachChecker,
 	dispatcher taskqueue.Dispatcher,
 	ipRateLimiter *redis.IPRateLimitService,
@@ -251,7 +251,7 @@ func buildUser(req RegisterRequest, hash string, guest *account.GuestSession) *a
 func recordReferralConversion(
 	ctx context.Context,
 	refRepo account.ReferralRepository,
-	trRepo testresult.Repository,
+	trRepo testresult.TestResultRepository,
 	newUserID,
 	referralCode,
 	guestSessionID string,

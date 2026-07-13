@@ -16,7 +16,6 @@ import (
 	pgaccount "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
 	pgassessment "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/assessment"
 	pgdeletionrequest "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/deletionrequest"
-	pgtestresult "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
 	asynqclient "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/security"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
@@ -88,11 +87,11 @@ func InitializeAPI(
 		pgaccount.NewVerificationTokenRepository,
 		pgaccount.NewReferralRepository,
 		pgdeletionrequest.NewRepository,
-		pgtestresult.NewTestResultRepository,
-		pgassessment.NewAnswerRepository,
+		pgassessment.NewTestResultRepository,
+		pgassessment.NewQuestionRepository,
 
-		wire.Bind(new(assessment.TestResultRepository), new(testresult.Repository)),
-		wire.Bind(new(assessment.AnswerRepository), new(*pgassessment.AnswerRepository)),
+		wire.Bind(new(assessment.TestResultRepository), new(testresult.TestResultRepository)),
+		wire.Bind(new(assessment.QuestionRepository), new(*pgassessment.QuestionRepository)),
 
 		// Stubs for assessment interfaces
 		stubs.NewStubPDFQueueService,

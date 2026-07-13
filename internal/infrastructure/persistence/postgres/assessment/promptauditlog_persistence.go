@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/promptauditlog"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"gorm.io/gorm"
@@ -15,14 +15,14 @@ type PromptAuditLogRepository struct {
 	log logger.Logger
 }
 
-func NewPromptAuditLogRepository(db *gorm.DB, log logger.Logger) promptauditlog.Repository {
+func NewPromptAuditLogRepository(db *gorm.DB, log logger.Logger) testresult.PromptAuditLogRepository {
 	return &PromptAuditLogRepository{
 		db:  db,
 		log: log.With("repository", "promptauditlog"),
 	}
 }
 
-func toPromptAuditLogModel(entity *promptauditlog.PromptAuditLog) postgres.PromptAuditLogModel {
+func toPromptAuditLogModel(entity *testresult.PromptAuditLog) postgres.PromptAuditLogModel {
 	return postgres.PromptAuditLogModel{
 		ID:             entity.ID,
 		TestResultID:   entity.TestResultID,
@@ -34,7 +34,7 @@ func toPromptAuditLogModel(entity *promptauditlog.PromptAuditLog) postgres.Promp
 	}
 }
 
-func (r *PromptAuditLogRepository) Create(ctx context.Context, log *promptauditlog.PromptAuditLog) error {
+func (r *PromptAuditLogRepository) Create(ctx context.Context, log *testresult.PromptAuditLog) error {
 	m := toPromptAuditLogModel(log)
 	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
 		r.log.Error("query failed", "op", "Create", "error", err)

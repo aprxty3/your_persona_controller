@@ -2,11 +2,33 @@ package assessment
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/answer"
+	"github.com/aprxty3/your_persona_controller.git/internal/application"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
+	pgaccount "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
+	pgassessment "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/assessment"
+	"github.com/aprxty3/your_persona_controller.git/pkg/aivalidator"
+	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
+
+const (
+	essayMaxLength       = 4000
+	monthlyQuotaLimit    = 3
+	quotaLockTTL         = 20 * time.Second
+	idempotencyTTL       = 24 * time.Hour
+	guestResultTTL       = 14 * 24 * time.Hour
+	promptAuditRetention = 30 * 24 * time.Hour
 )
 
 // DTOs for the Data Transfer between Handler and Usecase
@@ -32,24 +54,17 @@ type SubmitResponse struct {
 	Status        string
 }
 
-// -------------------------------------------------------------------------
-// DEPENDENCY INTERFACES
-// The Usecase defines what it needs. Infrastructure will provide the concrete implementation.
-// -------------------------------------------------------------------------
-
 type TestResultRepository interface {
-	Create(ctx context.Context, result *testresult.TestResult) error
 	CountMonthlyUsage(ctx context.Context, userID string) (int64, error)
+	CountCompletedByUser(ctx context.Context, userID string) (int64, error)
 }
 
-type AnswerRepository interface {
-	UpsertAnswers(ctx context.Context, testResultID string, answers []answer.Answer) error
+type QuestionRepository interface {
+	FindByIDs(ctx context.Context, ids []string) ([]content.Question, error)
 }
 
 type AIGeneratorService interface {
-	// GenerateSummary calls Gemini API.
-	// We pass the locale to enforce FR-I6 (Locale-aware prompt).
-	GenerateSummary(ctx context.Context, text string, locale string) (summary string, tokens int, err error)
+	GenerateSummary(ctx context.Context, text string, locale string) (summary string, rawPrompt string, tokens int, err error)
 }
 
 type DistributedLockService interface {
@@ -66,91 +81,330 @@ type PDFQueueService interface {
 	EnqueueGeneratePDF(ctx context.Context, testResultID string) error
 }
 
-// -------------------------------------------------------------------------
-// USECASE IMPLEMENTATION
-// -------------------------------------------------------------------------
-
 type SubmitAssessmentUseCase struct {
+	db             *gorm.DB
 	testResultRepo TestResultRepository
-	answerRepo     AnswerRepository
+	questionRepo   QuestionRepository
+	userRepo       account.UserRepository
 	aiSvc          AIGeneratorService
 	lockSvc        DistributedLockService
 	idempotencySvc IdempotencyService
 	pdfQueue       PDFQueueService
+	log            logger.Logger
 }
 
 // NewSubmitAssessmentUseCase acts as the constructor for Dependency Injection (Wire).
 func NewSubmitAssessmentUseCase(
+	db *gorm.DB,
 	trRepo TestResultRepository,
-	ansRepo AnswerRepository,
+	questionRepo QuestionRepository,
+	userRepo account.UserRepository,
 	aiSvc AIGeneratorService,
 	lockSvc DistributedLockService,
 	idemSvc IdempotencyService,
 	pdfQueue PDFQueueService,
+	log logger.Logger,
 ) *SubmitAssessmentUseCase {
 	return &SubmitAssessmentUseCase{
+		db:             db,
 		testResultRepo: trRepo,
-		answerRepo:     ansRepo,
+		questionRepo:   questionRepo,
+		userRepo:       userRepo,
 		aiSvc:          aiSvc,
 		lockSvc:        lockSvc,
 		idempotencySvc: idemSvc,
 		pdfQueue:       pdfQueue,
+		log:            log.With("usecase", "submit_assessment"),
 	}
 }
 
 // Execute orchestrates the entire assessment submission flow.
 func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitRequest) (*SubmitResponse, error) {
-	// 1. Idempotency Check
-	// (Implementation logic: Hash the answers payload, check Redis. If exists, return cached response)
+	if len(req.Answers) == 0 {
+		return nil, fmt.Errorf("%w: answers is required", application.ErrInvalidInput)
+	}
 
-	// 2. Distributed Lock for Quota
-	// (Implementation logic: Acquire lock using SessionID/UserID. If failed, return error "Please wait")
+	payloadHash := hashAnswers(req.Answers)
+	idemKey := "idempotency_key:" + req.IdempotencyKey
 
-	// 3. Quota Validation
-	// (Implementation logic: If IsMember, check CountMonthlyUsage < 3)
+	if cached, err := uc.idempotencySvc.Check(ctx, idemKey, payloadHash); err != nil {
+		if errors.Is(err, application.ErrIdempotencyKeyReused) {
+			return nil, err
+		}
+		uc.log.Warn("idempotency check failed, proceeding without cache", "error", err)
+	} else if cached != nil {
+		return cached, nil
+	}
 
-	// 4. Wellbeing Safety Net Check
-	// (Implementation logic: Scan essay inputs for crisis keywords)
-	isWellbeingFlagged := false // Placeholder
-
-	// 5. AI Processing with 2-Phase Context Cancellation
-	// We don't want to burn tokens if the user disconnects while waiting in the semaphore queue.
-	// But ONCE the request is in-flight, we use context.WithoutCancel to finish the job.
-	aiCtx := context.WithoutCancel(ctx)
-	aiSummary, _, err := uc.aiSvc.GenerateSummary(aiCtx, "combined_essay_text_here", req.Locale)
-	status := "completed"
+	lockKey := "quota_lock:" + req.SessionID
+	acquired, err := uc.lockSvc.AcquireLock(ctx, lockKey, quotaLockTTL)
 	if err != nil {
-		// Graceful Degradation (FR-C2): Fallback to static result if AI fails
-		status = "fallback_static"
-		aiSummary = "Static fallback text..."
+		return nil, fmt.Errorf("submit: acquire lock: %w", err)
+	}
+	if !acquired {
+		return nil, application.ErrLockNotAcquired
+	}
+	defer func() {
+		if releaseErr := uc.lockSvc.ReleaseLock(ctx, lockKey); releaseErr != nil {
+			uc.log.Warn("release lock failed", "key", lockKey, "error", releaseErr)
+		}
+	}()
+
+	if req.IsMember {
+		usage, err := uc.testResultRepo.CountMonthlyUsage(ctx, req.SessionID)
+		if err != nil {
+			return nil, fmt.Errorf("submit: count monthly usage: %w", err)
+		}
+		if usage >= monthlyQuotaLimit {
+			return nil, application.ErrQuotaExceeded
+		}
 	}
 
-	// 6. Save TestResult to Database
+	questionByID, err := uc.loadQuestions(ctx, req.Answers)
+	if err != nil {
+		return nil, err
+	}
+
+	essayTexts, err := extractAndValidateEssays(req.Answers, questionByID)
+	if err != nil {
+		return nil, err
+	}
+
+	isWellbeingFlagged := scanForCrisisLanguage(essayTexts, req.Locale)
+	resultID := uuid.New().String()
+	aiCtx := context.WithoutCancel(ctx)
+	outcome := uc.runAIPhase(aiCtx, resultID, essayTexts, req.Locale)
+
+	referredByCode, referralEligible := uc.checkReferralEligibility(ctx, req)
+
 	result := &testresult.TestResult{
-		// Populate mapping here...
+		ID:            resultID,
 		Locale:        req.Locale,
-		AISummaryText: &aiSummary,
-		Status:        testresult.ResultStatus(status),
+		MascotStyle:   "style_a", // visual-only default; changeable later via PATCH /v1/results/:id/mascot-style (TICKET-04)
+		ShareToken:    uuid.New().String(),
+		AISummaryText: &outcome.summary,
+		Status:        outcome.status,
 		WellbeingFlag: isWellbeingFlagged,
+		PDFStatus:     testresult.PDFStatusPending,
+		TotalTokens:   outcome.totalTokens,
+		CreatedAt:     time.Now(),
 	}
-	if err := uc.testResultRepo.Create(aiCtx, result); err != nil {
-		return nil, errors.New("failed to save test result")
+	if req.IsMember {
+		result.UserID = &req.SessionID
+	} else {
+		result.GuestSessionID = &req.SessionID
+		expires := time.Now().Add(guestResultTTL)
+		result.ExpiresAt = &expires
 	}
 
-	// 7. Upsert Answers
-	// (Implementation logic: Map req.Answers to domain entities, call uc.answerRepo.UpsertAnswers)
+	answers := make([]testresult.Answer, len(req.Answers))
+	for i, a := range req.Answers {
+		answers[i] = testresult.Answer{
+			ID:           uuid.New().String(),
+			TestResultID: resultID,
+			QuestionID:   a.QuestionID,
+			Value:        a.Value,
+		}
+	}
 
-	// 8. Enqueue PDF Generation Job (Asynchronous)
-	_ = uc.pdfQueue.EnqueueGeneratePDF(aiCtx, result.ID) // Fire and forget or log error
+	txErr := uc.db.Transaction(func(tx *gorm.DB) error {
+		if err := pgassessment.NewTestResultRepository(tx, uc.log).Create(ctx, result); err != nil {
+			return fmt.Errorf("tx: create test result: %w", err)
+		}
+		if err := pgassessment.NewAnswerRepository(tx, uc.log).UpsertAnswers(ctx, resultID, answers); err != nil {
+			return fmt.Errorf("tx: upsert answers: %w", err)
+		}
 
-	// 9. Save to Idempotency Cache (TTL 24h)
+		if outcome.called {
+			auditLog := &testresult.PromptAuditLog{
+				ID:             uuid.New().String(),
+				TestResultID:   resultID,
+				RawPrompt:      outcome.rawPrompt,
+				RawResponse:    outcome.rawResponse,
+				FlaggedAnomaly: outcome.flaggedAnomaly,
+				CreatedAt:      time.Now(),
+				ExpiresAt:      time.Now().Add(promptAuditRetention),
+			}
+			if err := pgassessment.NewPromptAuditLogRepository(tx, uc.log).Create(ctx, auditLog); err != nil {
+				return fmt.Errorf("tx: create audit log: %w", err)
+			}
+		}
+
+		if referralEligible {
+			referralRepo := pgaccount.NewReferralRepository(tx, uc.log)
+			code, err := referralRepo.FindCodeByCode(ctx, *referredByCode)
+			if err != nil {
+				return fmt.Errorf("tx: find referral code: %w", err)
+			}
+			if code == nil {
+				uc.log.Warn("referral code not found, skipping event", "code", *referredByCode)
+			} else {
+				event := &account.ReferralEvent{
+					ID:             uuid.New().String(),
+					ReferralCodeID: code.ID,
+					ReferredUserID: req.SessionID,
+					EventType:      account.EventTypeTestCompleted,
+					CreatedAt:      time.Now(),
+				}
+				if err := referralRepo.CreateEvent(ctx, event); err != nil {
+					return fmt.Errorf("tx: create referral event: %w", err)
+				}
+			}
+		}
+
+		return nil
+	})
+	if txErr != nil {
+		uc.log.Error("submit failed", "step", "transaction", "result_id", resultID, "error", txErr)
+		return nil, fmt.Errorf("submit: %w", txErr)
+	}
+
+	if err := uc.pdfQueue.EnqueueGeneratePDF(ctx, resultID); err != nil {
+		uc.log.Warn("enqueue pdf generation failed", "result_id", resultID, "error", err)
+	}
+
 	resp := &SubmitResponse{
-		ResultID:      result.ID,
-		AISummaryText: aiSummary,
+		ResultID:      resultID,
+		MBTIType:      result.MBTIType,
+		GritScore:     result.GritScore,
+		AISummaryText: outcome.summary,
 		WellbeingFlag: isWellbeingFlagged,
-		Status:        status,
+		Status:        string(outcome.status),
 	}
-	// uc.idempotencySvc.Save(...)
+
+	if err := uc.idempotencySvc.Save(ctx, idemKey, payloadHash, resp, idempotencyTTL); err != nil {
+		uc.log.Warn("save idempotency cache failed", "key", idemKey, "error", err)
+	}
 
 	return resp, nil
+}
+
+// loadQuestions bulk-fetches question metadata for every answered question in a single query.
+func (uc *SubmitAssessmentUseCase) loadQuestions(ctx context.Context, answers []AnswerInput) (map[string]content.Question, error) {
+	ids := make([]string, len(answers))
+	for i, a := range answers {
+		ids[i] = a.QuestionID
+	}
+
+	questions, err := uc.questionRepo.FindByIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("submit: load questions: %w", err)
+	}
+
+	byID := make(map[string]content.Question, len(questions))
+	for _, q := range questions {
+		byID[q.ID] = q
+	}
+	return byID, nil
+}
+
+// extractAndValidateEssays enforces the per-essay character cap and returns the essay-type answer values in submission order.
+func extractAndValidateEssays(answers []AnswerInput, questionByID map[string]content.Question) ([]string, error) {
+	var essays []string
+	for _, a := range answers {
+		q, ok := questionByID[a.QuestionID]
+		if !ok {
+			return nil, fmt.Errorf("%w: unknown question_id %q", application.ErrInvalidInput, a.QuestionID)
+		}
+		if q.Type != content.TypeEssayPrompt {
+			continue
+		}
+		if err := application.ValidateMaxLength("answer.value", a.Value, essayMaxLength); err != nil {
+			return nil, err
+		}
+		essays = append(essays, a.Value)
+	}
+	return essays, nil
+}
+
+// checkReferralEligibility returns the code the user registered with and whether this submission qualifies
+func (uc *SubmitAssessmentUseCase) checkReferralEligibility(ctx context.Context, req SubmitRequest) (*string, bool) {
+	if !req.IsMember {
+		return nil, false
+	}
+
+	user, err := uc.userRepo.FindByID(ctx, req.SessionID)
+	if err != nil {
+		uc.log.Warn("referral eligibility check failed, skipping", "error", err)
+		return nil, false
+	}
+	if user == nil || user.ReferredByCode == nil {
+		return nil, false
+	}
+
+	priorCount, err := uc.testResultRepo.CountCompletedByUser(ctx, req.SessionID)
+	if err != nil {
+		uc.log.Warn("referral eligibility check failed, skipping", "error", err)
+		return nil, false
+	}
+	if priorCount > 0 {
+		return nil, false
+	}
+
+	return user.ReferredByCode, true
+}
+
+// aiOutcome captures everything Execute needs from the AI phase, regardless
+// of whether Gemini was actually called or the call succeeded.
+type aiOutcome struct {
+	called         bool // true if Gemini was actually invoked (essays were present)
+	summary        string
+	status         testresult.ResultStatus
+	rawPrompt      string
+	rawResponse    string
+	flaggedAnomaly bool
+	totalTokens    *int
+}
+
+// runAIPhase calls Gemini (if there's essay content to analyze), validates
+// the output, and degrades to a static fallback on any failure.
+func (uc *SubmitAssessmentUseCase) runAIPhase(ctx context.Context, resultID string, essayTexts []string, locale string) aiOutcome {
+	if len(essayTexts) == 0 {
+		return aiOutcome{status: testresult.StatusFallbackStatic, summary: fallbackText(locale)}
+	}
+
+	combinedEssay := strings.Join(essayTexts, "\n\n")
+	summary, rawPrompt, tokens, err := uc.aiSvc.GenerateSummary(ctx, combinedEssay, locale)
+
+	outcome := aiOutcome{called: true, rawPrompt: rawPrompt}
+
+	switch {
+	case err != nil:
+		uc.log.Warn("gemini call failed, falling back to static result", "result_id", resultID, "error", err)
+		outcome.status = testresult.StatusFallbackStatic
+		outcome.summary = fallbackText(locale)
+		outcome.flaggedAnomaly = true
+		outcome.rawResponse = "ERROR: " + err.Error()
+	default:
+		if valErr := aivalidator.ValidateOutput(summary, locale); valErr != nil {
+			uc.log.Warn("gemini output failed validation, falling back to static result", "result_id", resultID, "error", valErr)
+			outcome.status = testresult.StatusFallbackStatic
+			outcome.summary = fallbackText(locale)
+			outcome.flaggedAnomaly = true
+			outcome.rawResponse = summary
+		} else {
+			outcome.status = testresult.StatusCompleted
+			outcome.summary = summary
+			outcome.rawResponse = summary
+			outcome.totalTokens = &tokens
+		}
+	}
+
+	return outcome
+}
+
+// hashAnswers deterministically hashes the answer set regardless of submission order.
+func hashAnswers(answers []AnswerInput) string {
+	sorted := make([]AnswerInput, len(answers))
+	copy(sorted, answers)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].QuestionID < sorted[j].QuestionID })
+
+	h := sha256.New()
+	for _, a := range sorted {
+		h.Write([]byte(a.QuestionID))
+		h.Write([]byte{0})
+		h.Write([]byte(a.Value))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
