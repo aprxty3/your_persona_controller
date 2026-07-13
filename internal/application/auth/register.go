@@ -235,7 +235,7 @@ func buildUser(req RegisterRequest, hash string, guest *account.GuestSession) *a
 		CreatedAt:       time.Now(),
 		TokenVersion:    0,
 	}
-	if guest != nil {
+	if guest != nil && !guest.IsClaimed() {
 		u.DisplayName = guest.DisplayName
 		u.Age = guest.Age
 		u.Status = guest.Status
