@@ -7,6 +7,29 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ## [UNRELEASED] — 2026-07-13
 
+### Platform Services — Redis Lock/Idempotency, Locale Negotiation, HIBP (TICKET-02, TICKET-15, TICKET-16)
+
+#### [A] `internal/infrastructure/cache/redis/lock.go` — real `DistributedLockService` (TICKET-02)
+- SETNX-based acquire with a per-acquisition owner token (`uuid`); `ReleaseLock` does a compare-and-delete via `redis.NewScript` Lua CAS instead of a blind `DEL` — prevents request A from deleting request B's lock if A's TTL already expired while A was still processing. First Lua script usage in this codebase, added specifically to close this race rather than ship the naive version.
+- `QuotaLockKey(id string) string` exported so `quota_lock:{id}` isn't hand-formatted at each call site (TICKET-03 will consume this)
+
+#### [A] `internal/infrastructure/cache/redis/idempotency.go` — real `IdempotencyService` (TICKET-02)
+- `Check`/`Save` against Redis, JSON envelope `{payload_hash, response}`, TTL 24h
+- Hash mismatch on a reused idempotency key returns new sentinel `application.ErrIdempotencyKeyReused` (anti cache-poisoning, per ticket spec) instead of silently serving someone else's cached response
+
+#### [A] `internal/interfaces/http/middleware/locale.go` — `LocaleMiddleware` (TICKET-15)
+- Negotiation order per FR-I1: `?locale=` query → authenticated member's `preferred_locale` (best-effort JWT parse + `userRepo.FindByID`, never blocks the request on failure, unlike `AuthMiddleware.RequireAuth`) → `Accept-Language` header → `locale` cookie → `en` default
+- Registered globally in `router.go`; `middleware.LocaleFromContext(c)` mirrors the existing `UserIDFromContext(c)` pattern
+- `pkg/locale` gained `IsSupported(code string) bool` and `ParseAcceptLanguage(header string) string` — pure, framework-independent functions so the negotiation primitives are reusable outside HTTP (and unit-testable without Echo)
+- Not wired into `assessment_handler.go`'s Submit flow yet — that's TICKET-03/04 scope, left untouched deliberately
+
+#### [A] `internal/infrastructure/security/hibp.go` — real `HIBPBreachChecker` (TICKET-16)
+- k-Anonymity: SHA-1 → first 5 hex chars sent to `api.pwnedpasswords.com/range/{prefix}`, response stream-scanned line-by-line for the matching suffix — full password/hash never leaves the process
+- `Add-Padding: true` request header (HIBP-recommended) so response size can't leak whether a match was found
+- Own 5s timeout independent of the caller's `ctx` cancellation (registration shouldn't hang on a slow third party) but does NOT use `context.WithoutCancel` like the Gemini client — no token cost/in-flight work to protect here, so honoring caller cancellation is correct
+- Fails open on any transport/parse error (matches the existing `ValidateNewPassword` behavior and the Gemini fallback precedent), but now logs a `Warn` on that path — previously silent
+- Replaces `auth.NewNoopBreachChecker` in `cmd/api/wire.go`; `NoopBreachChecker` itself kept in `account.go` as a test double, not deleted
+
 ### Assessment — Persistence Layer & DB Seeder (TICKET-01, TICKET-10)
 
 #### [A] GORM models + AutoMigrate untuk 5 tabel assessment (commit `e3fc758`)
@@ -302,6 +325,8 @@ go build ./cmd/migrate; go build ./cmd/worker     ✅ OK (auxiliary entrypoints 
 - [x] ~~Implement Account/Referral endpoints (profile update, referral code)~~ — done 2026-07-13
 - [x] ~~Implement `anonymize:user` worker (scrub PII, delete R2 PDFs) + cron trigger via `FindExpiredGracePeriod`~~ — done 2026-07-13 (hourly `asynq.Scheduler` scan + startup kick). Remaining sub-item: scrub `ANSWER` essay + `PROMPT_AUDIT_LOG` once those tables exist (assessment epic still stubbed)
 - [ ] Complete worker implementation (Asynq background workers for PDF + `purge:guest-ttl` — email OTP & anonymize done 2026-07-13)
-- [ ] Implement Redis-backed Distributed Lock & Idempotency Service
-- [ ] Integrate Turnstile verification and actual Have I Been Pwned API checks
+- [x] ~~Implement Redis-backed Distributed Lock & Idempotency Service~~ — done 2026-07-13 (TICKET-02); not yet wired into `SubmitAssessmentUseCase.Execute` itself, that's TICKET-03
+- [x] ~~Implement Locale Negotiation Middleware~~ — done 2026-07-13 (TICKET-15); not yet consumed by any handler, that's TICKET-03/04
+- [ ] Integrate Turnstile verification (TICKET-11, still pending)
+- [x] ~~Have I Been Pwned API breach checks~~ — done 2026-07-13 (TICKET-16)
 - [ ] Add integration testing via testcontainers-go

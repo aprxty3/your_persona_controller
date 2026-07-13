@@ -16,6 +16,7 @@ func SetupRouter(
 	accountHandler *handler.AccountHandler,
 	healthHandler *handler.HealthHandler,
 	authMiddleware *appmiddleware.AuthMiddleware,
+	localeMiddleware *appmiddleware.LocaleMiddleware,
 ) *echo.Echo {
 	e := echo.New()
 
@@ -26,6 +27,7 @@ func SetupRouter(
 	e.Use(middleware.Logger())
 
 	e.Use(middleware.BodyLimit("32K"))
+	e.Use(localeMiddleware.Negotiate)
 
 	// Operational
 	e.GET("/healthz", healthHandler.HealthCheck)

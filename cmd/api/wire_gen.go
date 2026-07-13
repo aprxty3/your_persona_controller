@@ -20,6 +20,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
 	asynq2 "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/security"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
@@ -46,8 +47,12 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	if err != nil {
 		return nil, err
 	}
-	distributedLockService := stubs.NewStubDistributedLockService()
-	idempotencyService := stubs.NewStubIdempotencyService()
+	redisClient, err := provideRedisClient(redisAddr, redisPassword, redisDB)
+	if err != nil {
+		return nil, err
+	}
+	distributedLockService := redis.NewDistributedLockService(redisClient)
+	idempotencyService := redis.NewIdempotencyService(redisClient, loggerInstance)
 	pdfQueueService := stubs.NewStubPDFQueueService()
 	submitAssessmentUseCase := assessment2.NewSubmitAssessmentUseCase(repository, answerRepository, client, distributedLockService, idempotencyService, pdfQueueService)
 	assessmentHandler := handler.NewAssessmentHandler(submitAssessmentUseCase)
@@ -56,16 +61,12 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	userRepository := account.NewUserRepository(db, loggerInstance)
 	verificationTokenRepository := account.NewVerificationTokenRepository(db, loggerInstance)
 	referralRepository := account.NewReferralRepository(db, loggerInstance)
-	passwordBreachChecker := auth.NewNoopBreachChecker()
+	passwordBreachChecker := security.NewHIBPBreachChecker(loggerInstance)
 	asynqClient, err := provideAsynqClient(redisAddr, redisPassword, redisDB)
 	if err != nil {
 		return nil, err
 	}
 	dispatcher := taskqueue.NewAsynqDispatcher(asynqClient)
-	redisClient, err := provideRedisClient(redisAddr, redisPassword, redisDB)
-	if err != nil {
-		return nil, err
-	}
 	ipRateLimitService := redis.NewIPRateLimitService(redisClient)
 	registerUseCase := auth.NewRegisterUseCase(db, userRepository, guestSessionRepository, verificationTokenRepository, referralRepository, repository, passwordBreachChecker, dispatcher, ipRateLimitService, loggerInstance)
 	otpRateLimitService := redis.NewOTPRateLimitService(redisClient)
@@ -80,7 +81,8 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	accountHandler := handler.NewAccountHandler(profileUseCase, deletionUseCase, loggerInstance)
 	healthHandler := handler.NewHealthHandler(db, redisClient)
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)
-	echoEcho := http.SetupRouter(assessmentHandler, authHandler, accountHandler, healthHandler, authMiddleware)
+	localeMiddleware := middleware.NewLocaleMiddleware(jwtService, userRepository, loggerInstance)
+	echoEcho := http.SetupRouter(assessmentHandler, authHandler, accountHandler, healthHandler, authMiddleware, localeMiddleware)
 	return echoEcho, nil
 }
 

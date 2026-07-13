@@ -15,13 +15,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// PasswordMinLength is the NIST-aligned minimum password length (FR-H1a).
+// PasswordMinLength is the NIST-aligned minimum password length.
 const PasswordMinLength = 10
 
 // MaxWrongOTPAttempts defines maximum allowed invalid input attempts before token expiry.
 const MaxWrongOTPAttempts = 5
 
-// PasswordBreachChecker defines the contract for HIBP checks (FR-H1a).
+// PasswordBreachChecker defines the contract for HIBP checks.
 type PasswordBreachChecker interface {
 	IsBreached(ctx context.Context, password string) (bool, error)
 }

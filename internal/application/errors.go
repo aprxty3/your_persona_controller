@@ -43,7 +43,12 @@ var (
 
 // Token errors (refresh / reset tokens)
 var (
-	ErrInvalidToken = errors.New("INVALID_TOKEN")
-
+	ErrInvalidToken         = errors.New("INVALID_TOKEN")
 	ErrTokenVersionMismatch = errors.New("TOKEN_VERSION_MISMATCH")
+)
+
+// Assessment submission errors
+var (
+	ErrLockNotAcquired      = errors.New("LOCK_NOT_ACQUIRED")
+	ErrIdempotencyKeyReused = errors.New("IDEMPOTENCY_KEY_REUSED")
 )

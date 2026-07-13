@@ -18,6 +18,7 @@ import (
 	pgdeletionrequest "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/deletionrequest"
 	pgtestresult "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
 	asynqclient "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/security"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
@@ -76,7 +77,7 @@ func InitializeAPI(
 		provideAsynqClient,
 		provideJWTService,
 		taskqueue.NewAsynqDispatcher,
-		auth.NewNoopBreachChecker,
+		security.NewHIBPBreachChecker,
 
 		// ---------------------------------------------------------
 		// Repositories
@@ -94,14 +95,14 @@ func InitializeAPI(
 		wire.Bind(new(assessment.AnswerRepository), new(*pgassessment.AnswerRepository)),
 
 		// Stubs for assessment interfaces
-		stubs.NewStubDistributedLockService,
-		stubs.NewStubIdempotencyService,
 		stubs.NewStubPDFQueueService,
 
 		// Redis Services
 		redis.NewOTPRateLimitService,
 		redis.NewIPRateLimitService,
 		redis.NewTokenStore,
+		redis.NewDistributedLockService,
+		redis.NewIdempotencyService,
 
 		// ---------------------------------------------------------
 		// Application (Usecase) Providers
@@ -118,6 +119,7 @@ func InitializeAPI(
 		// Delivery (HTTP) Providers
 		// ---------------------------------------------------------
 		appmiddleware.NewAuthMiddleware,
+		appmiddleware.NewLocaleMiddleware,
 		handler.NewAssessmentHandler,
 		handler.NewAuthHandler,
 		handler.NewAccountHandler,
