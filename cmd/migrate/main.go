@@ -54,6 +54,11 @@ func main() {
 		&postgres.ReferralCodeModel{},
 		&postgres.ReferralEventModel{},
 		&postgres.DataDeletionRequestModel{},
+		&postgres.QuestionModel{},
+		&postgres.QuestionTranslationModel{},
+		&postgres.AnswerModel{},
+		&postgres.InsightTemplateModel{},
+		&postgres.PromptAuditLogModel{},
 	)
 	if err != nil {
 		log.Fatalf("Migration failed: %v", err)

@@ -7,7 +7,7 @@
 package main
 
 import (
-	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
+	assessment2 "github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
 	deletionrequest2 "github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/profile"
@@ -16,6 +16,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/assessment"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
 	asynq2 "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
@@ -35,8 +36,12 @@ import (
 
 // InitializeAPI wires up the entire application and returns the Echo router.
 func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, loggerInstance logger.Logger) (*echo.Echo, error) {
-	testResultRepository := stubs.NewStubTestResultRepository()
-	answerRepository := stubs.NewStubAnswerRepository()
+	db, err := providePostgresDB(dbDSN)
+	if err != nil {
+		return nil, err
+	}
+	repository := testresult.NewTestResultRepository(db, loggerInstance)
+	answerRepository := assessment.NewAnswerRepository(db, loggerInstance)
 	client, err := provideGeminiClient(geminiAPIKey, geminiModel, maxConcurrent)
 	if err != nil {
 		return nil, err
@@ -44,18 +49,13 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	distributedLockService := stubs.NewStubDistributedLockService()
 	idempotencyService := stubs.NewStubIdempotencyService()
 	pdfQueueService := stubs.NewStubPDFQueueService()
-	submitAssessmentUseCase := assessment.NewSubmitAssessmentUseCase(testResultRepository, answerRepository, client, distributedLockService, idempotencyService, pdfQueueService)
+	submitAssessmentUseCase := assessment2.NewSubmitAssessmentUseCase(repository, answerRepository, client, distributedLockService, idempotencyService, pdfQueueService)
 	assessmentHandler := handler.NewAssessmentHandler(submitAssessmentUseCase)
-	db, err := providePostgresDB(dbDSN)
-	if err != nil {
-		return nil, err
-	}
 	guestSessionRepository := account.NewGuestSessionRepository(db, loggerInstance)
 	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(guestSessionRepository, loggerInstance)
 	userRepository := account.NewUserRepository(db, loggerInstance)
 	verificationTokenRepository := account.NewVerificationTokenRepository(db, loggerInstance)
 	referralRepository := account.NewReferralRepository(db, loggerInstance)
-	repository := testresult.NewTestResultRepository(db, loggerInstance)
 	passwordBreachChecker := auth.NewNoopBreachChecker()
 	asynqClient, err := provideAsynqClient(redisAddr, redisPassword, redisDB)
 	if err != nil {

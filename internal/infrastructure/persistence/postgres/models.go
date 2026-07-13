@@ -113,3 +113,67 @@ type DataDeletionRequestModel struct {
 }
 
 func (DataDeletionRequestModel) TableName() string { return "data_deletion_requests" }
+
+// QuestionModel represents GORM model for questions table.
+type QuestionModel struct {
+	ID               string `gorm:"primaryKey;type:uuid"`
+	Section          string `gorm:"type:varchar(10);not null"`
+	Type             string `gorm:"type:varchar(20);not null"`
+	IsReverseScored  bool   `gorm:"not null;default:false"`
+	IsAttentionCheck bool   `gorm:"not null;default:false"`
+	DisplayOrder     int    `gorm:"not null"`
+}
+
+func (QuestionModel) TableName() string { return "questions" }
+
+// QuestionTranslationModel represents GORM model for question_translations table.
+type QuestionTranslationModel struct {
+	ID           string  `gorm:"primaryKey;type:uuid"`
+	QuestionID   string  `gorm:"type:uuid;not null;index:idx_qt_quest_locale,unique"`
+	Locale       string  `gorm:"type:varchar(10);not null;index:idx_qt_quest_locale,unique"`
+	QuestionText string  `gorm:"type:text;not null"`
+	Options      *string `gorm:"type:jsonb"`
+}
+
+func (QuestionTranslationModel) TableName() string { return "question_translations" }
+
+// AnswerModel represents GORM model for answers table.
+type AnswerModel struct {
+	ID           string    `gorm:"primaryKey;type:uuid"`
+	TestResultID string    `gorm:"type:uuid;not null;index:idx_ans_test_quest,unique"`
+	QuestionID   string    `gorm:"type:uuid;not null;index:idx_ans_test_quest,unique"`
+	Value        string    `gorm:"type:text;not null"`
+	CreatedAt    time.Time `gorm:"autoCreateTime"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
+}
+
+func (AnswerModel) TableName() string { return "answers" }
+
+// InsightTemplateModel represents GORM model for insight_templates table.
+type InsightTemplateModel struct {
+	ID             string   `gorm:"primaryKey;type:uuid"`
+	InsightKey     string   `gorm:"type:varchar(100);not null;index:idx_it_key_locale,unique"`
+	Locale         string   `gorm:"type:varchar(10);not null;index:idx_it_key_locale,unique"`
+	Trait          string   `gorm:"type:varchar(10);not null"`
+	ConditionType  string   `gorm:"type:varchar(20);not null"`
+	MinDelta       *float64 `gorm:"type:numeric"`
+	ThresholdValue *float64 `gorm:"type:numeric"`
+	TemplateText   string   `gorm:"type:text;not null"`
+	IsActive       bool     `gorm:"not null;default:true"`
+}
+
+func (InsightTemplateModel) TableName() string { return "insight_templates" }
+
+// PromptAuditLogModel represents GORM model for prompt_audit_logs table.
+type PromptAuditLogModel struct {
+	ID             string    `gorm:"primaryKey;type:uuid"`
+	TestResultID   string    `gorm:"type:uuid;not null;index"`
+	RawPrompt      string    `gorm:"type:text;not null"`
+	RawResponse    string    `gorm:"type:text;not null"`
+	FlaggedAnomaly bool      `gorm:"not null;default:false"`
+	CreatedAt      time.Time `gorm:"autoCreateTime"`
+	ExpiresAt      time.Time `gorm:"not null;index"`
+}
+
+func (PromptAuditLogModel) TableName() string { return "prompt_audit_logs" }
+
