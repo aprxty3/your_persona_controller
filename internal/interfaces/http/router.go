@@ -13,6 +13,7 @@ import (
 func SetupRouter(
 	assessmentHandler *handler.AssessmentHandler,
 	authHandler *handler.AuthHandler,
+	profileHandler *handler.ProfileHandler,
 	authMiddleware *appmiddleware.AuthMiddleware,
 ) *echo.Echo {
 	e := echo.New()
@@ -43,6 +44,11 @@ func SetupRouter(
 	authGroup.POST("/logout", authHandler.Logout, authMiddleware.RequireAuth)
 	authGroup.POST("/logout-all", authHandler.LogoutAll, authMiddleware.RequireAuth)
 	authGroup.POST("/change-password", authHandler.ChangePassword, authMiddleware.RequireAuth)
+
+	// Account Group (Member Only)
+	accountGroup := v1.Group("/account")
+	accountGroup.PATCH("/profile", profileHandler.UpdateProfile, authMiddleware.RequireAuth)
+	accountGroup.GET("/referral-code", profileHandler.GetReferralCode, authMiddleware.RequireAuth)
 
 	// Assessment Group
 	assessmentGroup := v1.Group("/assessment")

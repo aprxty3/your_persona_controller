@@ -6,6 +6,7 @@ package main
 import (
 	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/profile"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/gemini"
 	jwtservice "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
@@ -103,6 +104,7 @@ func InitializeAPI(
 		auth.NewRegisterUseCase,
 		auth.NewAccountUseCase,
 		auth.NewSessionUseCase,
+		profile.NewProfileUseCase,
 
 		// ---------------------------------------------------------
 		// Delivery (HTTP) Providers
@@ -110,6 +112,7 @@ func InitializeAPI(
 		appmiddleware.NewAuthMiddleware,
 		handler.NewAssessmentHandler,
 		handler.NewAuthHandler,
+		handler.NewProfileHandler,
 		http.SetupRouter,
 	)
 	return nil, nil

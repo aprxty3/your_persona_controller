@@ -13,7 +13,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// AuthHandler handles HTTP requests for authentication and account onboarding.
 type AuthHandler struct {
 	createGuestSessionUseCase *auth.CreateGuestSessionUseCase
 	registerUseCase           *auth.RegisterUseCase

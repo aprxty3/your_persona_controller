@@ -9,6 +9,7 @@ package main
 import (
 	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/profile"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/gemini"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
@@ -71,8 +72,10 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	tokenStore := redis.NewTokenStore(redisClient)
 	sessionUseCase := auth.NewSessionUseCase(db, userRepository, verificationTokenRepository, passwordBreachChecker, jwtService, tokenStore, ipRateLimitService, loggerInstance)
 	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, accountUseCase, sessionUseCase, loggerInstance)
+	profileUseCase := profile.NewProfileUseCase(userRepository, referralRepository, loggerInstance)
+	profileHandler := handler.NewProfileHandler(profileUseCase, loggerInstance)
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)
-	echoEcho := http.SetupRouter(assessmentHandler, authHandler, authMiddleware)
+	echoEcho := http.SetupRouter(assessmentHandler, authHandler, profileHandler, authMiddleware)
 	return echoEcho, nil
 }
 

@@ -70,3 +70,11 @@ type ChangePasswordRequestDTO struct {
 	NewPassword      string `json:"new_password" validate:"required,min=10"`
 	RetryNewPassword string `json:"retry_new_password" validate:"required"`
 }
+
+// UpdateProfileRequestDTO is a partial update — omit any field you don't want to change.
+type UpdateProfileRequestDTO struct {
+	DisplayName     *string      `json:"display_name,omitempty" validate:"omitempty"`
+	Age             *int         `json:"age,omitempty" validate:"omitempty,min=13"`
+	Status          *GuestStatus `json:"status,omitempty" validate:"omitempty,oneof=student worker freelancer unemployed other"`
+	PreferredLocale *Locale      `json:"preferred_locale,omitempty" validate:"omitempty,oneof=en id"`
+}

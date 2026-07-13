@@ -178,6 +178,29 @@ definitions:
     - new_password
     - reset_token
     type: object
+  dto.UpdateProfileRequestDTO:
+    properties:
+      age:
+        minimum: 13
+        type: integer
+      display_name:
+        type: string
+      preferred_locale:
+        allOf:
+        - $ref: '#/definitions/dto.Locale'
+        enum:
+        - en
+        - id
+      status:
+        allOf:
+        - $ref: '#/definitions/dto.GuestStatus'
+        enum:
+        - student
+        - worker
+        - freelancer
+        - unemployed
+        - other
+    type: object
   dto.VerifyEmailOTPRequestDTO:
     properties:
       email:
@@ -214,6 +237,24 @@ definitions:
       success:
         type: boolean
     type: object
+  profile.ProfileResponse:
+    properties:
+      age:
+        type: integer
+      display_name:
+        type: string
+      preferred_locale:
+        type: string
+      status:
+        type: string
+      user_id:
+        type: string
+    type: object
+  profile.ReferralCodeResponse:
+    properties:
+      code:
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact: {}
@@ -221,6 +262,80 @@ info:
   title: Your Persona API
   version: "1.0"
 paths:
+  /v1/account/profile:
+    patch:
+      consumes:
+      - application/json
+      description: |-
+        Updates `display_name`/`age`/`status`/`preferred_locale` — send only the fields you want to change.
+        Used both to change locale from settings and to complete a profile for members who
+        registered without ever having a `GUEST_SESSION`.
+      parameters:
+      - description: Fields to update (all optional)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateProfileRequestDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Profile updated
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/profile.ProfileResponse'
+              type: object
+        "400":
+          description: VALIDATION_ERROR — an included field has an invalid value
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "401":
+          description: UNAUTHORIZED | TOKEN_VERSION_MISMATCH
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      security:
+      - BearerAuth: []
+      summary: Update account profile (partial update)
+      tags:
+      - Account
+  /v1/account/referral-code:
+    get:
+      description: |-
+        Returns the caller's referral code, generating and persisting one on the very first request.
+        Subsequent calls always return the same code — one code per user, never rotated.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Referral code
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/profile.ReferralCodeResponse'
+              type: object
+        "401":
+          description: UNAUTHORIZED | TOKEN_VERSION_MISMATCH
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      security:
+      - BearerAuth: []
+      summary: Get (or generate) my referral code
+      tags:
+      - Account
   /v1/auth/change-password:
     post:
       consumes:

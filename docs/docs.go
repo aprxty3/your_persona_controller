@@ -15,6 +15,124 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/v1/account/profile": {
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Updates ` + "`" + `display_name` + "`" + `/` + "`" + `age` + "`" + `/` + "`" + `status` + "`" + `/` + "`" + `preferred_locale` + "`" + ` — send only the fields you want to change.\nUsed both to change locale from settings and to complete a profile for members who\nregistered without ever having a ` + "`" + `GUEST_SESSION` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Account"
+                ],
+                "summary": "Update account profile (partial update)",
+                "parameters": [
+                    {
+                        "description": "Fields to update (all optional)",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateProfileRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Profile updated",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/profile.ProfileResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "VALIDATION_ERROR — an included field has an invalid value",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/account/referral-code": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the caller's referral code, generating and persisting one on the very first request.\nSubsequent calls always return the same code — one code per user, never rotated.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Account"
+                ],
+                "summary": "Get (or generate) my referral code",
+                "responses": {
+                    "200": {
+                        "description": "Referral code",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/profile.ReferralCodeResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/auth/change-password": {
             "post": {
                 "security": [
@@ -1006,6 +1124,43 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.UpdateProfileRequestDTO": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer",
+                    "minimum": 13
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "preferred_locale": {
+                    "enum": [
+                        "en",
+                        "id"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.Locale"
+                        }
+                    ]
+                },
+                "status": {
+                    "enum": [
+                        "student",
+                        "worker",
+                        "freelancer",
+                        "unemployed",
+                        "other"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.GuestStatus"
+                        }
+                    ]
+                }
+            }
+        },
         "dto.VerifyEmailOTPRequestDTO": {
             "type": "object",
             "required": [
@@ -1057,6 +1212,34 @@ const docTemplate = `{
                 "meta": {},
                 "success": {
                     "type": "boolean"
+                }
+            }
+        },
+        "profile.ProfileResponse": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "preferred_locale": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "profile.ReferralCodeResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
                 }
             }
         }
