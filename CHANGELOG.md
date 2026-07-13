@@ -5,6 +5,39 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-07-13
+
+### Auth — Session & Password Lifecycle Completion
+
+#### [A] 6 endpoint Auth baru (FR-H4, FR-H6, FR-H8, NFR JWT)
+- `POST /v1/auth/refresh` — refresh token **rotation**: token lama langsung didenylist di Redis begitu ditukar, plus `token_version` check
+- `POST /v1/auth/logout` (Auth: Required) — revoke SATU sesi lewat denylist `refresh_token`; access token yang lagi dipakai tetap valid sampai expired alami
+- `POST /v1/auth/logout-all` (Auth: Required) — revoke SEMUA sesi lewat increment `USER.token_version`, tanpa body
+- `POST /v1/auth/forgot-password`, `POST /v1/auth/verify-reset-otp`, `POST /v1/auth/reset-password` — 3-step password reset; `reset_token` JWT umur pendek (~15 menit) dikonsumsi atomic via Redis `GETDEL` (anti-replay/TOCTOU)
+
+#### [A] POST /v1/auth/change-password (FR-H9, baru — bukan bagian rencana awal)
+- Ganti password saat sudah login pakai `old_password` + `new_password` + `retry_new_password`, tanpa perlu OTP
+- Sukses → increment `USER.token_version` (revoke semua device LAIN) + auto re-issue `access_token`/`refresh_token` baru untuk device yang sedang dipakai, supaya user tidak ikut ter-logout dari aksinya sendiri
+
+#### [A] Infrastruktur pendukung endpoint di atas
+- `internal/infrastructure/cache/redis/token_store.go` — `TokenStore`: `StoreResetJTI`/`ConsumeResetJTI` (GETDEL, single-use), `DenylistRefreshJTI`/`IsRefreshJTIDenylisted`
+- `internal/infrastructure/cache/redis/ip_rate_limit.go` — `IPRateLimitService` per-IP terpisah dari account lockout (FR-H6): login 20x/15 menit, register 10x/15 menit
+- `internal/interfaces/http/middleware/auth.go` — `AuthMiddleware.RequireAuth`: validasi Bearer token + cek `token_version` vs DB (`TOKEN_VERSION_MISMATCH`); menerima header dengan ATAU tanpa prefix `Bearer` (kemudahan testing, mis. Swagger Authorize)
+- `@securitydefinitions.apikey BearerAuth` di `cmd/api/main.go` — tombol **Authorize** kini muncul di Swagger UI untuk semua endpoint ber-`@Security BearerAuth`
+
+#### [C] Konsolidasi `application/auth` dari 12+ file jadi 4 file per keluarga dependency
+- `register.go`, `session.go` (login/refresh/logout/logout-all/change-password/reset-password — semua yang pegang `jwtService`/`tokenStore`), `account.go` (OTP verify/resend, forgot-password, shared password policy — semua yang pegang OTP rate limiter), `create_guest_session.go`
+- `internal/domain/account/` — gabungan `user`+`guestsession`+`verificationtoken`+`referral` jadi satu bounded context; 4 repository interface dikonsolidasi ke satu `account_repository.go` (entity tetap 1 file per aggregate)
+- `internal/infrastructure/persistence/postgres/account/` — 1 file per aggregate, suffix diganti dari `repository.go` jadi `_persistence.go` (mis. `user_persistence.go`)
+- `pkg/repository.BaseRepository[T]` (generic) tidak lagi wajib dipakai semua domain — dokumentasi `AGENTS.md`/`TECHNICAL_DOCUMENTATION.md` diperbarui sesuai realita (bentuk repository konkret mayoritas custom query, gak match pola CRUD generic)
+
+#### [F] Bug fixes dari live testing
+- `referral_code` di `/auth/register` sekarang menerima `""` (string kosong) selain `null`/omitted sebagai "tidak ada kode" — FE kadang kirim `""` alih-alih `null` untuk field yang di-clear
+- Worker `send:email` sebelumnya dummy handler yang cuma log tanpa benar-benar kirim email — diganti `internal/interfaces/worker/email_handler.go` yang memanggil `mailer.SendOTP` sungguhan, di-wire di `cmd/worker/main.go`
+- `docker/docker-compose.dev.yml` — service `worker` tidak override `SMTP_HOST`, sehingga fallback ke `.env`'s `SMTP_HOST=localhost` yang di dalam container merujuk ke dirinya sendiri, bukan container `mailpit` (`dial tcp [::1]:1025: connection refused`). Fix: `environment: SMTP_HOST=mailpit`
+
+---
+
 ## [UNRELEASED] — 2026-07-07
 
 ### Scaffolding & Project Foundation
@@ -189,8 +222,8 @@ go build ./cmd/migrate; go build ./cmd/worker     ✅ OK (auxiliary entrypoints 
 ## Planned (Next Steps)
 
 - [ ] Complete GORM models & Postgres repositories for the remaining domains (TestResult, Answer, DeletionRequest, Referral, etc.)
-- [ ] Complete remaining Auth use cases (Forgot Password, Verify Reset OTP, Reset Password, Logout, Logout-all)
-- [ ] Complete worker implementation (Asynq background workers for email, PDF, anonymization)
+- [x] ~~Complete remaining Auth use cases (Forgot Password, Verify Reset OTP, Reset Password, Logout, Logout-all)~~ — done 2026-07-13, see UNRELEASED entry above (plus unplanned `change-password`)
+- [ ] Complete worker implementation (Asynq background workers for PDF, anonymization — email OTP sending done 2026-07-13)
 - [ ] Implement Redis-backed Distributed Lock & Idempotency Service
 - [ ] Integrate Turnstile verification and actual Have I Been Pwned API checks
 - [ ] Add integration testing via testcontainers-go
