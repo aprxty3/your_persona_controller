@@ -36,6 +36,34 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 - Worker `send:email` sebelumnya dummy handler yang cuma log tanpa benar-benar kirim email — diganti `internal/interfaces/worker/email_handler.go` yang memanggil `mailer.SendOTP` sungguhan, di-wire di `cmd/worker/main.go`
 - `docker/docker-compose.dev.yml` — service `worker` tidak override `SMTP_HOST`, sehingga fallback ke `.env`'s `SMTP_HOST=localhost` yang di dalam container merujuk ke dirinya sendiri, bukan container `mailpit` (`dial tcp [::1]:1025: connection refused`). Fix: `environment: SMTP_HOST=mailpit`
 
+### Account, Referral, Deletion Request & Operational Endpoints
+
+#### [A] 4 endpoint baru di bawah `/v1/account/*` (FR-I3, FR-F1, FR-G1, FR-G2, FR-G2a, FR-G3)
+- `PATCH /v1/account/profile` (Auth: Required) — partial update `display_name`/`age`/`status`/`preferred_locale`
+- `GET /v1/account/referral-code` (Auth: Required) — ambil kode referral existing, atau generate baru (8 karakter, charset tanpa huruf/angka ambigu `0/O`/`1/I/L`) kalau belum ada, dengan retry maksimal 5x kalau collision
+- `POST /v1/account/delete-request` (Auth: Required) — mulai grace period 14 hari, tolak `DELETION_ALREADY_REQUESTED` (409) kalau sudah ada request aktif
+- `POST /v1/account/delete-request/cancel` (Auth: Required) — batalkan selama masih `pending_grace`; `NO_ACTIVE_DELETION_REQUEST` (404) / `DELETION_ALREADY_PROCESSING` (409) kalau tidak bisa
+- **Belum termasuk**: worker `anonymize:user` (scrub PII + hapus PDF R2) dan cron pemicunya — di luar scope endpoint request/cancel ini
+
+#### [A] GET /healthz (Operational)
+- Cek `Postgres` + `Redis` saja — MinIO/R2 dan Mailpit/SMTP sengaja dikecualikan (dipakai async lewat worker atau cuma nyentuh subset endpoint PDF, jadi gak boleh bikin load balancer narik instance API sehat keluar dari rotasi)
+- Response `{ "database": "up|down", "redis": "up|down" }`, HTTP 503 kalau salah satu down
+
+#### [C] `POST /v1/auth/verify-email-otp` sekarang auto-login
+- Response sekarang balikin `access_token`+`refresh_token` — user sudah membuktikan tau password (saat register) + punya akses email (OTP ini), jadi `/auth/login` terpisah setelahnya jadi friksi yang gak perlu
+- Method `VerifyEmailOTP` dipindah dari `account.go` ke `session.go` (butuh `jwtService`, satu keluarga dengan `Login`/`RefreshToken`/`ResetPassword`)
+
+#### [A] Package baru: `application/profile`, `application/deletionrequest`, `infrastructure/persistence/postgres/deletionrequest`
+- Domain `deletionrequest` (entity + repository interface) sudah ada dari scaffolding awal, reuse penuh — cuma persistence layer yang baru
+- Sengaja TIDAK digabung ke `application/auth`/`domain/account` — `ProfileUseCase`/`DeletionUseCase` gak share dependency set dengan use case manapun di situ, dan `DataDeletionRequest` gak pernah dimutasi dalam transaksi bareng `USER` (beda dengan GuestSession/VerificationToken/ReferralCode yang wajib satu transaksi saat Register). Detail alasan di PRD Section 9
+
+#### [C] Handler HTTP dikonsolidasi jadi satu `AccountHandler`
+- `profile_handler.go` + `deletion_handler.go` digabung jadi `account_handler.go` — satu handler menaungi SEMUA route `/account/*`, meniru pola `AuthHandler` yang sudah menaungi semua `/auth/*` sejak awal (grouping per URL namespace di HTTP layer, beda prinsip dari grouping per shared-dependency di application layer)
+
+#### [F] Bug fixes
+- `register.go` `buildUser` — data profil (`display_name`/`age`/`status`) dari `GuestSession` sekarang cuma di-copy kalau `!guest.IsClaimed()`. Sebelumnya: kalau cookie `session_id` lama (yang guest session-nya SUDAH diklaim akun lain) kepakai ulang buat register akun baru, data profil guest lama itu tetap bocor ke akun baru walau kepemilikannya gak ikut ke-transfer
+- `infrastructure/persistence/postgres/db.go` — GORM logger di-set `IgnoreRecordNotFoundError: true`. Sebelumnya setiap lookup yang wajar-gak-ketemu (email belum terdaftar, referral code belum digenerate, dst — semua ditangani sebagai `nil, nil` di kode) tetap tercetak sebagai baris log "record not found", padahal bukan error sungguhan
+
 ---
 
 ## [UNRELEASED] — 2026-07-07
@@ -221,8 +249,10 @@ go build ./cmd/migrate; go build ./cmd/worker     ✅ OK (auxiliary entrypoints 
 
 ## Planned (Next Steps)
 
-- [ ] Complete GORM models & Postgres repositories for the remaining domains (TestResult, Answer, DeletionRequest, Referral, etc.)
+- [ ] Complete GORM models & Postgres repositories for the remaining domains — ~~TestResult, DeletionRequest, Referral~~ done; **Answer still stubbed** (`stubs.NewStubAnswerRepository` in wire.go)
 - [x] ~~Complete remaining Auth use cases (Forgot Password, Verify Reset OTP, Reset Password, Logout, Logout-all)~~ — done 2026-07-13, see UNRELEASED entry above (plus unplanned `change-password`)
+- [x] ~~Implement Account/Referral endpoints (profile update, referral code)~~ — done 2026-07-13
+- [ ] Implement `anonymize:user` worker (scrub PII, delete R2 PDFs) + cron trigger via `FindExpiredGracePeriod` — `delete-request`/`delete-request/cancel` endpoints done 2026-07-13, this is the remaining piece of FR-G2
 - [ ] Complete worker implementation (Asynq background workers for PDF, anonymization — email OTP sending done 2026-07-13)
 - [ ] Implement Redis-backed Distributed Lock & Idempotency Service
 - [ ] Integrate Turnstile verification and actual Have I Been Pwned API checks

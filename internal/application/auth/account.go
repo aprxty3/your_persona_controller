@@ -159,11 +159,16 @@ func NewAccountUseCase(
 
 // ResendEmailOTP invalidates existing codes and triggers a secure new OTP delivery.
 func (uc *AccountUseCase) ResendEmailOTP(ctx context.Context, req ResendEmailOTPRequest) (*ResendEmailOTPResponse, error) {
+	if err := application.ValidateEmail("email", req.Email); err != nil {
+		return nil, err
+	}
+
 	retryAfter, err := uc.rateLimiter.CheckAndConsume(ctx, redis.ScopeEmailVerification, req.Email)
 	if err != nil {
 		uc.log.Error("resend otp failed", "step", "rate_limit_evaluation", "error", err)
 		return nil, fmt.Errorf("resend_otp: rate limit evaluation: %w", err)
 	}
+
 	if retryAfter > 0 {
 		uc.log.Warn("resend otp rejected", "reason", "rate_limited", "retry_after_seconds", retryAfter)
 		return &ResendEmailOTPResponse{RetryAfterSeconds: retryAfter}, application.ErrRateLimited
@@ -223,7 +228,7 @@ func (uc *AccountUseCase) ResendEmailOTP(ctx context.Context, req ResendEmailOTP
 
 // ForgotPassword issues a password-reset OTP.
 func (uc *AccountUseCase) ForgotPassword(ctx context.Context, req ForgotPasswordRequest) (*ForgotPasswordResponse, error) {
-	if err := application.ValidateRequired("email", req.Email); err != nil {
+	if err := application.ValidateEmail("email", req.Email); err != nil {
 		return nil, err
 	}
 

@@ -381,18 +381,21 @@ func (uc *SessionUseCase) LogoutAll(ctx context.Context, userID string) error {
 
 // VerifyResetOTP exchanges a valid reset OTP for a reset_token JWT.
 func (uc *SessionUseCase) VerifyResetOTP(ctx context.Context, req VerifyResetOTPRequest) (*VerifyResetOTPResponse, error) {
-	if err := application.ValidateRequired("email", req.Email); err != nil {
+	if err := application.ValidateEmail("email", req.Email); err != nil {
 		return nil, err
 	}
+
 	if err := application.ValidateRequired("otp", req.OTP); err != nil {
 		return nil, err
 	}
 
 	u, err := uc.userRepo.FindByEmail(ctx, req.Email)
+
 	if err != nil {
 		uc.log.Error("verify reset otp failed", "step", "lookup_user", "error", err)
 		return nil, fmt.Errorf("verify_reset_otp: lookup user: %w", err)
 	}
+
 	if u == nil {
 		uc.log.Warn("verify reset otp rejected", "reason", "user_not_found")
 		return nil, application.ErrInvalidOTP

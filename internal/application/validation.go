@@ -1,6 +1,12 @@
 package application
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+)
+
+// emailPattern is a deliberately loose shape check (not full RFC 5322).
+var emailPattern = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
 
 // validStatuses is the exhaustive set of accepted user life-status values.
 var validStatuses = map[string]struct{}{
@@ -51,6 +57,17 @@ func ValidateAge(age, minAge int) error {
 func ValidateRequired(fieldName, value string) error {
 	if value == "" {
 		return fmt.Errorf("%w: %s is required", ErrInvalidInput, fieldName)
+	}
+	return nil
+}
+
+// ValidateEmail returns an ErrInvalidInput error if the value is empty.
+func ValidateEmail(fieldName, value string) error {
+	if err := ValidateRequired(fieldName, value); err != nil {
+		return err
+	}
+	if !emailPattern.MatchString(value) {
+		return fmt.Errorf("%w: %s must be a valid email address", ErrInvalidInput, fieldName)
 	}
 	return nil
 }

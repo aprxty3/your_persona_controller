@@ -109,9 +109,10 @@ func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*
 		return &RegisterResponse{RetryAfterSeconds: retryAfter}, application.ErrRateLimited
 	}
 
-	if err := application.ValidateRequired("email", req.Email); err != nil {
+	if err := application.ValidateEmail("email", req.Email); err != nil {
 		return nil, err
 	}
+
 	if err := application.ValidateLocale("preferred_locale", req.PreferredLocale); err != nil {
 		return nil, err
 	}
