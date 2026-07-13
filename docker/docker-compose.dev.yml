@@ -12,11 +12,10 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.dev
     command: ["air", "-c", ".air.worker.toml"]
+    environment:
+      - SMTP_HOST=mailpit
     volumes:
       - ..:/app
-
-  # S3-compatible storage for dev — same S3 client code works here and in actual AWS S3
-  # (just replace S3_ENDPOINT in .env, see PRD Section 9.4)
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"
