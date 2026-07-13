@@ -682,7 +682,7 @@ const docTemplate = `{
         },
         "/v1/auth/verify-email-otp": {
             "post": {
-                "description": "Verifies the 6-digit OTP sent to the user's email address after registration.\nThe account is fully active only after this step succeeds.\n\n**Attempt limits:**\n- Maximum **5 wrong attempts** per OTP code. After that, you must request a new OTP.\n- Each failed attempt returns the remaining attempt count in the ` + "`" + `meta.attempts_remaining` + "`" + ` field.\n\n**OTP expiry:** OTP codes expire after 10 minutes. Request a new one via ` + "`" + `/auth/resend-email-otp` + "`" + `.",
+                "description": "Verifies the 6-digit OTP sent to the user's email address after registration.\nThe account is fully active only after this step succeeds.\n\nOn success, a fresh ` + "`" + `access_token` + "`" + ` + ` + "`" + `refresh_token` + "`" + ` pair is returned (auto-login) —\nyou already proved the password (at registration) and email ownership (this OTP),\nso a separate ` + "`" + `/auth/login` + "`" + ` call right after would be redundant.\n\n**Attempt limits:**\n- Maximum **5 wrong attempts** per OTP code. After that, you must request a new OTP.\n- Each failed attempt returns the remaining attempt count in the ` + "`" + `meta.attempts_remaining` + "`" + ` field.\n\n**OTP expiry:** OTP codes expire after 10 minutes. Request a new one via ` + "`" + `/auth/resend-email-otp` + "`" + `.",
                 "consumes": [
                     "application/json"
                 ],
@@ -706,9 +706,21 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Email verified successfully",
+                        "description": "Email verified. access_token/refresh_token issued (auto-login).",
                         "schema": {
-                            "$ref": "#/definitions/httpresponse.Response"
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/auth.VerifyEmailOTPResponse"
+                                        }
+                                    }
+                                }
+                            ]
                         }
                     },
                     "400": {
@@ -909,6 +921,17 @@ const docTemplate = `{
             }
         },
         "auth.ResetPasswordResponse": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.VerifyEmailOTPResponse": {
             "type": "object",
             "properties": {
                 "access_token": {

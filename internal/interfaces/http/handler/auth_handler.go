@@ -193,6 +193,10 @@ func (h *AuthHandler) Register(c echo.Context) error {
 // @Description  Verifies the 6-digit OTP sent to the user's email address after registration.
 // @Description  The account is fully active only after this step succeeds.
 // @Description
+// @Description  On success, a fresh `access_token` + `refresh_token` pair is returned (auto-login) —
+// @Description  you already proved the password (at registration) and email ownership (this OTP),
+// @Description  so a separate `/auth/login` call right after would be redundant.
+// @Description
 // @Description  **Attempt limits:**
 // @Description  - Maximum **5 wrong attempts** per OTP code. After that, you must request a new OTP.
 // @Description  - Each failed attempt returns the remaining attempt count in the `meta.attempts_remaining` field.
@@ -202,7 +206,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 // @Accept       json
 // @Produce      json
 // @Param        request body dto.VerifyEmailOTPRequestDTO true "Email and OTP code"
-// @Success      200 {object} httpresponse.Response "Email verified successfully"
+// @Success      200 {object} httpresponse.Response{data=auth.VerifyEmailOTPResponse} "Email verified. access_token/refresh_token issued (auto-login)."
 // @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR | INVALID_OTP | OTP_EXPIRED"
 // @Failure      429 {object} httpresponse.Response "OTP_MAX_ATTEMPTS — maximum wrong attempts exceeded. Request a new OTP."
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
@@ -224,7 +228,7 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 		OTP:   payload.OTP,
 	}
 
-	resp, err := h.accountUseCase.VerifyEmailOTP(c.Request().Context(), ucReq)
+	resp, err := h.sessionUseCase.VerifyEmailOTP(c.Request().Context(), ucReq)
 	if err != nil {
 		meta := map[string]interface{}{}
 		if resp != nil {
@@ -256,7 +260,7 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 		}
 	}
 
-	return httpcallSuccess(c, http.StatusOK, map[string]string{"message": "Email verified successfully"}, nil)
+	return httpcallSuccess(c, http.StatusOK, resp, nil)
 }
 
 // ResendEmailOTP handles POST /v1/auth/resend-email-otp

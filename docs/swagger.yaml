@@ -40,6 +40,13 @@ definitions:
       refresh_token:
         type: string
     type: object
+  auth.VerifyEmailOTPResponse:
+    properties:
+      access_token:
+        type: string
+      refresh_token:
+        type: string
+    type: object
   auth.VerifyResetOTPResponse:
     properties:
       reset_token:
@@ -765,6 +772,10 @@ paths:
         Verifies the 6-digit OTP sent to the user's email address after registration.
         The account is fully active only after this step succeeds.
 
+        On success, a fresh `access_token` + `refresh_token` pair is returned (auto-login) —
+        you already proved the password (at registration) and email ownership (this OTP),
+        so a separate `/auth/login` call right after would be redundant.
+
         **Attempt limits:**
         - Maximum **5 wrong attempts** per OTP code. After that, you must request a new OTP.
         - Each failed attempt returns the remaining attempt count in the `meta.attempts_remaining` field.
@@ -781,9 +792,14 @@ paths:
       - application/json
       responses:
         "200":
-          description: Email verified successfully
+          description: Email verified. access_token/refresh_token issued (auto-login).
           schema:
-            $ref: '#/definitions/httpresponse.Response'
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/auth.VerifyEmailOTPResponse'
+              type: object
         "400":
           description: VALIDATION_ERROR | INVALID_OTP | OTP_EXPIRED
           schema:

@@ -68,6 +68,20 @@ type LoginResponse struct {
 	RetryAfterSeconds int    `json:"-"` // set only when login itself returned ErrRateLimited
 }
 
+// VerifyEmailOTPRequest represents payload structure for OTP validation.
+type VerifyEmailOTPRequest struct {
+	Email string
+	OTP   string
+}
+
+// VerifyEmailOTPResponse carries a fresh session pair (auto-login) on success,
+// or remaining attempt statistics on failure.
+type VerifyEmailOTPResponse struct {
+	AccessToken       string `json:"access_token"`
+	RefreshToken      string `json:"refresh_token"`
+	AttemptsRemaining int    `json:"-"`
+}
+
 // RefreshTokenRequest carries the long-lived credential to be exchanged.
 type RefreshTokenRequest struct {
 	RefreshToken string
@@ -234,6 +248,49 @@ func (uc *SessionUseCase) handleFailedAttempt(ctx context.Context, u *account.Us
 	}
 	uc.log.Warn("login rejected", "reason", "invalid_credentials", "user_id", u.ID, "failed_count", newCount)
 	return application.ErrInvalidCredentials
+}
+
+// VerifyEmailOTP validates an email verification code, activates the account, and auto-logs the user in
+func (uc *SessionUseCase) VerifyEmailOTP(ctx context.Context, req VerifyEmailOTPRequest) (*VerifyEmailOTPResponse, error) {
+	u, err := uc.userRepo.FindByEmail(ctx, req.Email)
+	if err != nil {
+		uc.log.Error("verify email otp failed", "step", "lookup_user", "error", err)
+		return nil, fmt.Errorf("verify_email_otp: lookup user: %w", err)
+	}
+	if u == nil {
+		uc.log.Warn("verify email otp rejected", "reason", "user_not_found")
+		return nil, application.ErrInvalidOTP
+	}
+
+	token, remaining, err := validateOTPAttempt(ctx, uc.tokenRepo, u.ID, req.OTP, account.TokenTypeEmailVerification, uc.log)
+	if err != nil {
+		return &VerifyEmailOTPResponse{AttemptsRemaining: remaining}, err
+	}
+
+	if err := uc.tokenRepo.MarkUsed(ctx, token.ID); err != nil {
+		uc.log.Error("verify email otp failed", "step", "mark_token_used", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("verify_email_otp: mark token used: %w", err)
+	}
+
+	now := time.Now()
+	u.EmailVerifiedAt = &now
+	if err := uc.userRepo.Update(ctx, u); err != nil {
+		uc.log.Error("verify email otp failed", "step", "update_user", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("verify_email_otp: update user: %w", err)
+	}
+
+	pair, err := IssueTokenPair(uc.jwtService, u.ID, u.TokenVersion)
+	if err != nil {
+		uc.log.Error("verify email otp failed", "step", "issue_tokens", "user_id", u.ID, "error", err)
+		return nil, fmt.Errorf("verify_email_otp: %w", err)
+	}
+
+	uc.log.Info("email verified", "user_id", u.ID)
+	return &VerifyEmailOTPResponse{
+		AccessToken:       pair.AccessToken,
+		RefreshToken:      pair.RefreshToken,
+		AttemptsRemaining: MaxWrongOTPAttempts,
+	}, nil
 }
 
 // RefreshToken exchanges a valid refresh token for a brand-new session pair.
