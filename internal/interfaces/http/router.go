@@ -13,7 +13,8 @@ import (
 func SetupRouter(
 	assessmentHandler *handler.AssessmentHandler,
 	authHandler *handler.AuthHandler,
-	profileHandler *handler.ProfileHandler,
+	accountHandler *handler.AccountHandler,
+	healthHandler *handler.HealthHandler,
 	authMiddleware *appmiddleware.AuthMiddleware,
 ) *echo.Echo {
 	e := echo.New()
@@ -25,6 +26,9 @@ func SetupRouter(
 	e.Use(middleware.Logger())
 
 	e.Use(middleware.BodyLimit("32K"))
+
+	// Operational
+	e.GET("/healthz", healthHandler.HealthCheck)
 
 	v1 := e.Group("/v1")
 
@@ -47,8 +51,10 @@ func SetupRouter(
 
 	// Account Group (Member Only)
 	accountGroup := v1.Group("/account")
-	accountGroup.PATCH("/profile", profileHandler.UpdateProfile, authMiddleware.RequireAuth)
-	accountGroup.GET("/referral-code", profileHandler.GetReferralCode, authMiddleware.RequireAuth)
+	accountGroup.PATCH("/profile", accountHandler.UpdateProfile, authMiddleware.RequireAuth)
+	accountGroup.GET("/referral-code", accountHandler.GetReferralCode, authMiddleware.RequireAuth)
+	accountGroup.POST("/delete-request", accountHandler.RequestDeletion, authMiddleware.RequireAuth)
+	accountGroup.POST("/delete-request/cancel", accountHandler.CancelDeletion, authMiddleware.RequireAuth)
 
 	// Assessment Group
 	assessmentGroup := v1.Group("/assessment")

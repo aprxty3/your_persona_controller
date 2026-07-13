@@ -9,6 +9,136 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
+        "/healthz": {
+            "get": {
+                "description": "Checks connectivity to PostgreSQL and Redis, the two dependencies used synchronously\nby nearly every endpoint. Used by container orchestration / load balancers.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Operational"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "All checked dependencies are healthy",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "503": {
+                        "description": "One or more dependencies are unreachable — see data.checks",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/account/delete-request": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Starts a 14-day grace period. The account remains fully usable during this window —\nuse `/account/delete-request/cancel` any time before the grace period ends to abort.\n\nOnce the grace period elapses, a background worker anonymizes personal data\n(email, display name, essay answers, AI summary) and deletes stored PDFs.\nAggregate data (mbti_type, grit_score) is retained.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Account"
+                ],
+                "summary": "Request account deletion",
+                "responses": {
+                    "200": {
+                        "description": "Grace period started",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/deletionrequest.RequestDeletionResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "DELETION_ALREADY_REQUESTED — an active request already exists",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/account/delete-request/cancel": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Aborts an in-progress grace period — only works while the request is still\n`pending_grace`. Once the anonymization worker has started, it's too late to cancel.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Account"
+                ],
+                "summary": "Cancel a pending account deletion request",
+                "responses": {
+                    "200": {
+                        "description": "Deletion request cancelled",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "NO_ACTIVE_DELETION_REQUEST — nothing to cancel",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "DELETION_ALREADY_PROCESSING — grace period already elapsed",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/account/profile": {
             "patch": {
                 "security": [
@@ -940,6 +1070,20 @@
             "type": "object",
             "properties": {
                 "reset_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "deletionrequest.RequestDeletionResponse": {
+            "type": "object",
+            "properties": {
+                "request_id": {
+                    "type": "string"
+                },
+                "requested_at": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 }
             }

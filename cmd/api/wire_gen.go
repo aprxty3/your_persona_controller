@@ -9,12 +9,14 @@ package main
 import (
 	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
+	deletionrequest2 "github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/profile"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/gemini"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
 	asynq2 "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
@@ -73,9 +75,12 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	sessionUseCase := auth.NewSessionUseCase(db, userRepository, verificationTokenRepository, passwordBreachChecker, jwtService, tokenStore, ipRateLimitService, loggerInstance)
 	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, accountUseCase, sessionUseCase, loggerInstance)
 	profileUseCase := profile.NewProfileUseCase(userRepository, referralRepository, loggerInstance)
-	profileHandler := handler.NewProfileHandler(profileUseCase, loggerInstance)
+	deletionrequestRepository := deletionrequest.NewRepository(db, loggerInstance)
+	deletionUseCase := deletionrequest2.NewDeletionUseCase(userRepository, deletionrequestRepository, loggerInstance)
+	accountHandler := handler.NewAccountHandler(profileUseCase, deletionUseCase, loggerInstance)
+	healthHandler := handler.NewHealthHandler(db, redisClient)
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)
-	echoEcho := http.SetupRouter(assessmentHandler, authHandler, profileHandler, authMiddleware)
+	echoEcho := http.SetupRouter(assessmentHandler, authHandler, accountHandler, healthHandler, authMiddleware)
 	return echoEcho, nil
 }
 

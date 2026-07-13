@@ -26,6 +26,13 @@ var (
 	ErrPasswordConfirmationMismatch = errors.New("PASSWORD_CONFIRMATION_MISMATCH")
 )
 
+// Account deletion errors
+var (
+	ErrDeletionAlreadyRequested  = errors.New("DELETION_ALREADY_REQUESTED")
+	ErrNoActiveDeletionRequest   = errors.New("NO_ACTIVE_DELETION_REQUEST")
+	ErrDeletionAlreadyProcessing = errors.New("DELETION_ALREADY_PROCESSING")
+)
+
 // OTP errors
 var (
 	ErrInvalidOTP     = errors.New("INVALID_OTP")

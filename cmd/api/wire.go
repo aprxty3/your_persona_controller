@@ -6,12 +6,14 @@ package main
 import (
 	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/profile"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/gemini"
 	jwtservice "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	pgaccount "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
+	pgdeletionrequest "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/deletionrequest"
 	pgtestresult "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/testresult"
 	asynqclient "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
@@ -82,6 +84,7 @@ func InitializeAPI(
 		pgaccount.NewGuestSessionRepository,
 		pgaccount.NewVerificationTokenRepository,
 		pgaccount.NewReferralRepository,
+		pgdeletionrequest.NewRepository,
 		pgtestresult.NewTestResultRepository,
 
 		// Stubs for assessment interfaces
@@ -105,6 +108,7 @@ func InitializeAPI(
 		auth.NewAccountUseCase,
 		auth.NewSessionUseCase,
 		profile.NewProfileUseCase,
+		deletionrequest.NewDeletionUseCase,
 
 		// ---------------------------------------------------------
 		// Delivery (HTTP) Providers
@@ -112,7 +116,8 @@ func InitializeAPI(
 		appmiddleware.NewAuthMiddleware,
 		handler.NewAssessmentHandler,
 		handler.NewAuthHandler,
-		handler.NewProfileHandler,
+		handler.NewAccountHandler,
+		handler.NewHealthHandler,
 		http.SetupRouter,
 	)
 	return nil, nil
