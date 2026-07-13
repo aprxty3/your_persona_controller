@@ -115,10 +115,10 @@ func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*
 	if err := application.ValidateLocale("preferred_locale", req.PreferredLocale); err != nil {
 		return nil, err
 	}
+	// Treat an empty string the same as omitted/null — no referral code.
+	// FE frameworks commonly send "" instead of null for a cleared/unset field.
 	if req.ReferralCode != nil && *req.ReferralCode == "" {
-		return nil, fmt.Errorf("%w: referral_code must not be an empty string — omit the field or pass null if you don't have one",
-			application.ErrInvalidInput,
-		)
+		req.ReferralCode = nil
 	}
 
 	if err := ValidateNewPassword(ctx, uc.breachChecker, "password", req.Password); err != nil {

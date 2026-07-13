@@ -125,8 +125,7 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 // @Description  - `id` — Indonesian (Bahasa Indonesia)
 // @Description
 // @Description  **referral_code** — completely optional.
-// @Description  If you do not have a referral code, omit the field entirely or set it to `null`.
-// @Description  Do NOT send an empty string `""` — that will be treated as a validation error.
+// @Description  If you do not have a referral code, omit the field, set it to `null`, or send `""` — all three are treated identically.
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
