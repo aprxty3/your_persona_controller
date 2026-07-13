@@ -7,6 +7,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/question"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/questiontranslation"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
+	"github.com/aprxty3/your_persona_controller.git/pkg/locale"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -16,6 +17,11 @@ type QuestionRepository struct {
 	db  *gorm.DB
 	log logger.Logger
 }
+
+var (
+	_ question.Repository            = (*QuestionRepository)(nil)
+	_ questiontranslation.Repository = (*QuestionRepository)(nil)
+)
 
 func NewQuestionRepository(db *gorm.DB, log logger.Logger) *QuestionRepository {
 	return &QuestionRepository{
@@ -79,7 +85,7 @@ func (r *QuestionRepository) FindByID(ctx context.Context, id string) (*question
 	return &q, nil
 }
 
-func (r *QuestionRepository) FindAllWithTranslation(ctx context.Context, locale string) ([]question.Question, map[string]question.QuestionTranslation, error) {
+func (r *QuestionRepository) FindAllWithTranslation(ctx context.Context, loc string) ([]question.Question, map[string]question.QuestionTranslation, error) {
 	var questionModels []postgres.QuestionModel
 	err := r.db.WithContext(ctx).
 		Order("section asc, display_order asc").
@@ -98,27 +104,21 @@ func (r *QuestionRepository) FindAllWithTranslation(ctx context.Context, locale 
 
 	var translations []postgres.QuestionTranslationModel
 	err = r.db.WithContext(ctx).
-		Where("question_id IN ? AND (locale = ? OR locale = 'en')", questionIDs, locale).
+		Where("question_id IN ? AND (locale = ? OR locale = 'en')", questionIDs, loc).
 		Find(&translations).Error
 	if err != nil {
 		r.log.Error("query failed", "op", "FindAllWithTranslation.translations", "error", err)
 		return nil, nil, err
 	}
 
-	translationMap := make(map[string]question.QuestionTranslation)
-	isLocaleMapped := make(map[string]bool)
+	picked := locale.PickWithFallback(translations,
+		func(m postgres.QuestionTranslationModel) string { return m.QuestionID },
+		func(m postgres.QuestionTranslationModel) string { return m.Locale },
+		loc)
 
-	for _, tr := range translations {
-		if tr.Locale == locale {
-			translationMap[tr.QuestionID] = toTranslationEntity(&tr)
-			isLocaleMapped[tr.QuestionID] = true
-		}
-	}
-
-	for _, tr := range translations {
-		if tr.Locale == "en" && !isLocaleMapped[tr.QuestionID] {
-			translationMap[tr.QuestionID] = toTranslationEntity(&tr)
-		}
+	translationMap := make(map[string]question.QuestionTranslation, len(picked))
+	for questionID, tr := range picked {
+		translationMap[questionID] = toTranslationEntity(&tr)
 	}
 
 	return questions, translationMap, nil

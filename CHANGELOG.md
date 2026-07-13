@@ -7,6 +7,20 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ## [UNRELEASED] — 2026-07-13
 
+### Assessment — Persistence Layer & DB Seeder (TICKET-01, TICKET-10)
+
+#### [A] GORM models + AutoMigrate untuk 5 tabel assessment (commit `e3fc758`)
+- `QuestionModel`, `QuestionTranslationModel` (unique `(question_id, locale)`), `AnswerModel` (unique `(test_result_id, question_id)` — FR-B10 upsert revisi jawaban), `InsightTemplateModel` (unique `(insight_key, locale)`), `PromptAuditLogModel` (index `expires_at` untuk purge TTL 30 hari) — semua didaftarkan di `cmd/migrate/main.go`
+- `internal/infrastructure/persistence/postgres/assessment/` — repository Postgres nyata; `StubTestResultRepository` & `StubAnswerRepository` dicabut dari `cmd/api/wire.go` (lock/idempotency/PDF-queue masih stub → TICKET-02/06)
+
+#### [A] `cmd/seed/main.go` — seeder idempotent question bank & insight templates (commit `e3fc758`)
+- 3 SJT + 10 Likert (2 reverse-scored, 1 attention check — rasio FR-B2) + 2 essay prompt, terjemahan EN+ID lengkap, upsert `ON CONFLICT DO UPDATE` (aman dijalankan berulang)
+- 2 insight template (`grit_increase`, `grit_high_threshold`) × 2 locale
+
+#### [C] Rapikan struktur repository assessment (follow-up review)
+- `AnswerRepository` yang tadinya merangkap 3 domain dipecah: `InsightTemplateRepository` (`insighttemplate_persistence.go`) & `PromptAuditLogRepository` (`promptauditlog_persistence.go`) jadi struct terpisah sesuai TICKET-01 — penting sebelum TICKET-09 nambahin `ScrubEssayAnswersByUser`/`DeleteByUserID`
+- Logika fallback locale (`locale target → en`) yang terduplikasi di `FindAllWithTranslation` dan `FindMatchingTemplates` disatukan jadi `pkg/locale.PickWithFallback` generic — sesuai DRY rule `AGENTS.md` (FR-I9, satu resolver untuk QUESTION_TRANSLATION dan INSIGHT_TEMPLATE)
+
 ### Auth — Session & Password Lifecycle Completion
 
 #### [A] 6 endpoint Auth baru (FR-H4, FR-H6, FR-H8, NFR JWT)
@@ -283,7 +297,7 @@ go build ./cmd/migrate; go build ./cmd/worker     ✅ OK (auxiliary entrypoints 
 
 ## Planned (Next Steps)
 
-- [ ] Complete GORM models & Postgres repositories for the remaining domains — ~~TestResult, DeletionRequest, Referral~~ done; **Answer still stubbed** (`stubs.NewStubAnswerRepository` in wire.go)
+- [x] ~~Complete GORM models & Postgres repositories for the remaining domains~~ — done 2026-07-13 (TICKET-01: Question, QuestionTranslation, Answer, InsightTemplate, PromptAuditLog + seeder TICKET-10)
 - [x] ~~Complete remaining Auth use cases (Forgot Password, Verify Reset OTP, Reset Password, Logout, Logout-all)~~ — done 2026-07-13, see UNRELEASED entry above (plus unplanned `change-password`)
 - [x] ~~Implement Account/Referral endpoints (profile update, referral code)~~ — done 2026-07-13
 - [x] ~~Implement `anonymize:user` worker (scrub PII, delete R2 PDFs) + cron trigger via `FindExpiredGracePeriod`~~ — done 2026-07-13 (hourly `asynq.Scheduler` scan + startup kick). Remaining sub-item: scrub `ANSWER` essay + `PROMPT_AUDIT_LOG` once those tables exist (assessment epic still stubbed)

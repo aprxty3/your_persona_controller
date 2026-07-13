@@ -13,7 +13,7 @@ const (
 type QuestionType string
 
 const (
-	TypeMultipleChoice QuestionType = "mc"          // SJT: choices A–E
+	TypeMultipleChoice QuestionType = "mc"           // SJT: choices A–E
 	TypeLikert         QuestionType = "likert"       // Scale 1–5
 	TypeEssayPrompt    QuestionType = "essay_prompt" // Free-text essay mini-prompt
 )

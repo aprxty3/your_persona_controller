@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/answer"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 )
 
 // StubTestResultRepository implements assessment.TestResultRepository

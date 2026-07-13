@@ -176,4 +176,3 @@ type PromptAuditLogModel struct {
 }
 
 func (PromptAuditLogModel) TableName() string { return "prompt_audit_logs" }
-

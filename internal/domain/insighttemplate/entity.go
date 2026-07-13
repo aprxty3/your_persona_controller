@@ -24,9 +24,9 @@ const (
 // These templates provide that framing for the GRIT trend line and trait deltas.
 type InsightTemplate struct {
 	ID             string
-	InsightKey     string        // e.g. "grit_increase_high" — unique per locale pair
-	Locale         string        // "en", "id", etc.
-	Trait          string        // "grit" | "E" | "I" | "S" | "N" | "T" | "F" | "J" | "P"
+	InsightKey     string // e.g. "grit_increase_high" — unique per locale pair
+	Locale         string // "en", "id", etc.
+	Trait          string // "grit" | "E" | "I" | "S" | "N" | "T" | "F" | "J" | "P"
 	ConditionType  ConditionType
 	MinDelta       *float64 // used for increase/decrease; nil for threshold
 	ThresholdValue *float64 // used for threshold; nil for increase/decrease

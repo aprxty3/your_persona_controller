@@ -2,11 +2,8 @@ package assessment
 
 import (
 	"context"
-	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/answer"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/insighttemplate"
-	"github.com/aprxty3/your_persona_controller.git/internal/domain/promptauditlog"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"gorm.io/gorm"
@@ -17,6 +14,8 @@ type AnswerRepository struct {
 	db  *gorm.DB
 	log logger.Logger
 }
+
+var _ answer.Repository = (*AnswerRepository)(nil)
 
 func NewAnswerRepository(db *gorm.DB, log logger.Logger) *AnswerRepository {
 	return &AnswerRepository{
@@ -44,32 +43,6 @@ func toAnswerEntity(model *postgres.AnswerModel) answer.Answer {
 		Value:        model.Value,
 		CreatedAt:    model.CreatedAt,
 		UpdatedAt:    model.UpdatedAt,
-	}
-}
-
-func toInsightTemplateEntity(model *postgres.InsightTemplateModel) insighttemplate.InsightTemplate {
-	return insighttemplate.InsightTemplate{
-		ID:             model.ID,
-		InsightKey:     model.InsightKey,
-		Locale:         model.Locale,
-		Trait:          model.Trait,
-		ConditionType:  insighttemplate.ConditionType(model.ConditionType),
-		MinDelta:       model.MinDelta,
-		ThresholdValue: model.ThresholdValue,
-		TemplateText:   model.TemplateText,
-		IsActive:       model.IsActive,
-	}
-}
-
-func toPromptAuditLogModel(entity *promptauditlog.PromptAuditLog) postgres.PromptAuditLogModel {
-	return postgres.PromptAuditLogModel{
-		ID:             entity.ID,
-		TestResultID:   entity.TestResultID,
-		RawPrompt:      entity.RawPrompt,
-		RawResponse:    entity.RawResponse,
-		FlaggedAnomaly: entity.FlaggedAnomaly,
-		CreatedAt:      entity.CreatedAt,
-		ExpiresAt:      entity.ExpiresAt,
 	}
 }
 
@@ -115,71 +88,4 @@ func (r *AnswerRepository) FindByTestResultID(ctx context.Context, testResultID 
 		entities[i] = toAnswerEntity(&m)
 	}
 	return entities, nil
-}
-
-func (r *AnswerRepository) FindMatchingTemplates(ctx context.Context, trait, locale string) ([]insighttemplate.InsightTemplate, error) {
-	var models []postgres.InsightTemplateModel
-
-	err := r.db.WithContext(ctx).
-		Where("trait = ? AND is_active = true AND (locale = ? OR locale = 'en')", trait, locale).
-		Find(&models).Error
-
-	if err != nil {
-		r.log.Error("query failed", "op", "FindMatchingTemplates", "error", err)
-		return nil, err
-	}
-
-	var matched []postgres.InsightTemplateModel
-	isKeyMapped := make(map[string]bool)
-
-	for _, m := range models {
-		if m.Locale == locale {
-			matched = append(matched, m)
-			isKeyMapped[m.InsightKey] = true
-		}
-	}
-
-	for _, m := range models {
-		if m.Locale == "en" && !isKeyMapped[m.InsightKey] {
-			matched = append(matched, m)
-		}
-	}
-
-	entities := make([]insighttemplate.InsightTemplate, len(matched))
-	for i, m := range matched {
-		entities[i] = toInsightTemplateEntity(&m)
-	}
-
-	return entities, nil
-}
-
-func (r *AnswerRepository) Create(ctx context.Context, log *promptauditlog.PromptAuditLog) error {
-	m := toPromptAuditLogModel(log)
-	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-		r.log.Error("query failed", "op", "Create", "error", err)
-		return err
-	}
-	return nil
-}
-
-func (r *AnswerRepository) DeleteByTestResultID(ctx context.Context, testResultID string) error {
-	err := r.db.WithContext(ctx).
-		Where("test_result_id = ?", testResultID).
-		Delete(&postgres.PromptAuditLogModel{}).Error
-
-	if err != nil {
-		r.log.Error("query failed", "op", "DeleteByTestResultID", "error", err)
-	}
-	return err
-}
-
-func (r *AnswerRepository) DeleteExpired(ctx context.Context) error {
-	err := r.db.WithContext(ctx).
-		Where("expires_at < ?", time.Now()).
-		Delete(&postgres.PromptAuditLogModel{}).Error
-
-	if err != nil {
-		r.log.Error("query failed", "op", "DeleteExpired", "error", err)
-	}
-	return err
 }
