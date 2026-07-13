@@ -42,11 +42,12 @@ func (m *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
 		const bearerPrefix = "Bearer "
 
 		header := c.Request().Header.Get(echo.HeaderAuthorization)
-		if !strings.HasPrefix(header, bearerPrefix) {
+		if header == "" {
 			return httpresponse.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "Missing or malformed Authorization header")
 		}
+		tokenStr := strings.TrimSpace(strings.TrimPrefix(header, bearerPrefix))
 
-		claims, err := m.jwtService.ParseAccessToken(strings.TrimPrefix(header, bearerPrefix))
+		claims, err := m.jwtService.ParseAccessToken(tokenStr)
 		if err != nil {
 			m.log.Warn("auth rejected", "reason", "invalid_access_token", "error", err)
 			return httpresponse.Error(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired access token")

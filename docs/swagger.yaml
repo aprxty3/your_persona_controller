@@ -435,8 +435,7 @@ paths:
         - `id` — Indonesian (Bahasa Indonesia)
 
         **referral_code** — completely optional.
-        If you do not have a referral code, omit the field entirely or set it to `null`.
-        Do NOT send an empty string `""` — that will be treated as a validation error.
+        If you do not have a referral code, omit the field, set it to `null`, or send `""` — all three are treated identically.
       parameters:
       - description: Registration Data
         in: body
@@ -707,4 +706,11 @@ paths:
       summary: Create a guest session
       tags:
       - Auth
+securityDefinitions:
+  BearerAuth:
+    description: Masukkan access token tanpa prefix "Bearer ", cukup token JWT-nya
+      saja.
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

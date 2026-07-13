@@ -28,6 +28,10 @@ type JWTSecret string
 // @description API Server for Your Persona psychological assessment platform.
 // @host localhost:8080
 // @BasePath /
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Masukkan access token tanpa prefix "Bearer ", cukup token JWT-nya saja.
 func main() {
 	// ---------------------------------------------------------
 	// ENVIRONMENT VARIABLES

@@ -309,7 +309,7 @@ const docTemplate = `{
         },
         "/v1/auth/register": {
             "post": {
-                "description": "Creates a new member account. If a valid ` + "`" + `session_id` + "`" + ` cookie from ` + "`" + `/v1/guest-session` + "`" + `\nis present, the guest session data (display name, age, status, locale) is automatically\nlinked to the new account — you do NOT need to re-submit that data here.\n\nAfter successful registration, a 6-digit OTP is sent to the provided email address.\nThe account is not fully active until the OTP is verified via ` + "`" + `/v1/auth/verify-email-otp` + "`" + `.\n\n**preferred_locale** — accepted values:\n- ` + "`" + `en` + "`" + ` — English\n- ` + "`" + `id` + "`" + ` — Indonesian (Bahasa Indonesia)\n\n**referral_code** — completely optional.\nIf you do not have a referral code, omit the field entirely or set it to ` + "`" + `null` + "`" + `.\nDo NOT send an empty string ` + "`" + `\"\"` + "`" + ` — that will be treated as a validation error.",
+                "description": "Creates a new member account. If a valid ` + "`" + `session_id` + "`" + ` cookie from ` + "`" + `/v1/guest-session` + "`" + `\nis present, the guest session data (display name, age, status, locale) is automatically\nlinked to the new account — you do NOT need to re-submit that data here.\n\nAfter successful registration, a 6-digit OTP is sent to the provided email address.\nThe account is not fully active until the OTP is verified via ` + "`" + `/v1/auth/verify-email-otp` + "`" + `.\n\n**preferred_locale** — accepted values:\n- ` + "`" + `en` + "`" + ` — English\n- ` + "`" + `id` + "`" + ` — Indonesian (Bahasa Indonesia)\n\n**referral_code** — completely optional.\nIf you do not have a referral code, omit the field, set it to ` + "`" + `null` + "`" + `, or send ` + "`" + `\"\"` + "`" + ` — all three are treated identically.",
                 "consumes": [
                     "application/json"
                 ],
@@ -959,6 +959,14 @@ const docTemplate = `{
                     "type": "boolean"
                 }
             }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Masukkan access token tanpa prefix \"Bearer \", cukup token JWT-nya saja.",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
     }
 }`
