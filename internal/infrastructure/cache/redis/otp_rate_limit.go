@@ -15,9 +15,7 @@ const (
 	otpDailyTTL      = 24 * time.Hour
 )
 
-// OTPScope namespaces the rate-limit counters per email-sending purpose,
-// so hammering /resend-email-otp cannot starve /forgot-password (and vice versa).
-// Both scopes carry the same policy: 60s cooldown + 5x/day/email.
+// OTPScope namespaces the rate-limit counters per email-sending purpose.
 type OTPScope string
 
 const (
@@ -36,7 +34,6 @@ func NewOTPRateLimitService(client *redis.Client) *OTPRateLimitService {
 }
 
 // CheckAndConsume verifies whether the email has exceeded its rate limits for the given scope.
-// Returns (0, nil) if verification succeeds and OTP dispatch is permitted.
 func (s *OTPRateLimitService) CheckAndConsume(ctx context.Context, scope OTPScope, email string) (retryAfterSeconds int, err error) {
 	ttl, err := s.client.TTL(ctx, cooldownKey(scope, email)).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
