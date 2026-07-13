@@ -11,8 +11,7 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-// EmailHandler processes send:email background jobs (FR-H2, FR-H4, FR-H5) —
-// the consuming side of taskqueue.Dispatcher.EnqueueEmail.
+// EmailHandler processes send:email background jobs.
 type EmailHandler struct {
 	mailer mailer.Mailer
 	log    logger.Logger
@@ -23,8 +22,6 @@ func NewEmailHandler(m mailer.Mailer, log logger.Logger) *EmailHandler {
 	return &EmailHandler{mailer: m, log: log.With("worker", "email")}
 }
 
-// ProcessTask handles a single send:email Asynq task. Returning a non-nil
-// error triggers Asynq's built-in retry — see taskqueue.enqueue for retry config.
 func (h *EmailHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	var payload taskqueue.SendEmailPayload
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
@@ -37,9 +34,12 @@ func (h *EmailHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 			h.log.Error("send otp email failed", "type", payload.Type, "user_id", payload.UserID, "error", err)
 			return err
 		}
+	case "deletion_confirmed":
+		if err := h.mailer.SendDeletionConfirmed(ctx, payload.Email, payload.Locale); err != nil {
+			h.log.Error("send deletion confirmation failed", "user_id", payload.UserID, "error", err)
+			return err
+		}
 	default:
-		// Unknown/not-yet-implemented email type (e.g. deletion_confirmed) —
-		// log and drop rather than retry forever on a type that will never resolve.
 		h.log.Warn("unhandled email type, skipping", "type", payload.Type, "user_id", payload.UserID)
 		return nil
 	}

@@ -171,6 +171,33 @@ func (r *TestResultRepository) CountCompletedByGuestSession(ctx context.Context,
 	return count, nil
 }
 
+// FindPDFURLsByUser returns every non-null pdf_url owned by the user.
+func (r *TestResultRepository) FindPDFURLsByUser(ctx context.Context, userID string) ([]string, error) {
+	var urls []string
+	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
+		Where("user_id = ? AND pdf_url IS NOT NULL", userID).
+		Pluck("pdf_url", &urls).Error
+	if err != nil {
+		r.log.Error("query failed", "op", "FindPDFURLsByUser", "error", err)
+		return nil, err
+	}
+	return urls, nil
+}
+
+// ScrubPersonalDataByUser nulls ai_summary_text and pdf_url on all the user's results.
+func (r *TestResultRepository) ScrubPersonalDataByUser(ctx context.Context, userID string) error {
+	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
+		Where("user_id = ?", userID).
+		Updates(map[string]interface{}{
+			"ai_summary_text": nil,
+			"pdf_url":         nil,
+		}).Error
+	if err != nil {
+		r.log.Error("query failed", "op", "ScrubPersonalDataByUser", "error", err)
+	}
+	return err
+}
+
 func toModel(res *testresult.TestResult) (postgres.TestResultModel, error) {
 	var traits []byte
 	var err error

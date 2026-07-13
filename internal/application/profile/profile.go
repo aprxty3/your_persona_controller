@@ -3,6 +3,7 @@ package profile
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 const (
@@ -144,6 +146,13 @@ func (uc *ProfileUseCase) GetReferralCode(ctx context.Context, userID string) (*
 			CreatedAt: time.Now(),
 		}
 		if err := uc.referralRepo.CreateCode(ctx, newCode); err != nil {
+			if errors.Is(err, gorm.ErrDuplicatedKey) {
+				winner, findErr := uc.referralRepo.FindCodeByUserID(ctx, userID)
+				if findErr == nil && winner != nil {
+					return &ReferralCodeResponse{Code: winner.Code}, nil
+				}
+				continue
+			}
 			uc.log.Error("get referral code failed", "step", "persist", "user_id", userID, "error", err)
 			return nil, fmt.Errorf("get_referral_code: persist code: %w", err)
 		}

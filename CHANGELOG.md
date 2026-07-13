@@ -64,6 +64,40 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 - `register.go` `buildUser` — data profil (`display_name`/`age`/`status`) dari `GuestSession` sekarang cuma di-copy kalau `!guest.IsClaimed()`. Sebelumnya: kalau cookie `session_id` lama (yang guest session-nya SUDAH diklaim akun lain) kepakai ulang buat register akun baru, data profil guest lama itu tetap bocor ke akun baru walau kepemilikannya gak ikut ke-transfer
 - `infrastructure/persistence/postgres/db.go` — GORM logger di-set `IgnoreRecordNotFoundError: true`. Sebelumnya setiap lookup yang wajar-gak-ketemu (email belum terdaftar, referral code belum digenerate, dst — semua ditangani sebagai `nil, nil` di kode) tetap tercetak sebagai baris log "record not found", padahal bukan error sungguhan
 
+### Anonymization Worker — Deletion Pipeline End-to-End (FR-G2, PRD Section 9.3)
+
+#### [A] Worker `anonymize:user` + scan terjadwal `deletion:scan-expired`
+- `application/deletionrequest/anonymize.go` — `AnonymizeUseCase`:
+  - **Scan side** (`ProcessExpired`): ambil semua request `pending_grace` yang lewat 14 hari via `FindExpiredGracePeriod`, enqueue job `anonymize:user` per user (queue `low`), lalu CAS status → `processing`. Urutan **enqueue dulu baru flip status** disengaja: kalau enqueue gagal, row tetap `pending_grace` dan scan berikutnya retry sendiri (urutan kebalikan bisa ninggalin row nyangkut di `processing` tanpa job)
+  - **Worker side** (`Anonymize`): guard status (`cancelled` → drop, `completed` → skip, idempotent) → hapus SEMUA objek PDF R2 milik user SEBELUM kolomnya di-null-kan (aturan AGENTS.md) → satu `db.Transaction`: scrub `USER` (email→`deleted-{id}@anonymized.invalid`, display_name/age/status/password_hash dikosongkan, `deleted_at`+`anonymized_at` diisi, `token_version++`), scrub `GUEST_SESSION` yang diklaim user (display_name/age/status/ip_hash), null `TEST_RESULT.ai_summary_text`+`pdf_url` (agregat mbti/grit dipertahankan) → status `completed` → enqueue email `deletion_confirmed` ke `notification_email` snapshot
+- `internal/interfaces/worker/anonymize_handler.go` — delivery layer untuk kedua task type
+- Scheduler `asynq.Scheduler` di `cmd/worker`: scan tiap 1 jam + satu scan langsung saat boot (biar restart deploy gak bikin request expired nunggu 1 jam lagi)
+- **Belum termasuk** (tabelnya sendiri belum ada — assessment epic masih jalan di stub): scrub `ANSWER` esai + `PROMPT_AUDIT_LOG`. Begitu tabel itu dibuat, tambahkan scrub call di transaksi `Anonymize`
+
+#### [A] Object storage client (MinIO dev / Cloudflare R2 prod)
+- `internal/infrastructure/storage/s3/client.go` — wrapper `minio-go/v7`, satu client untuk dua environment (sama-sama S3 API). Method `DeleteByURL` idempotent (delete key yang sudah hilang = sukses, pas untuk retry Asynq). Dependency baru: `github.com/minio/minio-go/v7`
+- Port-nya (`PDFStorage`) didefinisikan di application layer — dependency rule tetap bersih
+
+#### [A] Email `deletion_confirmed`
+- `Mailer.SendDeletionConfirmed` (en/id) + case baru di `email_handler.go` — dikirim SETELAH scrub, ke `DATA_DELETION_REQUEST.notification_email` (snapshot), bukan `USER.email` yang sudah teranonimkan
+
+#### [C] `cmd/worker` — sekarang konek Postgres + MinIO/R2
+- Sebelumnya worker cuma butuh Redis+SMTP. Manual DI untuk: GORM DB, S3 client, asynq.Client+Dispatcher (worker sekarang juga PRODUSEN task: scan → fan-out anonymize, anonymize → email konfirmasi)
+- Graceful shutdown diperluas: `scheduler.Shutdown()` dulu (stop tick baru) baru `srv.Shutdown()` (tunggu job in-flight)
+- `docker-compose.yml` worker: `DB_HOST=postgres`; `docker-compose.dev.yml` worker: `S3_ENDPOINT=http://minio:9000` + `depends_on: minio` (pola bug yang sama dengan `SMTP_HOST=mailpit` sebelumnya)
+
+#### [A] Method repository baru (dipakai pipeline di atas)
+- `account.UserRepository.Anonymize` — satu UPDATE `Unscoped` (retry tetap kena row yang sudah soft-deleted)
+- `account.GuestSessionRepository.AnonymizeClaimedByUser`
+- `testresult.Repository.FindPDFURLsByUser` + `ScrubPersonalDataByUser`
+- `deletionrequest.Repository.FindByID` + `TransitionStatus` (compare-and-swap status, return `rowsAffected > 0`)
+
+#### [F] Race condition fixes (dua-duanya sempat di-flag sebagai known issue)
+- **`POST /account/delete-request` double-submit**: partial unique index baru `uniq_active_deletion_per_user` di `data_deletion_requests(user_id) WHERE status pending_grace/processing` — check-then-insert yang kalah race sekarang kena unique violation dan di-map ke `DELETION_ALREADY_REQUESTED` (409), bukan bikin row `pending_grace` ganda yang gak bisa di-cancel. **Butuh `go run ./cmd/migrate`** untuk membuat index-nya
+- **`POST /account/delete-request/cancel` vs scan grace-period**: cancel sekarang CAS (`pending_grace`→`cancelled`), bukan blind update — gak bisa lagi "membatalkan" request yang job anonymize-nya sudah in-flight
+- **`GET /account/referral-code` double-request**: unique violation saat insert sekarang dibedakan — kalau kode user ini sudah dibuat request paralel, balikin kode itu (bukan 500); kalau collision kode antar-user, retry generate
+- `db.go` — `TranslateError: true` di GORM config, supaya use case bisa cek `errors.Is(err, gorm.ErrDuplicatedKey)` tanpa string-matching SQLSTATE
+
 ---
 
 ## [UNRELEASED] — 2026-07-07
@@ -252,8 +286,8 @@ go build ./cmd/migrate; go build ./cmd/worker     ✅ OK (auxiliary entrypoints 
 - [ ] Complete GORM models & Postgres repositories for the remaining domains — ~~TestResult, DeletionRequest, Referral~~ done; **Answer still stubbed** (`stubs.NewStubAnswerRepository` in wire.go)
 - [x] ~~Complete remaining Auth use cases (Forgot Password, Verify Reset OTP, Reset Password, Logout, Logout-all)~~ — done 2026-07-13, see UNRELEASED entry above (plus unplanned `change-password`)
 - [x] ~~Implement Account/Referral endpoints (profile update, referral code)~~ — done 2026-07-13
-- [ ] Implement `anonymize:user` worker (scrub PII, delete R2 PDFs) + cron trigger via `FindExpiredGracePeriod` — `delete-request`/`delete-request/cancel` endpoints done 2026-07-13, this is the remaining piece of FR-G2
-- [ ] Complete worker implementation (Asynq background workers for PDF, anonymization — email OTP sending done 2026-07-13)
+- [x] ~~Implement `anonymize:user` worker (scrub PII, delete R2 PDFs) + cron trigger via `FindExpiredGracePeriod`~~ — done 2026-07-13 (hourly `asynq.Scheduler` scan + startup kick). Remaining sub-item: scrub `ANSWER` essay + `PROMPT_AUDIT_LOG` once those tables exist (assessment epic still stubbed)
+- [ ] Complete worker implementation (Asynq background workers for PDF + `purge:guest-ttl` — email OTP & anonymize done 2026-07-13)
 - [ ] Implement Redis-backed Distributed Lock & Idempotency Service
 - [ ] Integrate Turnstile verification and actual Have I Been Pwned API checks
 - [ ] Add integration testing via testcontainers-go

@@ -73,6 +73,24 @@ func (r *GuestSessionRepository) FindExpiredUnclaimed(ctx context.Context) ([]ac
 	return sessions, nil
 }
 
+// AnonymizeClaimedByUser scrubs PII on all guest sessions claimed by the user.
+func (r *GuestSessionRepository) AnonymizeClaimedByUser(ctx context.Context, userID string) error {
+	err := r.db.WithContext(ctx).
+		Model(&postgres.GuestSessionModel{}).
+		Where("claimed_by_user_id = ?", userID).
+		Updates(map[string]interface{}{
+			"display_name": "",
+			"age":          0,
+			"status":       "",
+			"ip_hash":      "",
+		}).
+		Error
+	if err != nil {
+		r.log.Error("query failed", "op", "AnonymizeClaimedByUser", "error", err)
+	}
+	return err
+}
+
 // DeleteBySessionID removes a guest session from the database.
 func (r *GuestSessionRepository) DeleteBySessionID(ctx context.Context, sessionID string) error {
 	err := r.db.WithContext(ctx).

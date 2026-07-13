@@ -25,6 +25,7 @@ services:
     env_file:
       - ../.env
     environment:
+      - DB_HOST=postgres
       - REDIS_HOST=redis
     depends_on:
       - postgres

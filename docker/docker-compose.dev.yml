@@ -14,8 +14,11 @@ services:
     command: ["air", "-c", ".air.worker.toml"]
     environment:
       - SMTP_HOST=mailpit
+      - S3_ENDPOINT=http://minio:9000
     volumes:
       - ..:/app
+    depends_on:
+      - minio
   minio:
     image: minio/minio
     command: server /data --console-address ":9001"

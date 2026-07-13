@@ -105,7 +105,7 @@ func (ReferralEventModel) TableName() string { return "referral_events" }
 // DataDeletionRequestModel records formal deletion requests with grace period.
 type DataDeletionRequestModel struct {
 	ID                string    `gorm:"primaryKey;type:uuid"`
-	UserID            string    `gorm:"type:uuid;not null;index"`
+	UserID            string    `gorm:"type:uuid;not null;index;uniqueIndex:uniq_active_deletion_per_user,where:status = 'pending_grace' OR status = 'processing'"`
 	NotificationEmail string    `gorm:"not null"` // snapshot before anonymization
 	Status            string    `gorm:"not null"` // pending_grace | processing | completed | cancelled
 	RequestedAt       time.Time `gorm:"not null"`

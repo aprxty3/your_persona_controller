@@ -2,6 +2,7 @@ package deletionrequest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 // RequestDeletionResponse reflects the newly created request.
@@ -65,6 +67,10 @@ func (uc *DeletionUseCase) RequestDeletion(ctx context.Context, userID string) (
 		RequestedAt:       time.Now(),
 	}
 	if err := uc.deleteRepo.Create(ctx, req); err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			uc.log.Warn("request deletion rejected", "reason", "concurrent_duplicate", "user_id", userID)
+			return nil, application.ErrDeletionAlreadyRequested
+		}
 		uc.log.Error("request deletion failed", "step", "persist", "user_id", userID, "error", err)
 		return nil, fmt.Errorf("request_deletion: %w", err)
 	}
@@ -93,9 +99,14 @@ func (uc *DeletionUseCase) CancelDeletion(ctx context.Context, userID string) er
 		return application.ErrDeletionAlreadyProcessing
 	}
 
-	if err := uc.deleteRepo.UpdateStatus(ctx, existing.ID, deletionrequest.StatusCancelled, nil); err != nil {
+	moved, err := uc.deleteRepo.TransitionStatus(ctx, existing.ID, deletionrequest.StatusPendingGrace, deletionrequest.StatusCancelled, nil)
+	if err != nil {
 		uc.log.Error("cancel deletion failed", "step", "update_status", "user_id", userID, "error", err)
 		return fmt.Errorf("cancel_deletion: %w", err)
+	}
+	if !moved {
+		uc.log.Warn("cancel deletion rejected", "reason", "status_moved_concurrently", "user_id", userID)
+		return application.ErrDeletionAlreadyProcessing
 	}
 
 	uc.log.Info("deletion cancelled", "user_id", userID, "request_id", existing.ID)

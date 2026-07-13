@@ -10,6 +10,7 @@ import (
 type Mailer interface {
 	SendEmail(ctx context.Context, to, subject, body string) error
 	SendOTP(ctx context.Context, to, otp, purpose, locale string) error
+	SendDeletionConfirmed(ctx context.Context, to, locale string) error
 }
 
 // SMTPMailer handles sending emails over SMTP using Go's net/smtp package.
@@ -90,6 +91,24 @@ func (m *SMTPMailer) SendOTP(ctx context.Context, to, otp, purpose, locale strin
 		}
 	default:
 		return fmt.Errorf("smtp mailer: unknown OTP purpose %q", purpose)
+	}
+
+	return m.SendEmail(ctx, to, subject, body)
+}
+
+// SendDeletionConfirmed notifies the (snapshot) address that anonymization has completed deletion request.
+func (m *SMTPMailer) SendDeletionConfirmed(ctx context.Context, to, locale string) error {
+	if locale != "en" && locale != "id" {
+		locale = "en"
+	}
+
+	var subject, body string
+	if locale == "id" {
+		subject = "Your Persona's - Penghapusan Data Selesai"
+		body = "Halo,\n\nSesuai permintaan Anda, data pribadi Anda (email, nama, jawaban esai, dan ringkasan AI) telah dihapus/dianonimkan secara permanen dari sistem kami. Akun Anda tidak lagi dapat digunakan untuk login.\n\nTerima kasih telah menggunakan Your Persona's.\n\nHormat kami,\nTim Your Persona"
+	} else {
+		subject = "Your Persona's - Data Deletion Completed"
+		body = "Hello,\n\nAs you requested, your personal data (email, name, essay answers, and AI summary) has been permanently deleted/anonymized from our systems. Your account can no longer be used to log in.\n\nThank you for using Your Persona's.\n\nBest regards,\nYour Persona Team"
 	}
 
 	return m.SendEmail(ctx, to, subject, body)

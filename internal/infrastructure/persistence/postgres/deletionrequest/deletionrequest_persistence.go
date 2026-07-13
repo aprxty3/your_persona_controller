@@ -32,6 +32,21 @@ func (r *Repository) Create(ctx context.Context, req *deletionrequest.DataDeleti
 	return nil
 }
 
+// FindByID retrieves a deletion request by its UUID. Returns nil, nil if not found.
+func (r *Repository) FindByID(ctx context.Context, id string) (*deletionrequest.DataDeletionRequest, error) {
+	var m postgres.DataDeletionRequestModel
+	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		r.log.Error("query failed", "op", "FindByID", "error", err)
+		return nil, err
+	}
+	entity := toEntity(&m)
+	return &entity, nil
+}
+
 // FindActiveByUserID returns the most recent request still in a non-terminal
 // state (pending_grace or processing), or nil if none exists.
 func (r *Repository) FindActiveByUserID(ctx context.Context, userID string) (*deletionrequest.DataDeletionRequest, error) {
@@ -66,6 +81,23 @@ func (r *Repository) UpdateStatus(ctx context.Context, id string, status deletio
 		r.log.Error("query failed", "op", "UpdateStatus", "error", err)
 	}
 	return err
+}
+
+// TransitionStatus is a compare-and-swap status update: it only applies when
+// the row is still in the `from` state, and reports whether a row was moved.
+func (r *Repository) TransitionStatus(ctx context.Context, id string, from, to deletionrequest.DeletionStatus, completedAt *time.Time) (bool, error) {
+	res := r.db.WithContext(ctx).
+		Model(&postgres.DataDeletionRequestModel{}).
+		Where("id = ? AND status = ?", id, string(from)).
+		Updates(map[string]interface{}{
+			"status":       string(to),
+			"completed_at": completedAt,
+		})
+	if res.Error != nil {
+		r.log.Error("query failed", "op", "TransitionStatus", "error", res.Error)
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
 }
 
 // FindExpiredGracePeriod returns all pending_grace requests older than the grace period.

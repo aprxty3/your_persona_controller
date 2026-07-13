@@ -85,6 +85,31 @@ func (r *UserRepository) IncrementTokenVersion(ctx context.Context, id string) e
 	return err
 }
 
+// Anonymize scrubs all PII columns in a single UPDATE.
+func (r *UserRepository) Anonymize(ctx context.Context, id string, scrubbedEmail string) error {
+	now := time.Now()
+	err := r.db.WithContext(ctx).
+		Unscoped().
+		Model(&postgres.UserModel{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"email":            scrubbedEmail,
+			"password_hash":    "", // no valid bcrypt hash — login permanently impossible
+			"display_name":     "",
+			"age":              0,
+			"status":           "",
+			"referred_by_code": nil,
+			"deleted_at":       now,
+			"anonymized_at":    now,
+			"token_version":    gorm.Expr("token_version + 1"),
+		}).
+		Error
+	if err != nil {
+		r.log.Error("query failed", "op", "Anonymize", "error", err)
+	}
+	return err
+}
+
 // UpdateLoginAttempt updates the failed login counter and lockout timestamp.
 func (r *UserRepository) UpdateLoginAttempt(ctx context.Context, id string, failedCount int, lockedUntil *time.Time) error {
 	updates := map[string]interface{}{

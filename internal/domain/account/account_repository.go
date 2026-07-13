@@ -13,6 +13,7 @@ type UserRepository interface {
 	Update(ctx context.Context, user *User) error
 	IncrementTokenVersion(ctx context.Context, id string) error
 	UpdateLoginAttempt(ctx context.Context, id string, failedCount int, lockedUntil *time.Time) error
+	Anonymize(ctx context.Context, id string, scrubbedEmail string) error
 }
 
 // GuestSessionRepository defines the contract for GuestSession data persistence.
@@ -22,6 +23,7 @@ type GuestSessionRepository interface {
 	Update(ctx context.Context, session *GuestSession) error
 	FindExpiredUnclaimed(ctx context.Context) ([]GuestSession, error)
 	DeleteBySessionID(ctx context.Context, sessionID string) error
+	AnonymizeClaimedByUser(ctx context.Context, userID string) error
 }
 
 // ReferralRepository defines the contract for ReferralCode data persistence.

@@ -15,4 +15,6 @@ type Repository interface {
 	UpdatePDFStatus(ctx context.Context, id string, pdfURL *string, status PDFStatus) error
 	ReassignGuestResults(ctx context.Context, userID, guestSessionID string) error
 	CountCompletedByGuestSession(ctx context.Context, guestSessionID string) (int64, error)
+	FindPDFURLsByUser(ctx context.Context, userID string) ([]string, error)
+	ScrubPersonalDataByUser(ctx context.Context, userID string) error
 }

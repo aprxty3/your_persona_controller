@@ -8,30 +8,27 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-// Queue names — per TECHNICAL_DOCUMENTATION Section 6 classification rules.
-// CPU-bound and I/O-bound tasks MUST be on different queues.
 const (
-	QueueCritical = "critical" // OTP emails — highest priority
-	QueueDefault  = "default"  // standard background tasks
-	QueuePDF      = "pdf"      // CPU-bound PDF generation
-	QueueLow      = "low"      // anonymization, purge cron
+	QueueCritical = "critical"
+	QueueDefault  = "default"
+	QueuePDF      = "pdf"
+	QueueLow      = "low"
 )
 
-// Task type identifiers — matches TECHNICAL_DOCUMENTATION Section 6 table.
 const (
-	TaskSendEmail   = "send:email"
-	TaskGeneratePDF = "generate:pdf"
-	TaskAnonymize   = "anonymize:user"
-	TaskPurgeGuest  = "purge:guest-ttl"
+	TaskSendEmail    = "send:email"
+	TaskGeneratePDF  = "generate:pdf"
+	TaskAnonymize    = "anonymize:user"
+	TaskPurgeGuest   = "purge:guest-ttl"
+	TaskDeletionScan = "deletion:scan-expired"
 )
 
 // SendEmailPayload is the canonical payload for all send:email tasks.
-// Locale-aware: the worker uses this locale to select the correct email template (FR-I8).
 type SendEmailPayload struct {
-	Type   string `json:"type"` // otp_verification | otp_reset | deletion_confirmed
+	Type   string `json:"type"`
 	UserID string `json:"user_id"`
 	Email  string `json:"email"`
-	OTP    string `json:"otp,omitempty"` // present for otp_* types
+	OTP    string `json:"otp,omitempty"`
 	Locale string `json:"locale"`
 }
 
@@ -40,11 +37,15 @@ type GeneratePDFPayload struct {
 	TestResultID string `json:"test_result_id"`
 }
 
-// Dispatcher is the DRY interface for enqueuing all background jobs.
-// A single implementation wraps *asynq.Client — no per-use-case enqueue helpers.
+type AnonymizeUserPayload struct {
+	UserID            string `json:"user_id"`
+	DeletionRequestID string `json:"deletion_request_id"`
+}
+
 type Dispatcher interface {
 	EnqueueEmail(ctx context.Context, payload SendEmailPayload, queue string) error
 	EnqueuePDFGeneration(ctx context.Context, payload GeneratePDFPayload) error
+	EnqueueAnonymize(ctx context.Context, payload AnonymizeUserPayload) error
 }
 
 // AsynqDispatcher is the concrete implementation using Asynq.
@@ -65,8 +66,11 @@ func (d *AsynqDispatcher) EnqueuePDFGeneration(ctx context.Context, payload Gene
 	return enqueue(ctx, d.client, TaskGeneratePDF, payload, QueuePDF, 3)
 }
 
+func (d *AsynqDispatcher) EnqueueAnonymize(ctx context.Context, payload AnonymizeUserPayload) error {
+	return enqueue(ctx, d.client, TaskAnonymize, payload, QueueLow, 5)
+}
+
 // enqueue is the single shared implementation for all task types.
-// DO NOT duplicate this logic per-task — that's what this DRY helper prevents.
 func enqueue(ctx context.Context, client *asynq.Client, taskType string, payload any, queueName string, maxRetry int) error {
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
