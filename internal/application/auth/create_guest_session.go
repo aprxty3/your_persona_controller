@@ -43,7 +43,7 @@ func (uc *CreateGuestSessionUseCase) Execute(ctx context.Context, req CreateGues
 	if err := application.ValidateRequired("display_name", req.DisplayName); err != nil {
 		return nil, err
 	}
-	if err := application.ValidateAge(req.Age, 13); err != nil {
+	if err := application.ValidateAge(req.Age, application.MinimumAge); err != nil {
 		return nil, err
 	}
 	if err := application.ValidateStatus(req.Status); err != nil {
@@ -55,7 +55,7 @@ func (uc *CreateGuestSessionUseCase) Execute(ctx context.Context, req CreateGues
 
 	sessionID := uuid.New().String()
 	now := time.Now()
-	expiresAt := now.Add(14 * 24 * time.Hour)
+	expiresAt := now.Add(application.GuestDataRetention)
 
 	session := &account.GuestSession{
 		SessionID:   sessionID,

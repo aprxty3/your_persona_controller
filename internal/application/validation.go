@@ -3,6 +3,8 @@ package application
 import (
 	"fmt"
 	"regexp"
+
+	pkglocale "github.com/aprxty3/your_persona_controller.git/pkg/locale"
 )
 
 // emailPattern is a deliberately loose shape check (not full RFC 5322).
@@ -17,12 +19,6 @@ var validStatuses = map[string]struct{}{
 	"other":      {},
 }
 
-// validLocales is the exhaustive set of accepted locale/language codes.
-var validLocales = map[string]struct{}{
-	"en": {},
-	"id": {},
-}
-
 // ValidateStatus returns an ErrInvalidInput error if the provided status
 func ValidateStatus(status string) error {
 	if status == "" {
@@ -34,12 +30,15 @@ func ValidateStatus(status string) error {
 	return nil
 }
 
-// ValidateLocale returns an ErrInvalidInput error if the provided locale
-func ValidateLocale(fieldName, locale string) error {
-	if locale == "" {
+// ValidateLocale returns an ErrInvalidInput error if the provided locale/language
+// code isn't one of the MVP-supported locales — delegates to pkg/locale.IsSupported
+// so this and the HTTP-layer locale negotiation (LocaleMiddleware) never drift
+// out of sync on what "supported" means.
+func ValidateLocale(fieldName, code string) error {
+	if code == "" {
 		return fmt.Errorf("%w: %s is required", ErrInvalidInput, fieldName)
 	}
-	if _, ok := validLocales[locale]; !ok {
+	if !pkglocale.IsSupported(code) {
 		return fmt.Errorf("%w: %s must be one of: en, id", ErrInvalidInput, fieldName)
 	}
 	return nil

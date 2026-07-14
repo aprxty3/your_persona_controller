@@ -26,7 +26,6 @@ const (
 	essayMaxLength       = 4000
 	quotaLockTTL         = 20 * time.Second
 	idempotencyTTL       = 24 * time.Hour
-	guestResultTTL       = 14 * 24 * time.Hour
 	promptAuditRetention = 30 * 24 * time.Hour
 )
 
@@ -179,7 +178,7 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 	result := &testresult.TestResult{
 		ID:            resultID,
 		Locale:        req.Locale,
-		MascotStyle:   "style_a", // visual-only default; changeable later via PATCH /v1/results/:id/mascot-style (TICKET-04)
+		MascotStyle:   MascotStyleA, // visual-only default; changeable later via PATCH /v1/results/:id/mascot-style (TICKET-04)
 		ShareToken:    uuid.New().String(),
 		AISummaryText: &outcome.summary,
 		Status:        outcome.status,
@@ -192,7 +191,7 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 		result.UserID = &req.SessionID
 	} else {
 		result.GuestSessionID = &req.SessionID
-		expires := time.Now().Add(guestResultTTL)
+		expires := time.Now().Add(application.GuestDataRetention)
 		result.ExpiresAt = &expires
 	}
 

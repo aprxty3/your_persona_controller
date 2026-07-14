@@ -152,8 +152,8 @@ func NewAccountUseCase(
 		dispatcher:    dispatcher,
 		rateLimiter:   rateLimiter,
 		log:           log.With("usecase", "account"),
-		otpLength:     6,
-		otpExpiryMins: 15,
+		otpLength:     application.OTPLength,
+		otpExpiryMins: application.OTPExpiryMinutes,
 	}
 }
 

@@ -79,7 +79,7 @@ func (uc *ProfileUseCase) UpdateProfile(ctx context.Context, req UpdateProfileRe
 		u.DisplayName = *req.DisplayName
 	}
 	if req.Age != nil {
-		if err := application.ValidateAge(*req.Age, 13); err != nil {
+		if err := application.ValidateAge(*req.Age, application.MinimumAge); err != nil {
 			return nil, err
 		}
 		u.Age = *req.Age

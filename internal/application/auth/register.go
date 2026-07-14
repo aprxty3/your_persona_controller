@@ -94,8 +94,8 @@ func NewRegisterUseCase(
 		dispatcher:     dispatcher,
 		ipRateLimiter:  ipRateLimiter,
 		log:            log.With("usecase", "register"),
-		otpLength:      6,
-		otpExpiryMins:  15,
+		otpLength:      application.OTPLength,
+		otpExpiryMins:  application.OTPExpiryMinutes,
 	}
 }
 
@@ -116,8 +116,7 @@ func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*
 	if err := application.ValidateLocale("preferred_locale", req.PreferredLocale); err != nil {
 		return nil, err
 	}
-	// Treat an empty string the same as omitted/null — no referral code.
-	// FE frameworks commonly send "" instead of null for a cleared/unset field.
+
 	if req.ReferralCode != nil && *req.ReferralCode == "" {
 		req.ReferralCode = nil
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	pgaccount "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
 	pgassessment "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/assessment"
+	pkglocale "github.com/aprxty3/your_persona_controller.git/pkg/locale"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/aprxty3/your_persona_controller.git/pkg/taskqueue"
 	"gorm.io/gorm"
@@ -115,7 +116,7 @@ func (uc *AnonymizeUseCase) Anonymize(ctx context.Context, req AnonymizeRequest)
 		return nil
 	}
 
-	locale := "en"
+	locale := pkglocale.EN
 	if u, err := uc.userRepo.FindByID(ctx, dr.UserID); err != nil {
 		return fmt.Errorf("anonymize: lookup user: %w", err)
 	} else if u != nil {
