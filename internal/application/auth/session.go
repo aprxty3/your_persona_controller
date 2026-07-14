@@ -289,7 +289,7 @@ func (uc *SessionUseCase) VerifyEmailOTP(ctx context.Context, req VerifyEmailOTP
 	return &VerifyEmailOTPResponse{
 		AccessToken:       pair.AccessToken,
 		RefreshToken:      pair.RefreshToken,
-		AttemptsRemaining: MaxWrongOTPAttempts,
+		AttemptsRemaining: application.MaxWrongOTPAttempts,
 	}, nil
 }
 
@@ -423,7 +423,7 @@ func (uc *SessionUseCase) VerifyResetOTP(ctx context.Context, req VerifyResetOTP
 	}
 
 	uc.log.Info("reset otp verified", "user_id", u.ID)
-	return &VerifyResetOTPResponse{ResetToken: resetToken, AttemptsRemaining: MaxWrongOTPAttempts}, nil
+	return &VerifyResetOTPResponse{ResetToken: resetToken, AttemptsRemaining: application.MaxWrongOTPAttempts}, nil
 }
 
 // ResetPassword consumes a reset_token (atomically, single-use)

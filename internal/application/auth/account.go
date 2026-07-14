@@ -15,12 +15,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// PasswordMinLength is the NIST-aligned minimum password length.
-const PasswordMinLength = 10
-
-// MaxWrongOTPAttempts defines maximum allowed invalid input attempts before token expiry.
-const MaxWrongOTPAttempts = 5
-
 // PasswordBreachChecker defines the contract for HIBP checks.
 type PasswordBreachChecker interface {
 	IsBreached(ctx context.Context, password string) (bool, error)
@@ -44,7 +38,7 @@ func ValidateNewPassword(ctx context.Context, checker PasswordBreachChecker, fie
 	if err := application.ValidateRequired(fieldName, password); err != nil {
 		return err
 	}
-	if err := application.ValidateMinLength(fieldName, password, PasswordMinLength); err != nil {
+	if err := application.ValidateMinLength(fieldName, password, application.PasswordMinLength); err != nil {
 		return application.ErrPasswordTooShort
 	}
 	if breached, err := checker.IsBreached(ctx, password); err == nil && breached {
@@ -81,7 +75,7 @@ func validateOTPAttempt(
 		return nil, 0, application.ErrOTPExpired
 	}
 
-	if token.AttemptCount >= MaxWrongOTPAttempts {
+	if token.AttemptCount >= application.MaxWrongOTPAttempts {
 		log.Warn("otp rejected", "reason", "max_attempts", "user_id", userID)
 		return nil, 0, application.ErrOTPMaxAttempts
 	}
@@ -96,7 +90,7 @@ func validateOTPAttempt(
 			log.Error("otp validation failed", "step", "increment_attempts", "user_id", userID, "error", err)
 			return nil, 0, fmt.Errorf("otp: increment token attempts: %w", err)
 		}
-		remaining := MaxWrongOTPAttempts - (token.AttemptCount + 1)
+		remaining := application.MaxWrongOTPAttempts - (token.AttemptCount + 1)
 		log.Warn("otp rejected", "reason", "invalid_otp", "user_id", userID, "attempts_remaining", remaining)
 		if remaining <= 0 {
 			return nil, 0, application.ErrOTPMaxAttempts
@@ -104,7 +98,7 @@ func validateOTPAttempt(
 		return nil, remaining, application.ErrInvalidOTP
 	}
 
-	return token, MaxWrongOTPAttempts, nil
+	return token, application.MaxWrongOTPAttempts, nil
 }
 
 // ResendEmailOTPRequest specifies the target user's email.
@@ -129,13 +123,11 @@ type ForgotPasswordResponse struct {
 
 // AccountUseCase manages the OTP lifecycle for an existing account.
 type AccountUseCase struct {
-	userRepo      account.UserRepository
-	tokenRepo     account.VerificationTokenRepository
-	dispatcher    taskqueue.Dispatcher
-	rateLimiter   *redis.OTPRateLimitService
-	log           logger.Logger
-	otpLength     int
-	otpExpiryMins int
+	userRepo    account.UserRepository
+	tokenRepo   account.VerificationTokenRepository
+	dispatcher  taskqueue.Dispatcher
+	rateLimiter *redis.OTPRateLimitService
+	log         logger.Logger
 }
 
 // NewAccountUseCase creates a new AccountUseCase.
@@ -147,13 +139,11 @@ func NewAccountUseCase(
 	log logger.Logger,
 ) *AccountUseCase {
 	return &AccountUseCase{
-		userRepo:      userRepo,
-		tokenRepo:     tokenRepo,
-		dispatcher:    dispatcher,
-		rateLimiter:   rateLimiter,
-		log:           log.With("usecase", "account"),
-		otpLength:     application.OTPLength,
-		otpExpiryMins: application.OTPExpiryMinutes,
+		userRepo:    userRepo,
+		tokenRepo:   tokenRepo,
+		dispatcher:  dispatcher,
+		rateLimiter: rateLimiter,
+		log:         log.With("usecase", "account"),
 	}
 }
 
@@ -189,7 +179,7 @@ func (uc *AccountUseCase) ResendEmailOTP(ctx context.Context, req ResendEmailOTP
 		return nil, fmt.Errorf("resend_otp: invalidate previous tokens: %w", err)
 	}
 
-	otpCode, err := otp.GenerateOTP(uc.otpLength)
+	otpCode, err := otp.GenerateOTP(application.OTPLength)
 	if err != nil {
 		uc.log.Error("resend otp failed", "step", "generate_code", "user_id", u.ID, "error", err)
 		return nil, fmt.Errorf("resend_otp: generate code: %w", err)
@@ -200,7 +190,7 @@ func (uc *AccountUseCase) ResendEmailOTP(ctx context.Context, req ResendEmailOTP
 		UserID:    u.ID,
 		Token:     otpCode,
 		Type:      account.TokenTypeEmailVerification,
-		ExpiresAt: time.Now().Add(time.Duration(uc.otpExpiryMins) * time.Minute),
+		ExpiresAt: time.Now().Add(application.OTPExpiry),
 	}
 	if err := uc.tokenRepo.Create(ctx, token); err != nil {
 		uc.log.Error("resend otp failed", "step", "persist_token", "user_id", u.ID, "error", err)
@@ -256,7 +246,7 @@ func (uc *AccountUseCase) ForgotPassword(ctx context.Context, req ForgotPassword
 		return nil, fmt.Errorf("forgot_password: invalidate previous tokens: %w", err)
 	}
 
-	otpCode, err := otp.GenerateOTP(uc.otpLength)
+	otpCode, err := otp.GenerateOTP(application.OTPLength)
 	if err != nil {
 		uc.log.Error("forgot password failed", "step", "generate_code", "user_id", u.ID, "error", err)
 		return nil, fmt.Errorf("forgot_password: generate code: %w", err)
@@ -267,7 +257,7 @@ func (uc *AccountUseCase) ForgotPassword(ctx context.Context, req ForgotPassword
 		UserID:    u.ID,
 		Token:     otpCode,
 		Type:      account.TokenTypePasswordReset,
-		ExpiresAt: time.Now().Add(time.Duration(uc.otpExpiryMins) * time.Minute),
+		ExpiresAt: time.Now().Add(application.OTPExpiry),
 	}
 	if err := uc.tokenRepo.Create(ctx, token); err != nil {
 		uc.log.Error("forgot password failed", "step", "persist_token", "user_id", u.ID, "error", err)

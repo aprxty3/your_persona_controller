@@ -66,8 +66,6 @@ type RegisterUseCase struct {
 	dispatcher     taskqueue.Dispatcher
 	ipRateLimiter  *redis.IPRateLimitService
 	log            logger.Logger
-	otpLength      int
-	otpExpiryMins  int
 }
 
 // NewRegisterUseCase creates a new RegisterUseCase.
@@ -94,8 +92,6 @@ func NewRegisterUseCase(
 		dispatcher:     dispatcher,
 		ipRateLimiter:  ipRateLimiter,
 		log:            log.With("usecase", "register"),
-		otpLength:      application.OTPLength,
-		otpExpiryMins:  application.OTPExpiryMinutes,
 	}
 }
 
@@ -185,7 +181,7 @@ func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*
 			recordSignupEvent(ctx, txReferralRepo, newUser.ID, *req.ReferralCode, uc.log)
 		}
 
-		otpCode, err := otp.GenerateOTP(uc.otpLength)
+		otpCode, err := otp.GenerateOTP(application.OTPLength)
 		if err != nil {
 			uc.log.Error("registration failed", "step", "generate_otp", "error", err)
 			return fmt.Errorf("tx: generate verification code: %w", err)
@@ -196,7 +192,7 @@ func (uc *RegisterUseCase) Register(ctx context.Context, req RegisterRequest) (*
 			UserID:    newUser.ID,
 			Token:     otpCode,
 			Type:      account.TokenTypeEmailVerification,
-			ExpiresAt: time.Now().Add(time.Duration(uc.otpExpiryMins) * time.Minute),
+			ExpiresAt: time.Now().Add(application.OTPExpiry),
 		}
 		if err := txTokenRepo.Create(ctx, token); err != nil {
 			uc.log.Error("registration failed", "step", "tx_persist_otp", "error", err)

@@ -257,6 +257,89 @@
                 }
             }
         },
+        "/v1/assessment/submit": {
+            "post": {
+                "description": "Guest-or-Member endpoint (Auth: Optional). Member identity is taken from the Bearer\naccess token if present (set by AuthMiddleware.OptionalAuth); otherwise falls back to\nthe `session_id` Guest cookie. Runs the AI analysis synchronously — expect 3-8s latency.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assessment"
+                ],
+                "summary": "Submit assessment answers",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client-generated UUIDv4, replayed to dedupe retries",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Locale + answer set",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SubmitRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Assessment result",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/assessment.SubmitResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "VALIDATION_ERROR — missing Idempotency-Key, malformed body, or neither session_id cookie nor access token present",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "IDEMPOTENCY_KEY_REUSED — same key replayed with a different payload",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "423": {
+                        "description": "LOCK_NOT_ACQUIRED — a submission for this identity is already in flight",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "429": {
+                        "description": "QUOTA_EXCEEDED — monthly submission quota reached",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/auth/change-password": {
             "post": {
                 "security": [
@@ -932,6 +1015,124 @@
                 }
             }
         },
+        "/v1/dashboard": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remaining monthly quota (derived on-the-fly) and recent GRIT trend.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Get dashboard summary",
+                "responses": {
+                    "200": {
+                        "description": "Dashboard summary",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dashboard.DashboardResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/dashboard/history": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Ordered newest-first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Get paginated test-result history",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number, 1-indexed (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Results per page, max 50 (default 10)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "History page",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/dashboard.HistoryItem"
+                                            }
+                                        },
+                                        "meta": {
+                                            "$ref": "#/definitions/dashboard.PaginationMeta"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/guest-session": {
             "post": {
                 "description": "Starts an anonymous onboarding session before the user registers an account.\nSets a `session_id` HttpOnly cookie that is automatically carried through to `/auth/register`\nto link the guest session to the new account.\n\n**status** — accepted values:\n- `student`    — currently studying at school or university\n- `worker`     — employed full-time or part-time\n- `freelancer` — self-employed / project-based work\n- `unemployed` — not currently working\n- `other`      — anything that does not fit the options above\n\n**locale** — accepted values:\n- `en` — English (UI labels and email content will be in English)\n- `id` — Indonesian (UI labels and email content will be in Bahasa Indonesia)",
@@ -989,9 +1190,402 @@
                     }
                 }
             }
+        },
+        "/v1/questions": {
+            "get": {
+                "description": "Returns the full SJT/Likert/Essay question bank translated to the negotiated locale.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Assessment"
+                ],
+                "summary": "Get the question bank",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Overrides the negotiated locale for this request (en|id)",
+                        "name": "locale",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Question bank",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/assessment.QuestionResponse"
+                                            }
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/results/{id}": {
+            "get": {
+                "description": "Optional auth. Anyone holding the result's (unguessable) ID can view it.\n`is_owner` tells the frontend whether to render owner-only affordances.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Result"
+                ],
+                "summary": "Get a test result",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Test result ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Test result detail",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/assessment.ResultResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "404": {
+                        "description": "RESULT_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/results/{id}/mascot-style": {
+            "patch": {
+                "description": "Owner only. Purely visual — never affects trait_scores/grit_score/ai_summary_text.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Result"
+                ],
+                "summary": "Choose a mascot visual variant",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Test result ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "style_a or style_b",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateMascotStyleRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Updated result",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/assessment.ResultResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "VALIDATION_ERROR — mascot_style must be style_a or style_b",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "FORBIDDEN — caller does not own this result",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "RESULT_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/results/{id}/pdf": {
+            "get": {
+                "description": "Owner only. Redirects (302) to a short-lived signed URL once the PDF is ready.",
+                "tags": [
+                    "Result"
+                ],
+                "summary": "Download the generated PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Test result ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Redirect to signed PDF URL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "FORBIDDEN — caller does not own this result",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "RESULT_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "409": {
+                        "description": "PDF_NOT_READY — generation hasn't completed yet",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/results/{id}/pdf-status": {
+            "get": {
+                "description": "Owner only. Frontend polls with exponential backoff (2s→4s→8s→cap 10s, ~90s total);\n`failed` means stop polling immediately.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Result"
+                ],
+                "summary": "Poll PDF generation status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Test result ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "pending|processing|completed|failed",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/assessment.PDFStatusResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "FORBIDDEN — caller does not own this result",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "404": {
+                        "description": "RESULT_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "assessment.PDFStatusResponse": {
+            "type": "object",
+            "properties": {
+                "pdf_status": {
+                    "type": "string"
+                }
+            }
+        },
+        "assessment.QuestionResponse": {
+            "type": "object",
+            "properties": {
+                "display_order": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "is_attention_check": {
+                    "type": "boolean"
+                },
+                "is_reverse_scored": {
+                    "type": "boolean"
+                },
+                "options": {
+                    "type": "string"
+                },
+                "question_text": {
+                    "type": "string"
+                },
+                "section": {
+                    "type": "string"
+                },
+                "type": {
+                    "type": "string"
+                }
+            }
+        },
+        "assessment.ResultResponse": {
+            "type": "object",
+            "properties": {
+                "ai_summary_text": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "grit_score": {
+                    "type": "integer"
+                },
+                "is_owner": {
+                    "type": "boolean"
+                },
+                "locale": {
+                    "type": "string"
+                },
+                "mascot_style": {
+                    "type": "string"
+                },
+                "mbti_type": {
+                    "type": "string"
+                },
+                "pdf_status": {
+                    "type": "string"
+                },
+                "result_id": {
+                    "type": "string"
+                },
+                "share_token": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "trait_scores": {
+                    "type": "object",
+                    "additionalProperties": true
+                },
+                "wellbeing_flag": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "assessment.SubmitResponse": {
+            "type": "object",
+            "properties": {
+                "aisummaryText": {
+                    "type": "string"
+                },
+                "gritScore": {
+                    "type": "integer"
+                },
+                "mbtitype": {
+                    "type": "string"
+                },
+                "resultID": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "wellbeingFlag": {
+                    "type": "boolean"
+                }
+            }
+        },
         "auth.ChangePasswordResponse": {
             "type": "object",
             "properties": {
@@ -1071,6 +1665,77 @@
             "properties": {
                 "reset_token": {
                     "type": "string"
+                }
+            }
+        },
+        "dashboard.DashboardResponse": {
+            "type": "object",
+            "properties": {
+                "grit_trend": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dashboard.GritTrendPoint"
+                    }
+                },
+                "latest_mbti_type": {
+                    "type": "string"
+                },
+                "quota_limit": {
+                    "type": "integer"
+                },
+                "quota_remaining": {
+                    "type": "integer"
+                },
+                "quota_used": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dashboard.GritTrendPoint": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "grit_score": {
+                    "type": "integer"
+                },
+                "result_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "dashboard.HistoryItem": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "mbti_type": {
+                    "type": "string"
+                },
+                "result_id": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "dashboard.PaginationMeta": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer"
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "total_pages": {
+                    "type": "integer"
                 }
             }
         },
@@ -1281,6 +1946,36 @@
                     "minLength": 10
                 },
                 "reset_token": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SubmitRequestDTO": {
+            "type": "object",
+            "properties": {
+                "answers": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question_id": {
+                                "type": "string"
+                            },
+                            "value": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "locale": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.UpdateMascotStyleRequestDTO": {
+            "type": "object",
+            "properties": {
+                "mascot_style": {
                     "type": "string"
                 }
             }

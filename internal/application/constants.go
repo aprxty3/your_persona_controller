@@ -12,9 +12,18 @@ const MemberMonthlyQuota = 3
 // email verification and password reset both mint codes via pkg/otp.GenerateOTP(OTPLength).
 const OTPLength = 6
 
-// OTPExpiryMinutes is how long a generated OTP (email verification or
-// password reset) remains valid before ErrOTPExpired applies.
-const OTPExpiryMinutes = 15
+// OTPExpiry is how long a generated OTP (email verification or password
+// reset) remains valid before ErrOTPExpired applies.
+const OTPExpiry = 15 * time.Minute
+
+// PasswordMinLength is the NIST-aligned minimum password length, shared by
+// every flow that accepts a new password (register, reset, change).
+const PasswordMinLength = 10
+
+// MaxWrongOTPAttempts is the maximum number of invalid OTP entries allowed
+// before a token is rejected outright (ErrOTPMaxAttempts), regardless of
+// remaining time-to-expiry.
+const MaxWrongOTPAttempts = 5
 
 // MinimumAge is the minimum age accepted wherever age is collected — Guest
 // onboarding and Member profile completion both enforce this same floor.

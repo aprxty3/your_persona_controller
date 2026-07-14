@@ -1,5 +1,74 @@
 basePath: /
 definitions:
+  assessment.PDFStatusResponse:
+    properties:
+      pdf_status:
+        type: string
+    type: object
+  assessment.QuestionResponse:
+    properties:
+      display_order:
+        type: integer
+      id:
+        type: string
+      is_attention_check:
+        type: boolean
+      is_reverse_scored:
+        type: boolean
+      options:
+        type: string
+      question_text:
+        type: string
+      section:
+        type: string
+      type:
+        type: string
+    type: object
+  assessment.ResultResponse:
+    properties:
+      ai_summary_text:
+        type: string
+      created_at:
+        type: string
+      grit_score:
+        type: integer
+      is_owner:
+        type: boolean
+      locale:
+        type: string
+      mascot_style:
+        type: string
+      mbti_type:
+        type: string
+      pdf_status:
+        type: string
+      result_id:
+        type: string
+      share_token:
+        type: string
+      status:
+        type: string
+      trait_scores:
+        additionalProperties: true
+        type: object
+      wellbeing_flag:
+        type: boolean
+    type: object
+  assessment.SubmitResponse:
+    properties:
+      aisummaryText:
+        type: string
+      gritScore:
+        type: integer
+      mbtitype:
+        type: string
+      resultID:
+        type: string
+      status:
+        type: string
+      wellbeingFlag:
+        type: boolean
+    type: object
   auth.ChangePasswordResponse:
     properties:
       access_token:
@@ -51,6 +120,52 @@ definitions:
     properties:
       reset_token:
         type: string
+    type: object
+  dashboard.DashboardResponse:
+    properties:
+      grit_trend:
+        items:
+          $ref: '#/definitions/dashboard.GritTrendPoint'
+        type: array
+      latest_mbti_type:
+        type: string
+      quota_limit:
+        type: integer
+      quota_remaining:
+        type: integer
+      quota_used:
+        type: integer
+    type: object
+  dashboard.GritTrendPoint:
+    properties:
+      created_at:
+        type: string
+      grit_score:
+        type: integer
+      result_id:
+        type: string
+    type: object
+  dashboard.HistoryItem:
+    properties:
+      created_at:
+        type: string
+      mbti_type:
+        type: string
+      result_id:
+        type: string
+      status:
+        type: string
+    type: object
+  dashboard.PaginationMeta:
+    properties:
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+      total_pages:
+        type: integer
     type: object
   deletionrequest.RequestDeletionResponse:
     properties:
@@ -193,6 +308,25 @@ definitions:
     required:
     - new_password
     - reset_token
+    type: object
+  dto.SubmitRequestDTO:
+    properties:
+      answers:
+        items:
+          properties:
+            question_id:
+              type: string
+            value:
+              type: string
+          type: object
+        type: array
+      locale:
+        type: string
+    type: object
+  dto.UpdateMascotStyleRequestDTO:
+    properties:
+      mascot_style:
+        type: string
     type: object
   dto.UpdateProfileRequestDTO:
     properties:
@@ -442,6 +576,64 @@ paths:
       summary: Get (or generate) my referral code
       tags:
       - Account
+  /v1/assessment/submit:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Guest-or-Member endpoint (Auth: Optional). Member identity is taken from the Bearer
+        access token if present (set by AuthMiddleware.OptionalAuth); otherwise falls back to
+        the `session_id` Guest cookie. Runs the AI analysis synchronously — expect 3-8s latency.
+      parameters:
+      - description: Client-generated UUIDv4, replayed to dedupe retries
+        in: header
+        name: Idempotency-Key
+        required: true
+        type: string
+      - description: Locale + answer set
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SubmitRequestDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Assessment result
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/assessment.SubmitResponse'
+              type: object
+        "400":
+          description: VALIDATION_ERROR — missing Idempotency-Key, malformed body,
+            or neither session_id cookie nor access token present
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "409":
+          description: IDEMPOTENCY_KEY_REUSED — same key replayed with a different
+            payload
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "423":
+          description: LOCK_NOT_ACQUIRED — a submission for this identity is already
+            in flight
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "429":
+          description: QUOTA_EXCEEDED — monthly submission quota reached
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Submit assessment answers
+      tags:
+      - Assessment
   /v1/auth/change-password:
     post:
       consumes:
@@ -959,6 +1151,75 @@ paths:
       summary: Verify password reset OTP (step 2 of 3)
       tags:
       - Auth
+  /v1/dashboard:
+    get:
+      description: Remaining monthly quota (derived on-the-fly) and recent GRIT trend.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Dashboard summary
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/dashboard.DashboardResponse'
+              type: object
+        "401":
+          description: UNAUTHORIZED | TOKEN_VERSION_MISMATCH
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      security:
+      - BearerAuth: []
+      summary: Get dashboard summary
+      tags:
+      - Dashboard
+  /v1/dashboard/history:
+    get:
+      description: Ordered newest-first.
+      parameters:
+      - description: Page number, 1-indexed (default 1)
+        in: query
+        name: page
+        type: integer
+      - description: Results per page, max 50 (default 10)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: History page
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/dashboard.HistoryItem'
+                  type: array
+                meta:
+                  $ref: '#/definitions/dashboard.PaginationMeta'
+              type: object
+        "401":
+          description: UNAUTHORIZED | TOKEN_VERSION_MISMATCH
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      security:
+      - BearerAuth: []
+      summary: Get paginated test-result history
+      tags:
+      - Dashboard
   /v1/guest-session:
     post:
       consumes:
@@ -1009,6 +1270,190 @@ paths:
       summary: Create a guest session
       tags:
       - Auth
+  /v1/questions:
+    get:
+      description: Returns the full SJT/Likert/Essay question bank translated to the
+        negotiated locale.
+      parameters:
+      - description: Overrides the negotiated locale for this request (en|id)
+        in: query
+        name: locale
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Question bank
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/assessment.QuestionResponse'
+                  type: array
+              type: object
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Get the question bank
+      tags:
+      - Assessment
+  /v1/results/{id}:
+    get:
+      description: |-
+        Optional auth. Anyone holding the result's (unguessable) ID can view it.
+        `is_owner` tells the frontend whether to render owner-only affordances.
+      parameters:
+      - description: Test result ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Test result detail
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/assessment.ResultResponse'
+              type: object
+        "404":
+          description: RESULT_NOT_FOUND
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Get a test result
+      tags:
+      - Result
+  /v1/results/{id}/mascot-style:
+    patch:
+      consumes:
+      - application/json
+      description: Owner only. Purely visual — never affects trait_scores/grit_score/ai_summary_text.
+      parameters:
+      - description: Test result ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: style_a or style_b
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateMascotStyleRequestDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Updated result
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/assessment.ResultResponse'
+              type: object
+        "400":
+          description: VALIDATION_ERROR — mascot_style must be style_a or style_b
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "403":
+          description: FORBIDDEN — caller does not own this result
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "404":
+          description: RESULT_NOT_FOUND
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Choose a mascot visual variant
+      tags:
+      - Result
+  /v1/results/{id}/pdf:
+    get:
+      description: Owner only. Redirects (302) to a short-lived signed URL once the
+        PDF is ready.
+      parameters:
+      - description: Test result ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "302":
+          description: Redirect to signed PDF URL
+          schema:
+            type: string
+        "403":
+          description: FORBIDDEN — caller does not own this result
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "404":
+          description: RESULT_NOT_FOUND
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "409":
+          description: PDF_NOT_READY — generation hasn't completed yet
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Download the generated PDF
+      tags:
+      - Result
+  /v1/results/{id}/pdf-status:
+    get:
+      description: |-
+        Owner only. Frontend polls with exponential backoff (2s→4s→8s→cap 10s, ~90s total);
+        `failed` means stop polling immediately.
+      parameters:
+      - description: Test result ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: pending|processing|completed|failed
+          schema:
+            allOf:
+            - $ref: '#/definitions/httpresponse.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/assessment.PDFStatusResponse'
+              type: object
+        "403":
+          description: FORBIDDEN — caller does not own this result
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "404":
+          description: RESULT_NOT_FOUND
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "500":
+          description: INTERNAL_ERROR — unexpected server error
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+      summary: Poll PDF generation status
+      tags:
+      - Result
 securityDefinitions:
   BearerAuth:
     description: Masukkan access token tanpa prefix "Bearer ", cukup token JWT-nya
