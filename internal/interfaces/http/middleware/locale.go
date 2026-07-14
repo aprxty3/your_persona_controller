@@ -1,8 +1,6 @@
 package middleware
 
 import (
-	"strings"
-
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	jwtservice "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"
 	"github.com/aprxty3/your_persona_controller.git/pkg/locale"
@@ -69,13 +67,10 @@ func (m *LocaleMiddleware) resolve(c echo.Context) string {
 
 // memberPreference best-effort parses a Bearer token (if present) and looks up the member's stored preference.
 func (m *LocaleMiddleware) memberPreference(c echo.Context) (string, bool) {
-	const bearerPrefix = "Bearer "
-
-	header := c.Request().Header.Get(echo.HeaderAuthorization)
-	if header == "" {
+	tokenStr := BearerToken(c)
+	if tokenStr == "" {
 		return "", false
 	}
-	tokenStr := strings.TrimSpace(strings.TrimPrefix(header, bearerPrefix))
 
 	claims, err := m.jwtService.ParseAccessToken(tokenStr)
 	if err != nil {

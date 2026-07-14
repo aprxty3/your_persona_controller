@@ -7,3 +7,8 @@ type SubmitRequestDTO struct {
 		Value      string `json:"value"`
 	} `json:"answers"`
 }
+
+// UpdateMascotStyleRequestDTO carries the caller's chosen visual mascot variant (FR-D11).
+type UpdateMascotStyleRequestDTO struct {
+	MascotStyle string `json:"mascot_style"`
+}

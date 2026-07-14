@@ -7,6 +7,27 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ## [UNRELEASED] — 2026-07-14
 
+### Result, Question Bank & Member Dashboard endpoints (TICKET-04, TICKET-07)
+
+#### [A] `ResultHandler` — `/v1/questions`, `/v1/results/:id` and sub-routes (TICKET-04)
+- `GET /v1/questions` — locale-translated question bank via `content.QuestionRepository.FindAllWithTranslation` (already existed, just never had a caller); new narrow `assessment.QuestionCatalogUseCase`/`QuestionCatalogRepository`.
+- `GET /v1/results/:id` — any caller holding the (unguessable UUID) ID gets the full result; this is the mechanism behind FR-D8 "read-only, shareable-without-login link", the same pattern 16Personalities/Buzzfeed-style result pages use. Response includes a new `is_owner` field so the frontend can decide whether to render owner-only affordances (mascot picker, claim/upsell banners) — **this is a judgment call**: the tech-doc route table says "teaser kalau bukan pemilik", but the ticket's own task list and acceptance criteria never define what a teaser omits, and FR-D3/FR-D4 ("blurred insight"/"partial radar chart") read as frontend rendering effects, not backend truncation. Flagged for confirmation rather than guessing at a privacy-relevant field-omission contract with no spec.
+- `PATCH /v1/results/:id/mascot-style`, `GET /v1/results/:id/pdf-status`, `GET /v1/results/:id/pdf` — all owner-gated (`FORBIDDEN` 403 otherwise), matching "harus match kepemilikan": Member → `user_id` == JWT subject, Guest → `guest_session_id` == `session_id` cookie value. Shared via one `ResultUseCase.findOwned` guard instead of repeating the check three times.
+- `GET /v1/results/:id/pdf` redirects (302) to a signed URL rather than returning JSON — matches the doc's "Redirect ke signed URL R2". New `s3.Client.PresignedGetURL` (minio `PresignedGetObject`, reuses the existing `keyFromURL` helper); new `assessment.PDFSignerService` interface, wired to `*s3.Client` in `cmd/api` (previously only the worker constructed an S3 client — the API process didn't need one until now).
+- New `internal/interfaces/http/middleware/security_headers.go` — `NoIndex` middleware sets `X-Robots-Tag: noindex, nofollow` (FR-D9), applied once at the `/v1/results` route-group level so it's structurally impossible for a new sub-route to forget it, instead of repeating the header write in every handler.
+- New `AuthMiddleware.OptionalAuth` — resolves Member identity from a Bearer token if present but never rejects the request (unlike `RequireAuth`), for the "Auth: Optional" (Guest-or-Member) routes: `/assessment/submit`, `/results/*`. Extracted a shared `BearerToken(c)` helper and an internal `authenticate()` step so `RequireAuth`/`OptionalAuth` (and `LocaleMiddleware`'s existing best-effort JWT parse) don't each re-implement "trim the Bearer prefix, parse, look up the user".
+- **Bug fix in `AssessmentHandler.Submit`**: identity resolution previously checked the `session_id` Guest cookie *first* and only tried the Bearer token in the unreachable `else` branch (the `// TODO: Implement JWT Extraction` the ticket asked to close). A logged-in Member who still carries a stale Guest cookie from before registering would have been silently misfiled as a Guest. Now the Bearer token (via `OptionalAuth`) always takes priority.
+- `TestResultRepository.FindHistoryByUser(ctx, userID, page, limit) ([]TestResult, int64, error)` added to the domain interface (shared with TICKET-07 below) — didn't exist; nothing paginated by owner before this.
+
+#### [A] `DashboardHandler` + `DashboardUseCase` — `/v1/dashboard`, `/v1/dashboard/history` (TICKET-07)
+- `GET /v1/dashboard` — quota remaining computed on-the-fly (`application.MemberMonthlyQuota - CountMonthlyUsage`, never a stored counter, per FR-F2) plus a `grit_trend` array (last 5 results, oldest-first) for FR-F3.
+- `GET /v1/dashboard/history?page=&limit=` — paginated via the new `FindHistoryByUser`; response `meta` carries a reusable `PaginationMeta{page,limit,total,total_pages}` shape.
+- New shared `application.MemberMonthlyQuota = 3` constant (`internal/application/constants.go`) — previously duplicated as an unexported `monthlyQuotaLimit` literal only inside the submit usecase; the dashboard needed the same number and duplicating it risked the two drifting apart.
+- **Known gap, inherited not introduced**: `GritScore`/`MBTIType`/`TraitScores` are still zero-valued (no scoring-algorithm ticket exists yet — see TICKET-03's changelog entry above). `grit_trend`/`latest_mbti_type` are wired and will populate correctly the moment that gap is closed; they are not faked in the meantime.
+
+#### [C] Router — new route groups, no existing route's behavior changed
+- `authMiddleware.OptionalAuth` added to `POST /v1/assessment/submit`; new `/v1/questions`, `/v1/results/*` (group-wrapped with `NoIndex` + `OptionalAuth`), `/v1/dashboard/*` (wrapped with `RequireAuth`, Member-only per FR-F1-F5) route groups in `router.go`. `SetupRouter` gained two constructor params (`ResultHandler`, `DashboardHandler`); `cmd/api/wire.go`/`wire_gen.go` regenerated, `cmd/api/main.go` gained `S3_*` env var loading (mirrors the existing pattern already used by `cmd/worker/main.go`) since the API process now also needs an S3 client for signed PDF URLs.
+
 ### Domain layer reorganization — assessment aggregate vs. content catalog
 
 #### [C] `internal/domain/testresult` absorbs `answer` and `promptauditlog`

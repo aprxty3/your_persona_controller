@@ -9,6 +9,7 @@ package main
 import (
 	assessment2 "github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/dashboard"
 	deletionrequest2 "github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/profile"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
@@ -20,6 +21,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/deletionrequest"
 	asynq2 "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/security"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/storage/s3"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
@@ -35,7 +37,7 @@ import (
 // Injectors from wire.go:
 
 // InitializeAPI wires up the entire application and returns the Echo router.
-func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, loggerInstance logger.Logger) (*echo.Echo, error) {
+func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, s3Endpoint S3Endpoint, s3Region S3Region, s3Bucket S3Bucket, s3AccessKey S3AccessKey, s3SecretKey S3SecretKey, s3UsePathStyle S3UsePathStyle, loggerInstance logger.Logger) (*echo.Echo, error) {
 	db, err := providePostgresDB(dbDSN)
 	if err != nil {
 		return nil, err
@@ -55,7 +57,16 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	idempotencyService := redis.NewIdempotencyService(redisClient, loggerInstance)
 	pdfQueueService := stubs.NewStubPDFQueueService()
 	submitAssessmentUseCase := assessment2.NewSubmitAssessmentUseCase(db, testResultRepository, questionRepository, userRepository, client, distributedLockService, idempotencyService, pdfQueueService, loggerInstance)
-	assessmentHandler := handler.NewAssessmentHandler(submitAssessmentUseCase)
+	assessmentHandler := handler.NewAssessmentHandler(submitAssessmentUseCase, loggerInstance)
+	questionCatalogUseCase := assessment2.NewQuestionCatalogUseCase(questionRepository, loggerInstance)
+	s3Client, err := provideS3Client(s3Endpoint, s3Region, s3Bucket, s3AccessKey, s3SecretKey, s3UsePathStyle)
+	if err != nil {
+		return nil, err
+	}
+	resultUseCase := assessment2.NewResultUseCase(testResultRepository, s3Client, loggerInstance)
+	resultHandler := handler.NewResultHandler(questionCatalogUseCase, resultUseCase, loggerInstance)
+	dashboardUseCase := dashboard.NewDashboardUseCase(testResultRepository, loggerInstance)
+	dashboardHandler := handler.NewDashboardHandler(dashboardUseCase, loggerInstance)
 	guestSessionRepository := account.NewGuestSessionRepository(db, loggerInstance)
 	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(guestSessionRepository, loggerInstance)
 	verificationTokenRepository := account.NewVerificationTokenRepository(db, loggerInstance)
@@ -81,7 +92,7 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	healthHandler := handler.NewHealthHandler(db, redisClient)
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)
 	localeMiddleware := middleware.NewLocaleMiddleware(jwtService, userRepository, loggerInstance)
-	echoEcho := http.SetupRouter(assessmentHandler, authHandler, accountHandler, healthHandler, authMiddleware, localeMiddleware)
+	echoEcho := http.SetupRouter(assessmentHandler, resultHandler, dashboardHandler, authHandler, accountHandler, healthHandler, authMiddleware, localeMiddleware)
 	return echoEcho, nil
 }
 
@@ -106,4 +117,8 @@ func provideAsynqClient(addr RedisAddr, password RedisPassword, db int) (*asynq.
 
 func provideJWTService(secret JWTSecret) *jwtservice.JWTService {
 	return jwtservice.NewJWTService(string(secret))
+}
+
+func provideS3Client(endpoint S3Endpoint, region S3Region, bucket S3Bucket, accessKey S3AccessKey, secretKey S3SecretKey, usePathStyle S3UsePathStyle) (*s3.Client, error) {
+	return s3.NewClient(string(endpoint), string(region), string(bucket), string(accessKey), string(secretKey), bool(usePathStyle))
 }

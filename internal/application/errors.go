@@ -53,3 +53,10 @@ var (
 	ErrIdempotencyKeyReused = errors.New("IDEMPOTENCY_KEY_REUSED")
 	ErrQuotaExceeded        = errors.New("QUOTA_EXCEEDED")
 )
+
+// Result / PDF access errors
+var (
+	ErrResultNotFound = errors.New("RESULT_NOT_FOUND")
+	ErrForbidden      = errors.New("FORBIDDEN")
+	ErrPDFNotReady    = errors.New("PDF_NOT_READY")
+)

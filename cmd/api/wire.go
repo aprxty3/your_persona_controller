@@ -6,6 +6,7 @@ package main
 import (
 	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/dashboard"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/profile"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
@@ -18,6 +19,7 @@ import (
 	pgdeletionrequest "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/deletionrequest"
 	asynqclient "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/security"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/storage/s3"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
@@ -52,6 +54,10 @@ func provideJWTService(secret JWTSecret) *jwtservice.JWTService {
 	return jwtservice.NewJWTService(string(secret))
 }
 
+func provideS3Client(endpoint S3Endpoint, region S3Region, bucket S3Bucket, accessKey S3AccessKey, secretKey S3SecretKey, usePathStyle S3UsePathStyle) (*s3.Client, error) {
+	return s3.NewClient(string(endpoint), string(region), string(bucket), string(accessKey), string(secretKey), bool(usePathStyle))
+}
+
 // InitializeAPI wires up the entire application and returns the Echo router.
 func InitializeAPI(
 	geminiAPIKey GeminiAPIKey,
@@ -62,6 +68,12 @@ func InitializeAPI(
 	redisPassword RedisPassword,
 	redisDB int,
 	jwtSecret JWTSecret,
+	s3Endpoint S3Endpoint,
+	s3Region S3Region,
+	s3Bucket S3Bucket,
+	s3AccessKey S3AccessKey,
+	s3SecretKey S3SecretKey,
+	s3UsePathStyle S3UsePathStyle,
 	loggerInstance logger.Logger,
 ) (*echo.Echo, error) {
 	wire.Build(
@@ -78,6 +90,9 @@ func InitializeAPI(
 		taskqueue.NewAsynqDispatcher,
 		security.NewHIBPBreachChecker,
 
+		provideS3Client,
+		wire.Bind(new(assessment.PDFSignerService), new(*s3.Client)),
+
 		// ---------------------------------------------------------
 		// Repositories
 		// ---------------------------------------------------------
@@ -92,6 +107,9 @@ func InitializeAPI(
 
 		wire.Bind(new(assessment.TestResultRepository), new(testresult.TestResultRepository)),
 		wire.Bind(new(assessment.QuestionRepository), new(*pgassessment.QuestionRepository)),
+		wire.Bind(new(assessment.ResultRepository), new(testresult.TestResultRepository)),
+		wire.Bind(new(assessment.QuestionCatalogRepository), new(*pgassessment.QuestionRepository)),
+		wire.Bind(new(dashboard.TestResultRepository), new(testresult.TestResultRepository)),
 
 		// Stubs for assessment interfaces
 		stubs.NewStubPDFQueueService,
@@ -107,6 +125,9 @@ func InitializeAPI(
 		// Application (Usecase) Providers
 		// ---------------------------------------------------------
 		assessment.NewSubmitAssessmentUseCase,
+		assessment.NewResultUseCase,
+		assessment.NewQuestionCatalogUseCase,
+		dashboard.NewDashboardUseCase,
 		auth.NewCreateGuestSessionUseCase,
 		auth.NewRegisterUseCase,
 		auth.NewAccountUseCase,
@@ -120,6 +141,8 @@ func InitializeAPI(
 		appmiddleware.NewAuthMiddleware,
 		appmiddleware.NewLocaleMiddleware,
 		handler.NewAssessmentHandler,
+		handler.NewResultHandler,
+		handler.NewDashboardHandler,
 		handler.NewAuthHandler,
 		handler.NewAccountHandler,
 		handler.NewHealthHandler,

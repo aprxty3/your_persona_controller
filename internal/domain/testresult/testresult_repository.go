@@ -18,6 +18,7 @@ type TestResultRepository interface {
 	CountCompletedByGuestSession(ctx context.Context, guestSessionID string) (int64, error)
 	FindPDFURLsByUser(ctx context.Context, userID string) ([]string, error)
 	ScrubPersonalDataByUser(ctx context.Context, userID string) error
+	FindHistoryByUser(ctx context.Context, userID string, page, limit int) (results []TestResult, total int64, err error)
 }
 
 // AnswerRepository defines the contract for Answer data persistence.

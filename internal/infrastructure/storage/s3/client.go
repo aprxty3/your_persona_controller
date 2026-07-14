@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -54,6 +55,21 @@ func (c *Client) DeleteByURL(ctx context.Context, rawURL string) error {
 		return fmt.Errorf("s3: delete object %q: %w", key, err)
 	}
 	return nil
+}
+
+// PresignedGetURL returns a time-limited signed URL for downloading the object
+// a stored URL (e.g. TEST_RESULT.pdf_url) points to — the object itself stays
+// private; only holders of the short-lived signed link can fetch it.
+func (c *Client) PresignedGetURL(ctx context.Context, rawURL string, expiry time.Duration) (string, error) {
+	key, err := c.keyFromURL(rawURL)
+	if err != nil {
+		return "", err
+	}
+	signed, err := c.mc.PresignedGetObject(ctx, c.bucket, key, expiry, url.Values{})
+	if err != nil {
+		return "", fmt.Errorf("s3: presign object %q: %w", key, err)
+	}
+	return signed.String(), nil
 }
 
 // keyFromURL extracts the object key from a stored object URL, handling both

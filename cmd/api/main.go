@@ -22,6 +22,12 @@ type DBDSN string
 type RedisAddr string
 type RedisPassword string
 type JWTSecret string
+type S3Endpoint string
+type S3Region string
+type S3Bucket string
+type S3AccessKey string
+type S3SecretKey string
+type S3UsePathStyle bool
 
 // @title Your Persona API
 // @version 1.0
@@ -100,6 +106,33 @@ func main() {
 		jwtSecret = "your-persona-super-secret-key-change-in-production-123456"
 	}
 
+	// Object storage (MinIO dev / R2 prod) — result PDF signed-URL downloads.
+	s3Endpoint := os.Getenv("S3_ENDPOINT")
+	if s3Endpoint == "" {
+		s3Endpoint = "http://localhost:9000"
+	}
+	s3Region := os.Getenv("S3_REGION")
+	if s3Region == "" {
+		s3Region = "auto"
+	}
+	s3Bucket := os.Getenv("S3_BUCKET")
+	if s3Bucket == "" {
+		s3Bucket = "your-personas-reports"
+	}
+	s3AccessKey := os.Getenv("S3_ACCESS_KEY")
+	if s3AccessKey == "" {
+		s3AccessKey = "minioadmin"
+	}
+	s3SecretKey := os.Getenv("S3_SECRET_KEY")
+	if s3SecretKey == "" {
+		s3SecretKey = "minioadmin"
+	}
+	s3UsePathStyleStr := os.Getenv("S3_USE_PATH_STYLE")
+	if s3UsePathStyleStr == "" {
+		s3UsePathStyleStr = "true"
+	}
+	s3UsePathStyle, _ := strconv.ParseBool(s3UsePathStyleStr)
+
 	appEnv := os.Getenv("APP_ENV")
 	if appEnv == "" {
 		appEnv = "development"
@@ -119,6 +152,12 @@ func main() {
 		RedisPassword(redisPassword),
 		redisDB,
 		JWTSecret(jwtSecret),
+		S3Endpoint(s3Endpoint),
+		S3Region(s3Region),
+		S3Bucket(s3Bucket),
+		S3AccessKey(s3AccessKey),
+		S3SecretKey(s3SecretKey),
+		S3UsePathStyle(s3UsePathStyle),
 		logInstance,
 	)
 	if err != nil {

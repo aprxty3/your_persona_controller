@@ -24,7 +24,6 @@ import (
 
 const (
 	essayMaxLength       = 4000
-	monthlyQuotaLimit    = 3
 	quotaLockTTL         = 20 * time.Second
 	idempotencyTTL       = 24 * time.Hour
 	guestResultTTL       = 14 * 24 * time.Hour
@@ -155,7 +154,7 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 		if err != nil {
 			return nil, fmt.Errorf("submit: count monthly usage: %w", err)
 		}
-		if usage >= monthlyQuotaLimit {
+		if usage >= application.MemberMonthlyQuota {
 			return nil, application.ErrQuotaExceeded
 		}
 	}

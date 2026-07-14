@@ -12,6 +12,8 @@ import (
 // SetupRouter initializes the Echo instance, applies global middlewares,
 func SetupRouter(
 	assessmentHandler *handler.AssessmentHandler,
+	resultHandler *handler.ResultHandler,
+	dashboardHandler *handler.DashboardHandler,
 	authHandler *handler.AuthHandler,
 	accountHandler *handler.AccountHandler,
 	healthHandler *handler.HealthHandler,
@@ -62,8 +64,25 @@ func SetupRouter(
 	assessmentGroup := v1.Group("/assessment")
 
 	// POST /v1/assessment/submit
-	// Auth is optional (handled inside the handler itself).
-	assessmentGroup.POST("/submit", assessmentHandler.Submit)
+	// Auth is optional — OptionalAuth resolves Member identity if a Bearer
+	// token is present, but never blocks a Guest (cookie-only) submission.
+	assessmentGroup.POST("/submit", assessmentHandler.Submit, authMiddleware.OptionalAuth)
+
+	// Question bank — locale-negotiated only, no identity concept, so no auth middleware needed.
+	v1.GET("/questions", resultHandler.GetQuestions)
+
+	// Result Group — every route here serves personal assessment data, so
+	// NoIndex (X-Robots-Tag: noindex, nofollow, FR-D9) is mandatory group-wide.
+	resultGroup := v1.Group("/results", appmiddleware.NoIndex, authMiddleware.OptionalAuth)
+	resultGroup.GET("/:id", resultHandler.GetResult)
+	resultGroup.PATCH("/:id/mascot-style", resultHandler.UpdateMascotStyle)
+	resultGroup.GET("/:id/pdf-status", resultHandler.GetPDFStatus)
+	resultGroup.GET("/:id/pdf", resultHandler.GetPDF)
+
+	// Dashboard Group (Member Only)
+	dashboardGroup := v1.Group("/dashboard", authMiddleware.RequireAuth)
+	dashboardGroup.GET("", dashboardHandler.GetDashboard)
+	dashboardGroup.GET("/history", dashboardHandler.GetHistory)
 
 	// Swagger Endpoint
 	e.GET("/swagger/*", echoSwagger.WrapHandler)

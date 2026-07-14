@@ -108,8 +108,7 @@ func (r *TestResultRepository) CountMonthlyUsage(ctx context.Context, userID str
 }
 
 // CountCompletedByUser counts every completed/fallback_static result the user
-// has ever submitted (all-time, unlike CountMonthlyUsage) — used to detect a
-// member's very first completed assessment for the signup-referral bonus (FR-G1).
+// has ever submitted (all-time, unlike CountMonthlyUsage).
 func (r *TestResultRepository) CountCompletedByUser(ctx context.Context, userID string) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
@@ -213,10 +212,46 @@ func (r *TestResultRepository) ScrubPersonalDataByUser(ctx context.Context, user
 	return err
 }
 
+func (r *TestResultRepository) FindHistoryByUser(ctx context.Context, userID string, page, limit int) ([]testresult.TestResult, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
+		Where("user_id = ?", userID).
+		Count(&total).Error; err != nil {
+		r.log.Error("query failed", "op", "FindHistoryByUser.count", "error", err)
+		return nil, 0, fmt.Errorf("find history by user: count: %w", err)
+	}
+
+	var models []postgres.TestResultModel
+	err := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Offset((page - 1) * limit).
+		Limit(limit).
+		Find(&models).Error
+	if err != nil {
+		r.log.Error("query failed", "op", "FindHistoryByUser.list", "error", err)
+		return nil, 0, fmt.Errorf("find history by user: list: %w", err)
+	}
+
+	results := make([]testresult.TestResult, len(models))
+	for i, m := range models {
+		res, err := toEntity(&m)
+		if err != nil {
+			return nil, 0, err
+		}
+		results[i] = *res
+	}
+	return results, total, nil
+}
+
 func toModel(res *testresult.TestResult) (postgres.TestResultModel, error) {
-	// TraitScores is a jsonb column — an empty Go string ("") is not valid
-	// JSON and Postgres rejects it on insert, so an unset map must become
-	// the literal "{}", never left blank.
 	traits := []byte("{}")
 	if res.TraitScores != nil {
 		var err error
