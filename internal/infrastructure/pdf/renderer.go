@@ -25,12 +25,17 @@ var (
 	trackColor = props.Color{Red: 226, Green: 232, Blue: 240}
 )
 
-var placeholders = map[string]struct {
+// placeholderSet is the locale-specific copy shown for sections whose source
+// data doesn't exist yet (MBTIType/GritScore/TraitScores/StrengthsBlindSpots
+// are zero-value until the scoring algorithm ticket lands).
+type placeholderSet struct {
 	MBTI      string
 	Chart     string
 	Insights  string
 	Generated string
-}{
+}
+
+var placeholders = map[string]placeholderSet{
 	"id": {
 		MBTI:      "Belum tersedia — hasil akan muncul setelah pemrosesan skor selesai.",
 		Chart:     "Grafik spektrum kepribadian & GRIT akan tersedia setelah skor kepribadian Anda diproses.",
@@ -45,12 +50,7 @@ var placeholders = map[string]struct {
 	},
 }
 
-func placeholderFor(locale string) struct {
-	MBTI      string
-	Chart     string
-	Insights  string
-	Generated string
-} {
+func placeholderFor(locale string) placeholderSet {
 	if p, ok := placeholders[locale]; ok {
 		return p
 	}
@@ -83,12 +83,7 @@ func (r *MarotoRenderer) Render(_ context.Context, data pdf.PDFData) ([]byte, er
 	return doc.GetBytes(), nil
 }
 
-func addHeader(m core.Maroto, data pdf.PDFData, ph struct {
-	MBTI      string
-	Chart     string
-	Insights  string
-	Generated string
-}) {
+func addHeader(m core.Maroto, data pdf.PDFData, ph placeholderSet) {
 	m.AddRow(16, text.NewCol(gridSize, "Your Persona's — Laporan Kepribadian", props.Text{
 		Size: 18, Style: fontstyle.Bold, Align: align.Left,
 	}))
@@ -104,12 +99,7 @@ func displayNameOrDefault(name string) string {
 	return name
 }
 
-func addMBTISection(m core.Maroto, data pdf.PDFData, ph struct {
-	MBTI      string
-	Chart     string
-	Insights  string
-	Generated string
-}) {
+func addMBTISection(m core.Maroto, data pdf.PDFData, ph placeholderSet) {
 	m.AddRow(8, text.NewCol(gridSize, "Tipe MBTI", props.Text{Size: 13, Style: fontstyle.Bold}))
 	if data.MBTIType != "" {
 		m.AddRow(10, text.NewCol(gridSize, data.MBTIType, props.Text{Size: 12, Style: fontstyle.Bold, Color: &brandColor}))
@@ -119,12 +109,7 @@ func addMBTISection(m core.Maroto, data pdf.PDFData, ph struct {
 	m.AddRow(4, col.New(gridSize))
 }
 
-func addChartSection(m core.Maroto, data pdf.PDFData, ph struct {
-	MBTI      string
-	Chart     string
-	Insights  string
-	Generated string
-}) {
+func addChartSection(m core.Maroto, data pdf.PDFData, ph placeholderSet) {
 	m.AddRow(8, text.NewCol(gridSize, "Spektrum Kepribadian & GRIT", props.Text{Size: 13, Style: fontstyle.Bold}))
 
 	if len(data.TraitScores) == 0 && data.GritScore == 0 {
@@ -194,12 +179,7 @@ func toFloat64(v interface{}) (float64, bool) {
 	}
 }
 
-func addInsightsSection(m core.Maroto, data pdf.PDFData, ph struct {
-	MBTI      string
-	Chart     string
-	Insights  string
-	Generated string
-}) {
+func addInsightsSection(m core.Maroto, data pdf.PDFData, ph placeholderSet) {
 	m.AddRow(8, text.NewCol(gridSize, "Kekuatan & Area Pengembangan", props.Text{Size: 13, Style: fontstyle.Bold}))
 	if len(data.StrengthsBlindSpots) == 0 {
 		m.AddRow(10, text.NewCol(gridSize, ph.Insights, props.Text{Size: 10, Style: fontstyle.Italic, Color: &mutedColor}))
