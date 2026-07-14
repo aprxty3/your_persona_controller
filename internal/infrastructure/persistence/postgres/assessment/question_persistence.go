@@ -2,7 +2,6 @@ package assessment
 
 import (
 	"context"
-	"errors"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
@@ -63,11 +62,10 @@ func toQuestionTranslationModel(entity *content.QuestionTranslation) postgres.Qu
 func (r *QuestionRepository) FindByID(ctx context.Context, id string) (*content.Question, error) {
 	var m postgres.QuestionModel
 	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if postgres.IsNotFound(err) {
 		return nil, nil
 	}
-	if err != nil {
-		r.log.Error("query failed", "op", "FindByID", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindByID", err); err != nil {
 		return nil, err
 	}
 	q := toQuestionEntity(&m)
@@ -82,8 +80,7 @@ func (r *QuestionRepository) FindByIDs(ctx context.Context, ids []string) ([]con
 
 	var models []postgres.QuestionModel
 	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&models).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "FindByIDs", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindByIDs", err); err != nil {
 		return nil, err
 	}
 
@@ -99,8 +96,7 @@ func (r *QuestionRepository) FindAllWithTranslation(ctx context.Context, loc str
 	err := r.db.WithContext(ctx).
 		Order("section asc, display_order asc").
 		Find(&questionModels).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "FindAllWithTranslation.questions", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindAllWithTranslation.questions", err); err != nil {
 		return nil, nil, err
 	}
 
@@ -115,8 +111,7 @@ func (r *QuestionRepository) FindAllWithTranslation(ctx context.Context, loc str
 	err = r.db.WithContext(ctx).
 		Where("question_id IN ? AND (locale = ? OR locale = 'en')", questionIDs, loc).
 		Find(&translations).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "FindAllWithTranslation.translations", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindAllWithTranslation.translations", err); err != nil {
 		return nil, nil, err
 	}
 
@@ -139,11 +134,10 @@ func (r *QuestionRepository) FindByQuestionAndLocale(ctx context.Context, questi
 		First(&m, "question_id = ? AND locale = ?", questionID, locale).
 		Error
 
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if postgres.IsNotFound(err) {
 		return nil, nil
 	}
-	if err != nil {
-		r.log.Error("query failed", "op", "FindByQuestionAndLocale", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindByQuestionAndLocale", err); err != nil {
 		return nil, err
 	}
 
@@ -160,8 +154,5 @@ func (r *QuestionRepository) UpsertTranslation(ctx context.Context, tr *content.
 		}).
 		Create(&m).Error
 
-	if err != nil {
-		r.log.Error("query failed", "op", "UpsertTranslation", "error", err)
-	}
-	return err
+	return postgres.LogQueryError(r.log, "UpsertTranslation", err)
 }

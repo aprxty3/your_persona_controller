@@ -64,11 +64,7 @@ func (r *AnswerRepository) UpsertAnswers(ctx context.Context, testResultID strin
 		}).
 		Create(&models).Error
 
-	if err != nil {
-		r.log.Error("query failed", "op", "UpsertAnswers", "error", err)
-		return err
-	}
-	return nil
+	return postgres.LogQueryError(r.log, "UpsertAnswers", err)
 }
 
 func (r *AnswerRepository) FindByTestResultID(ctx context.Context, testResultID string) ([]testresult.Answer, error) {
@@ -78,8 +74,7 @@ func (r *AnswerRepository) FindByTestResultID(ctx context.Context, testResultID 
 		Order("created_at asc").
 		Find(&models).Error
 
-	if err != nil {
-		r.log.Error("query failed", "op", "FindByTestResultID", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindByTestResultID", err); err != nil {
 		return nil, err
 	}
 

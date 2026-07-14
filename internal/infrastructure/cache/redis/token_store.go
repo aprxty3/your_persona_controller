@@ -41,7 +41,7 @@ func (s *TokenStore) ConsumeResetJTI(ctx context.Context, jti string) (userID st
 // DenylistRefreshJTI revokes a single refresh token until its natural expiry.
 func (s *TokenStore) DenylistRefreshJTI(ctx context.Context, jti string, ttl time.Duration) error {
 	if ttl <= 0 {
-		return nil // already expired; nothing to revoke
+		return nil
 	}
 	if err := s.client.Set(ctx, refreshDenyKey(jti), 1, ttl).Err(); err != nil {
 		return fmt.Errorf("redis: denylist refresh jti: %w", err)
@@ -59,9 +59,9 @@ func (s *TokenStore) IsRefreshJTIDenylisted(ctx context.Context, jti string) (bo
 }
 
 func resetJTIKey(jti string) string {
-	return fmt.Sprintf("reset_jti:%s", jti)
+	return buildKey("reset_jti", jti)
 }
 
 func refreshDenyKey(jti string) string {
-	return fmt.Sprintf("refresh_deny:%s", jti)
+	return buildKey("refresh_deny", jti)
 }

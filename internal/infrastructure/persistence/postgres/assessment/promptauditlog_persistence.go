@@ -36,11 +36,7 @@ func toPromptAuditLogModel(entity *testresult.PromptAuditLog) postgres.PromptAud
 
 func (r *PromptAuditLogRepository) Create(ctx context.Context, log *testresult.PromptAuditLog) error {
 	m := toPromptAuditLogModel(log)
-	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-		r.log.Error("query failed", "op", "Create", "error", err)
-		return err
-	}
-	return nil
+	return postgres.LogQueryError(r.log, "Create", r.db.WithContext(ctx).Create(&m).Error)
 }
 
 func (r *PromptAuditLogRepository) DeleteByTestResultID(ctx context.Context, testResultID string) error {
@@ -48,10 +44,7 @@ func (r *PromptAuditLogRepository) DeleteByTestResultID(ctx context.Context, tes
 		Where("test_result_id = ?", testResultID).
 		Delete(&postgres.PromptAuditLogModel{}).Error
 
-	if err != nil {
-		r.log.Error("query failed", "op", "DeleteByTestResultID", "error", err)
-	}
-	return err
+	return postgres.LogQueryError(r.log, "DeleteByTestResultID", err)
 }
 
 func (r *PromptAuditLogRepository) DeleteExpired(ctx context.Context) error {
@@ -59,8 +52,5 @@ func (r *PromptAuditLogRepository) DeleteExpired(ctx context.Context) error {
 		Where("expires_at < ?", time.Now()).
 		Delete(&postgres.PromptAuditLogModel{}).Error
 
-	if err != nil {
-		r.log.Error("query failed", "op", "DeleteExpired", "error", err)
-	}
-	return err
+	return postgres.LogQueryError(r.log, "DeleteExpired", err)
 }

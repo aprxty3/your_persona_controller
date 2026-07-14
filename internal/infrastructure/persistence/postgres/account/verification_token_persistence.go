@@ -2,7 +2,6 @@ package account
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
@@ -25,11 +24,7 @@ func NewVerificationTokenRepository(db *gorm.DB, log logger.Logger) account.Veri
 // Create inserts a new verification token record.
 func (r *VerificationTokenRepository) Create(ctx context.Context, t *account.VerificationToken) error {
 	m := toVerificationTokenModel(t)
-	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-		r.log.Error("query failed", "op", "Create", "error", err)
-		return err
-	}
-	return nil
+	return postgres.LogQueryError(r.log, "Create", r.db.WithContext(ctx).Create(&m).Error)
 }
 
 // FindActiveByUserAndType returns the single active (not expired, not used) token.
@@ -39,11 +34,10 @@ func (r *VerificationTokenRepository) FindActiveByUserAndType(ctx context.Contex
 		Where("user_id = ? AND type = ? AND expires_at > ? AND used_at IS NULL", userID, string(tokenType), time.Now()).
 		Order("created_at DESC").
 		First(&m).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if postgres.IsNotFound(err) {
 		return nil, nil
 	}
-	if err != nil {
-		r.log.Error("query failed", "op", "FindActiveByUserAndType", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindActiveByUserAndType", err); err != nil {
 		return nil, err
 	}
 	t := toVerificationTokenEntity(&m)
@@ -57,10 +51,7 @@ func (r *VerificationTokenRepository) IncrementAttemptCount(ctx context.Context,
 		Where("id = ?", tokenID).
 		UpdateColumn("attempt_count", gorm.Expr("attempt_count + 1")).
 		Error
-	if err != nil {
-		r.log.Error("query failed", "op", "IncrementAttemptCount", "error", err)
-	}
-	return err
+	return postgres.LogQueryError(r.log, "IncrementAttemptCount", err)
 }
 
 // MarkUsed sets used_at to now, consuming the token permanently.
@@ -71,10 +62,7 @@ func (r *VerificationTokenRepository) MarkUsed(ctx context.Context, tokenID stri
 		Where("id = ?", tokenID).
 		Update("used_at", now).
 		Error
-	if err != nil {
-		r.log.Error("query failed", "op", "MarkUsed", "error", err)
-	}
-	return err
+	return postgres.LogQueryError(r.log, "MarkUsed", err)
 }
 
 // ExpireAllActiveForUser force-expires all unused tokens of the given (user_id, type).
@@ -84,10 +72,7 @@ func (r *VerificationTokenRepository) ExpireAllActiveForUser(ctx context.Context
 		Where("user_id = ? AND type = ? AND used_at IS NULL AND expires_at > ?", userID, string(tokenType), time.Now()).
 		Update("expires_at", time.Now()).
 		Error
-	if err != nil {
-		r.log.Error("query failed", "op", "ExpireAllActiveForUser", "error", err)
-	}
-	return err
+	return postgres.LogQueryError(r.log, "ExpireAllActiveForUser", err)
 }
 
 func toVerificationTokenModel(t *account.VerificationToken) postgres.VerificationTokenModel {

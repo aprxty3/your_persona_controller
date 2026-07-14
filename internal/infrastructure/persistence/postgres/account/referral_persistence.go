@@ -2,7 +2,6 @@ package account
 
 import (
 	"context"
-	"errors"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
@@ -29,22 +28,17 @@ func (r *ReferralRepository) CreateCode(ctx context.Context, code *account.Refer
 		Code:      code.Code,
 		CreatedAt: code.CreatedAt,
 	}
-	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-		r.log.Error("query failed", "op", "CreateCode", "error", err)
-		return err
-	}
-	return nil
+	return postgres.LogQueryError(r.log, "CreateCode", r.db.WithContext(ctx).Create(&m).Error)
 }
 
 // FindCodeByUserID returns the referral code owned by the given user, or nil if none.
 func (r *ReferralRepository) FindCodeByUserID(ctx context.Context, userID string) (*account.ReferralCode, error) {
 	var m postgres.ReferralCodeModel
 	err := r.db.WithContext(ctx).First(&m, "user_id = ?", userID).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if postgres.IsNotFound(err) {
 		return nil, nil
 	}
-	if err != nil {
-		r.log.Error("query failed", "op", "FindCodeByUserID", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindCodeByUserID", err); err != nil {
 		return nil, err
 	}
 	return &account.ReferralCode{
@@ -59,11 +53,10 @@ func (r *ReferralRepository) FindCodeByUserID(ctx context.Context, userID string
 func (r *ReferralRepository) FindCodeByCode(ctx context.Context, code string) (*account.ReferralCode, error) {
 	var m postgres.ReferralCodeModel
 	err := r.db.WithContext(ctx).First(&m, "code = ?", code).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if postgres.IsNotFound(err) {
 		return nil, nil
 	}
-	if err != nil {
-		r.log.Error("query failed", "op", "FindCodeByCode", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindCodeByCode", err); err != nil {
 		return nil, err
 	}
 	return &account.ReferralCode{
@@ -83,11 +76,7 @@ func (r *ReferralRepository) CreateEvent(ctx context.Context, event *account.Ref
 		EventType:      string(event.EventType),
 		CreatedAt:      event.CreatedAt,
 	}
-	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-		r.log.Error("query failed", "op", "CreateEvent", "error", err)
-		return err
-	}
-	return nil
+	return postgres.LogQueryError(r.log, "CreateEvent", r.db.WithContext(ctx).Create(&m).Error)
 }
 
 // CountEventsByCodeID counts total referral events for reporting.
@@ -96,8 +85,7 @@ func (r *ReferralRepository) CountEventsByCodeID(ctx context.Context, referralCo
 	err := r.db.WithContext(ctx).Model(&postgres.ReferralEventModel{}).
 		Where("referral_code_id = ? AND event_type = ?", referralCodeID, string(eventType)).
 		Count(&count).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "CountEventsByCodeID", "error", err)
+	if err := postgres.LogQueryError(r.log, "CountEventsByCodeID", err); err != nil {
 		return 0, err
 	}
 	return count, nil

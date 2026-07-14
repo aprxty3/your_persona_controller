@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/smtp"
+
+	pkglocale "github.com/aprxty3/your_persona_controller.git/pkg/locale"
 )
 
 // Mailer defines the contract for sending transactional emails.
@@ -64,52 +66,20 @@ func (m *SMTPMailer) SendEmail(ctx context.Context, to, subject, body string) er
 	}
 }
 
-// SendOTP formats and sends an OTP email based on the purpose and locale.
+// SendOTP formats and sends an OTP email based on the purpose and locale,
+// looking up copy from the otpTemplates registry (templates.go).
 func (m *SMTPMailer) SendOTP(ctx context.Context, to, otp, purpose, locale string) error {
-	if locale != "en" && locale != "id" {
-		locale = "en"
-	}
-
-	var subject, body string
-
-	switch purpose {
-	case "otp_verification":
-		if locale == "id" {
-			subject = "Your Persona's - Kode Verifikasi"
-			body = fmt.Sprintf("Halo,\n\nKode verifikasi Anda adalah: %s\n\nKode ini berlaku selama 15 menit. Mohon jangan membagikan kode ini kepada siapa pun.\n\nHormat kami,\nTim Your Persona", otp)
-		} else {
-			subject = "Your Persona's - Verification Code"
-			body = fmt.Sprintf("Hello,\n\nYour verification code is: %s\n\nIt is valid for 15 minutes. Please do not share this code with anyone.\n\nBest regards,\nYour Persona Team", otp)
-		}
-	case "otp_reset":
-		if locale == "id" {
-			subject = "Your Persona's - Permintaan Reset Password"
-			body = fmt.Sprintf("Halo,\n\nKode verifikasi untuk reset password Anda adalah: %s\n\nKode ini berlaku selama 15 menit. Mohon jangan membagikan kode ini kepada siapa pun.\n\nHormat kami,\nTim Your Persona", otp)
-		} else {
-			subject = "Your Persona's - Password Reset Request"
-			body = fmt.Sprintf("Hello,\n\nYour password reset verification code is: %s\n\nIt is valid for 15 minutes. Please do not share this code with anyone.\n\nBest regards,\nYour Persona Team", otp)
-		}
-	default:
+	purposeTemplates, ok := otpTemplates[purpose]
+	if !ok {
 		return fmt.Errorf("smtp mailer: unknown OTP purpose %q", purpose)
 	}
 
-	return m.SendEmail(ctx, to, subject, body)
+	tmpl := purposeTemplates[pkglocale.Resolve(locale)]
+	return m.SendEmail(ctx, to, tmpl.Subject, fmt.Sprintf(tmpl.Body, otp))
 }
 
 // SendDeletionConfirmed notifies the (snapshot) address that anonymization has completed deletion request.
 func (m *SMTPMailer) SendDeletionConfirmed(ctx context.Context, to, locale string) error {
-	if locale != "en" && locale != "id" {
-		locale = "en"
-	}
-
-	var subject, body string
-	if locale == "id" {
-		subject = "Your Persona's - Penghapusan Data Selesai"
-		body = "Halo,\n\nSesuai permintaan Anda, data pribadi Anda (email, nama, jawaban esai, dan ringkasan AI) telah dihapus/dianonimkan secara permanen dari sistem kami. Akun Anda tidak lagi dapat digunakan untuk login.\n\nTerima kasih telah menggunakan Your Persona's.\n\nHormat kami,\nTim Your Persona"
-	} else {
-		subject = "Your Persona's - Data Deletion Completed"
-		body = "Hello,\n\nAs you requested, your personal data (email, name, essay answers, and AI summary) has been permanently deleted/anonymized from our systems. Your account can no longer be used to log in.\n\nThank you for using Your Persona's.\n\nBest regards,\nYour Persona Team"
-	}
-
-	return m.SendEmail(ctx, to, subject, body)
+	tmpl := deletionConfirmedTemplates[pkglocale.Resolve(locale)]
+	return m.SendEmail(ctx, to, tmpl.Subject, tmpl.Body)
 }

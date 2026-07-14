@@ -27,3 +27,10 @@ const MinimumAge = 13
 // concern (session lifetime, not data retention) — deliberately NOT unified
 // with it, since a future change to one must not silently change the other.
 const GuestDataRetention = 14 * 24 * time.Hour
+
+// DeletionGracePeriod is how long an account deletion request waits before
+// the anonymization worker processes it. Coincidentally also 14
+// days like GuestDataRetention, but a distinct business rule (account
+// deletion grace period vs. guest data auto-purge) — kept as its own
+// constant so the two can diverge independently if either policy changes.
+const DeletionGracePeriod = 14 * 24 * time.Hour

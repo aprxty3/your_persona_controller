@@ -43,8 +43,7 @@ func (r *InsightTemplateRepository) FindMatchingTemplates(ctx context.Context, t
 		Where("trait = ? AND is_active = true AND (locale = ? OR locale = 'en')", trait, loc).
 		Find(&models).Error
 
-	if err != nil {
-		r.log.Error("query failed", "op", "FindMatchingTemplates", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindMatchingTemplates", err); err != nil {
 		return nil, err
 	}
 

@@ -67,9 +67,9 @@ func (s *OTPRateLimitService) SetCooldown(ctx context.Context, scope OTPScope, e
 }
 
 func cooldownKey(scope OTPScope, email string) string {
-	return fmt.Sprintf("otp:%s:cooldown:%s", scope, email)
+	return buildKey("otp", string(scope), "cooldown", email)
 }
 
 func dailyCountKey(scope OTPScope, email string) string {
-	return fmt.Sprintf("otp:%s:daily:%s", scope, email)
+	return buildKey("otp", string(scope), "daily", email)
 }

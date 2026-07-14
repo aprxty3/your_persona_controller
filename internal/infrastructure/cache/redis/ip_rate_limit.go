@@ -74,5 +74,5 @@ func limitFor(scope IPScope) (int, time.Duration) {
 }
 
 func ipKey(scope IPScope, ip string) string {
-	return fmt.Sprintf("iprate:%s:%s", scope, ip)
+	return buildKey("iprate", string(scope), ip)
 }

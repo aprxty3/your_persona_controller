@@ -3,7 +3,6 @@ package assessment
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -30,47 +29,33 @@ func (r *TestResultRepository) Create(ctx context.Context, res *testresult.TestR
 	if err != nil {
 		return err
 	}
-	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-		r.log.Error("query failed", "op", "Create", "error", err)
-		return err
-	}
-	return nil
+	return postgres.LogQueryError(r.log, "Create", r.db.WithContext(ctx).Create(&m).Error)
 }
 
 // FindByID retrieves a test result by its UUID. Returns nil, nil if not found.
 func (r *TestResultRepository) FindByID(ctx context.Context, id string) (*testresult.TestResult, error) {
 	var m postgres.TestResultModel
 	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if postgres.IsNotFound(err) {
 		return nil, nil
 	}
-	if err != nil {
-		r.log.Error("query failed", "op", "FindByID", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindByID", err); err != nil {
 		return nil, err
 	}
-	res, err := toEntity(&m)
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
+	return toEntity(&m)
 }
 
 // FindByShareToken retrieves a test result by its share token. Returns nil, nil if not found.
 func (r *TestResultRepository) FindByShareToken(ctx context.Context, shareToken string) (*testresult.TestResult, error) {
 	var m postgres.TestResultModel
 	err := r.db.WithContext(ctx).First(&m, "share_token = ?", shareToken).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if postgres.IsNotFound(err) {
 		return nil, nil
 	}
-	if err != nil {
-		r.log.Error("query failed", "op", "FindByShareToken", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindByShareToken", err); err != nil {
 		return nil, err
 	}
-	res, err := toEntity(&m)
-	if err != nil {
-		return nil, err
-	}
-	return res, nil
+	return toEntity(&m)
 }
 
 // Update saves all mutable fields of the test result.
@@ -79,11 +64,7 @@ func (r *TestResultRepository) Update(ctx context.Context, res *testresult.TestR
 	if err != nil {
 		return err
 	}
-	if err := r.db.WithContext(ctx).Save(&m).Error; err != nil {
-		r.log.Error("query failed", "op", "Update", "error", err)
-		return err
-	}
-	return nil
+	return postgres.LogQueryError(r.log, "Update", r.db.WithContext(ctx).Save(&m).Error)
 }
 
 // CountMonthlyUsage counts completed/fallback_static results for the given user in the current month in Asia/Jakarta timezone.
@@ -100,8 +81,7 @@ func (r *TestResultRepository) CountMonthlyUsage(ctx context.Context, userID str
 		Where("(user_id = ? OR guest_session_id = ?) AND status IN (?, ?) AND created_at >= ?",
 			userID, userID, string(testresult.StatusCompleted), string(testresult.StatusFallbackStatic), startOfMonth).
 		Count(&count).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "CountMonthlyUsage", "error", err)
+	if err := postgres.LogQueryError(r.log, "CountMonthlyUsage", err); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -114,8 +94,7 @@ func (r *TestResultRepository) CountCompletedByUser(ctx context.Context, userID 
 	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
 		Where("user_id = ? AND status IN (?, ?)", userID, string(testresult.StatusCompleted), string(testresult.StatusFallbackStatic)).
 		Count(&count).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "CountCompletedByUser", "error", err)
+	if err := postgres.LogQueryError(r.log, "CountCompletedByUser", err); err != nil {
 		return 0, fmt.Errorf("count completed by user: %w", err)
 	}
 	return count, nil
@@ -127,8 +106,7 @@ func (r *TestResultRepository) FindExpiredGuestResults(ctx context.Context) ([]t
 	err := r.db.WithContext(ctx).
 		Where("guest_session_id IS NOT NULL AND expires_at < ?", time.Now()).
 		Find(&models).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "FindExpiredGuestResults", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindExpiredGuestResults", err); err != nil {
 		return nil, err
 	}
 
@@ -151,10 +129,7 @@ func (r *TestResultRepository) UpdatePDFStatus(ctx context.Context, id string, p
 			"pdf_url":    pdfURL,
 			"pdf_status": string(status),
 		}).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "UpdatePDFStatus", "error", err)
-	}
-	return err
+	return postgres.LogQueryError(r.log, "UpdatePDFStatus", err)
 }
 
 // ReassignGuestResults binds completed/fallback_static results owned by guestSessionID to userID.
@@ -165,8 +140,7 @@ func (r *TestResultRepository) ReassignGuestResults(ctx context.Context, userID,
 			"user_id":          userID,
 			"guest_session_id": nil,
 		}).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "ReassignGuestResults", "error", err)
+	if err := postgres.LogQueryError(r.log, "ReassignGuestResults", err); err != nil {
 		return fmt.Errorf("reassign guest results: %w", err)
 	}
 	return nil
@@ -178,8 +152,7 @@ func (r *TestResultRepository) CountCompletedByGuestSession(ctx context.Context,
 	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
 		Where("guest_session_id = ? AND status IN (?, ?)", guestSessionID, string(testresult.StatusCompleted), string(testresult.StatusFallbackStatic)).
 		Count(&count).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "CountCompletedByGuestSession", "error", err)
+	if err := postgres.LogQueryError(r.log, "CountCompletedByGuestSession", err); err != nil {
 		return 0, fmt.Errorf("count completed by guest session: %w", err)
 	}
 	return count, nil
@@ -191,8 +164,7 @@ func (r *TestResultRepository) FindPDFURLsByUser(ctx context.Context, userID str
 	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
 		Where("user_id = ? AND pdf_url IS NOT NULL", userID).
 		Pluck("pdf_url", &urls).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "FindPDFURLsByUser", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindPDFURLsByUser", err); err != nil {
 		return nil, err
 	}
 	return urls, nil
@@ -206,12 +178,11 @@ func (r *TestResultRepository) ScrubPersonalDataByUser(ctx context.Context, user
 			"ai_summary_text": nil,
 			"pdf_url":         nil,
 		}).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "ScrubPersonalDataByUser", "error", err)
-	}
-	return err
+	return postgres.LogQueryError(r.log, "ScrubPersonalDataByUser", err)
 }
 
+// FindHistoryByUser returns a page of the user's test results ordered newest-first,
+// alongside the total row count so callers can compute pagination metadata.
 func (r *TestResultRepository) FindHistoryByUser(ctx context.Context, userID string, page, limit int) ([]testresult.TestResult, int64, error) {
 	if page < 1 {
 		page = 1
@@ -221,22 +192,21 @@ func (r *TestResultRepository) FindHistoryByUser(ctx context.Context, userID str
 	}
 
 	var total int64
-	if err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
+	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
 		Where("user_id = ?", userID).
-		Count(&total).Error; err != nil {
-		r.log.Error("query failed", "op", "FindHistoryByUser.count", "error", err)
+		Count(&total).Error
+	if err := postgres.LogQueryError(r.log, "FindHistoryByUser.count", err); err != nil {
 		return nil, 0, fmt.Errorf("find history by user: count: %w", err)
 	}
 
 	var models []postgres.TestResultModel
-	err := r.db.WithContext(ctx).
+	err = r.db.WithContext(ctx).
 		Where("user_id = ?", userID).
 		Order("created_at DESC").
 		Offset((page - 1) * limit).
 		Limit(limit).
 		Find(&models).Error
-	if err != nil {
-		r.log.Error("query failed", "op", "FindHistoryByUser.list", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindHistoryByUser.list", err); err != nil {
 		return nil, 0, fmt.Errorf("find history by user: list: %w", err)
 	}
 

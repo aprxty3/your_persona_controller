@@ -2,7 +2,6 @@ package account
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
@@ -25,22 +24,17 @@ func NewUserRepository(db *gorm.DB, log logger.Logger) account.UserRepository {
 // Create inserts a new user record.
 func (r *UserRepository) Create(ctx context.Context, u *account.User) error {
 	m := toUserModel(u)
-	if err := r.db.WithContext(ctx).Create(&m).Error; err != nil {
-		r.log.Error("query failed", "op", "Create", "error", err)
-		return err
-	}
-	return nil
+	return postgres.LogQueryError(r.log, "Create", r.db.WithContext(ctx).Create(&m).Error)
 }
 
 // FindByID retrieves a user by their UUID. Returns nil, nil if not found.
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*account.User, error) {
 	var m postgres.UserModel
 	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if postgres.IsNotFound(err) {
 		return nil, nil
 	}
-	if err != nil {
-		r.log.Error("query failed", "op", "FindByID", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindByID", err); err != nil {
 		return nil, err
 	}
 	u := toUserEntity(&m)
@@ -51,11 +45,10 @@ func (r *UserRepository) FindByID(ctx context.Context, id string) (*account.User
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*account.User, error) {
 	var m postgres.UserModel
 	err := r.db.WithContext(ctx).First(&m, "email = ?", email).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	if postgres.IsNotFound(err) {
 		return nil, nil
 	}
-	if err != nil {
-		r.log.Error("query failed", "op", "FindByEmail", "error", err)
+	if err := postgres.LogQueryError(r.log, "FindByEmail", err); err != nil {
 		return nil, err
 	}
 	u := toUserEntity(&m)
@@ -65,11 +58,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*accoun
 // Update saves all mutable fields of the user.
 func (r *UserRepository) Update(ctx context.Context, u *account.User) error {
 	m := toUserModel(u)
-	if err := r.db.WithContext(ctx).Save(&m).Error; err != nil {
-		r.log.Error("query failed", "op", "Update", "error", err)
-		return err
-	}
-	return nil
+	return postgres.LogQueryError(r.log, "Update", r.db.WithContext(ctx).Save(&m).Error)
 }
 
 // IncrementTokenVersion atomically increments token_version for the given user ID.
@@ -79,10 +68,7 @@ func (r *UserRepository) IncrementTokenVersion(ctx context.Context, id string) e
 		Where("id = ?", id).
 		UpdateColumn("token_version", gorm.Expr("token_version + 1")).
 		Error
-	if err != nil {
-		r.log.Error("query failed", "op", "IncrementTokenVersion", "error", err)
-	}
-	return err
+	return postgres.LogQueryError(r.log, "IncrementTokenVersion", err)
 }
 
 // Anonymize scrubs all PII columns in a single UPDATE.
@@ -104,10 +90,7 @@ func (r *UserRepository) Anonymize(ctx context.Context, id string, scrubbedEmail
 			"token_version":    gorm.Expr("token_version + 1"),
 		}).
 		Error
-	if err != nil {
-		r.log.Error("query failed", "op", "Anonymize", "error", err)
-	}
-	return err
+	return postgres.LogQueryError(r.log, "Anonymize", err)
 }
 
 // UpdateLoginAttempt updates the failed login counter and lockout timestamp.
@@ -121,10 +104,7 @@ func (r *UserRepository) UpdateLoginAttempt(ctx context.Context, id string, fail
 		Where("id = ?", id).
 		Updates(updates).
 		Error
-	if err != nil {
-		r.log.Error("query failed", "op", "UpdateLoginAttempt", "error", err)
-	}
-	return err
+	return postgres.LogQueryError(r.log, "UpdateLoginAttempt", err)
 }
 
 func toUserModel(u *account.User) postgres.UserModel {
