@@ -396,8 +396,8 @@ go build ./cmd/migrate; go build ./cmd/worker     ✅ OK (auxiliary entrypoints 
 - [x] ~~Complete GORM models & Postgres repositories for the remaining domains~~ — done 2026-07-13 (TICKET-01: Question, QuestionTranslation, Answer, InsightTemplate, PromptAuditLog + seeder TICKET-10)
 - [x] ~~Complete remaining Auth use cases (Forgot Password, Verify Reset OTP, Reset Password, Logout, Logout-all)~~ — done 2026-07-13, see UNRELEASED entry above (plus unplanned `change-password`)
 - [x] ~~Implement Account/Referral endpoints (profile update, referral code)~~ — done 2026-07-13
-- [x] ~~Implement `anonymize:user` worker (scrub PII, delete R2 PDFs) + cron trigger via `FindExpiredGracePeriod`~~ — done 2026-07-13 (hourly `asynq.Scheduler` scan + startup kick). Remaining sub-item: scrub `ANSWER` essay + `PROMPT_AUDIT_LOG` once those tables exist (assessment epic still stubbed)
-- [ ] Complete worker implementation (Asynq background workers for PDF + `purge:guest-ttl` — email OTP & anonymize done 2026-07-13)
+- [x] ~~Implement `anonymize:user` worker (scrub PII, delete R2 PDFs) + cron trigger via `FindExpiredGracePeriod`~~ — done 2026-07-13 (hourly `asynq.Scheduler` scan + startup kick); remaining sub-item (scrub `ANSWER` essay + `PROMPT_AUDIT_LOG`) closed 2026-07-14 (TICKET-09)
+- [x] ~~Complete worker implementation (Asynq background workers for PDF + `purge:guest-ttl`)~~ — done 2026-07-14 (TICKET-06, TICKET-08); email OTP & anonymize were already done 2026-07-13
 - [x] ~~Implement Redis-backed Distributed Lock & Idempotency Service~~ — done 2026-07-13 (TICKET-02); not yet wired into `SubmitAssessmentUseCase.Execute` itself, that's TICKET-03
 - [x] ~~Implement Locale Negotiation Middleware~~ — done 2026-07-13 (TICKET-15); not yet consumed by any handler, that's TICKET-03/04
 - [ ] Integrate Turnstile verification (TICKET-11, still pending)
