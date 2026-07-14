@@ -38,14 +38,46 @@ func NewAuthHandler(
 	}
 }
 
-func unwrapMessage(err error) string {
-	msg := err.Error()
-	for i := 0; i < len(msg)-2; i++ {
-		if msg[i] == ':' && msg[i+1] == ' ' {
-			return msg[i+2:]
-		}
+// rateLimitedResponse is the shared 429 shape for every rate-limited auth
+// flow (register, login, resend-otp, forgot-password) — always RATE_LIMITED
+// with a retry_after_seconds meta field; only the message text differs.
+func rateLimitedResponse(c echo.Context, retryAfterSeconds int, message string) error {
+	return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
+		Success: false,
+		Error:   &httpresponse.ErrorDetail{Code: "RATE_LIMITED", Message: message},
+		Meta:    map[string]interface{}{"retry_after_seconds": retryAfterSeconds},
+	})
+}
+
+// otpVerifyError maps the verification-error triple shared by VerifyEmailOTP
+// and VerifyResetOTP (wrong code / expired / max attempts) to its HTTP
+// response, embedding attempts_remaining and a flow-specific "request a new
+// OTP via ..." hint. Returns nil if err isn't one of the three — the caller
+// falls through to its own default (log + httpcallError) in that case.
+func otpVerifyError(c echo.Context, err error, attemptsRemaining int, resendPath string) error {
+	meta := map[string]interface{}{"attempts_remaining": attemptsRemaining}
+	switch {
+	case errors.Is(err, application.ErrInvalidOTP):
+		return c.JSON(http.StatusBadRequest, httpresponse.Response{
+			Success: false,
+			Error:   &httpresponse.ErrorDetail{Code: "INVALID_OTP", Message: "The OTP code is incorrect"},
+			Meta:    meta,
+		})
+	case errors.Is(err, application.ErrOTPExpired):
+		return c.JSON(http.StatusBadRequest, httpresponse.Response{
+			Success: false,
+			Error:   &httpresponse.ErrorDetail{Code: "OTP_EXPIRED", Message: "The OTP code has expired. Please request a new one via " + resendPath},
+			Meta:    meta,
+		})
+	case errors.Is(err, application.ErrOTPMaxAttempts):
+		return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
+			Success: false,
+			Error:   &httpresponse.ErrorDetail{Code: "OTP_MAX_ATTEMPTS", Message: "Maximum verification attempts exceeded. Please request a new OTP via " + resendPath},
+			Meta:    meta,
+		})
+	default:
+		return nil
 	}
-	return msg
 }
 
 // CreateGuestSession handles POST /v1/guest-session
@@ -74,9 +106,8 @@ func unwrapMessage(err error) string {
 // @Router       /v1/guest-session [post]
 func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 	var payload dto.CreateGuestSessionRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("create guest session rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "create guest session", &payload); err != nil {
+		return err
 	}
 
 	ucReq := auth.CreateGuestSessionRequest{
@@ -137,9 +168,8 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 // @Router       /v1/auth/register [post]
 func (h *AuthHandler) Register(c echo.Context) error {
 	var payload dto.RegisterRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("register rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "register", &payload); err != nil {
+		return err
 	}
 
 	// Read guest session ID from cookie if present.
@@ -170,15 +200,11 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		case errors.Is(err, application.ErrPasswordBreached):
 			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_BREACHED", "This password has appeared in known data breaches. Please choose a different password")
 		case errors.Is(err, application.ErrRateLimited):
-			meta := map[string]interface{}{}
+			retryAfter := 0
 			if resp != nil {
-				meta["retry_after_seconds"] = resp.RetryAfterSeconds
+				retryAfter = resp.RetryAfterSeconds
 			}
-			return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
-				Success: false,
-				Error:   &httpresponse.ErrorDetail{Code: "RATE_LIMITED", Message: "Too many registration attempts from this network. Please wait before trying again"},
-				Meta:    meta,
-			})
+			return rateLimitedResponse(c, retryAfter, "Too many registration attempts from this network. Please wait before trying again")
 		default:
 			h.log.Error("register failed", "error", err)
 			return httpcallError(c, err)
@@ -213,9 +239,8 @@ func (h *AuthHandler) Register(c echo.Context) error {
 // @Router       /v1/auth/verify-email-otp [post]
 func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 	var payload dto.VerifyEmailOTPRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("verify email otp rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "verify email otp", &payload); err != nil {
+		return err
 	}
 
 	if payload.Email == "" || payload.OTP == "" {
@@ -230,34 +255,15 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 
 	resp, err := h.sessionUseCase.VerifyEmailOTP(c.Request().Context(), ucReq)
 	if err != nil {
-		meta := map[string]interface{}{}
+		attemptsRemaining := 0
 		if resp != nil {
-			meta["attempts_remaining"] = resp.AttemptsRemaining
+			attemptsRemaining = resp.AttemptsRemaining
 		}
-
-		switch {
-		case errors.Is(err, application.ErrInvalidOTP):
-			return c.JSON(http.StatusBadRequest, httpresponse.Response{
-				Success: false,
-				Error:   &httpresponse.ErrorDetail{Code: "INVALID_OTP", Message: "The OTP code is incorrect"},
-				Meta:    meta,
-			})
-		case errors.Is(err, application.ErrOTPExpired):
-			return c.JSON(http.StatusBadRequest, httpresponse.Response{
-				Success: false,
-				Error:   &httpresponse.ErrorDetail{Code: "OTP_EXPIRED", Message: "The OTP code has expired. Please request a new one via /auth/resend-email-otp"},
-				Meta:    meta,
-			})
-		case errors.Is(err, application.ErrOTPMaxAttempts):
-			return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
-				Success: false,
-				Error:   &httpresponse.ErrorDetail{Code: "OTP_MAX_ATTEMPTS", Message: "Maximum verification attempts exceeded. Please request a new OTP via /auth/resend-email-otp"},
-				Meta:    meta,
-			})
-		default:
-			h.log.Error("verify email otp failed", "error", err)
-			return httpcallError(c, err)
+		if otpErr := otpVerifyError(c, err, attemptsRemaining, "/auth/resend-email-otp"); otpErr != nil {
+			return otpErr
 		}
+		h.log.Error("verify email otp failed", "error", err)
+		return httpcallError(c, err)
 	}
 
 	return httpcallSuccess(c, http.StatusOK, resp, nil)
@@ -286,9 +292,8 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 // @Router       /v1/auth/resend-email-otp [post]
 func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 	var payload dto.ResendEmailOTPRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("resend email otp rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "resend email otp", &payload); err != nil {
+		return err
 	}
 
 	if payload.Email == "" {
@@ -303,15 +308,11 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 	resp, err := h.accountUseCase.ResendEmailOTP(c.Request().Context(), ucReq)
 	if err != nil {
 		if errors.Is(err, application.ErrRateLimited) {
-			meta := map[string]interface{}{}
+			retryAfter := 0
 			if resp != nil {
-				meta["retry_after_seconds"] = resp.RetryAfterSeconds
+				retryAfter = resp.RetryAfterSeconds
 			}
-			return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
-				Success: false,
-				Error:   &httpresponse.ErrorDetail{Code: "RATE_LIMITED", Message: "Too many OTP requests. Please wait before requesting again"},
-				Meta:    meta,
-			})
+			return rateLimitedResponse(c, retryAfter, "Too many OTP requests. Please wait before requesting again")
 		}
 		h.log.Error("resend email otp failed", "error", err)
 		return httpcallError(c, err)
@@ -346,9 +347,8 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 // @Router       /v1/auth/login [post]
 func (h *AuthHandler) Login(c echo.Context) error {
 	var payload dto.LoginRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("login rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "login", &payload); err != nil {
+		return err
 	}
 
 	if payload.Email == "" || payload.Password == "" {
@@ -372,15 +372,11 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		case errors.Is(err, application.ErrEmailNotVerified):
 			return httpcallErrorCustom(c, http.StatusForbidden, "EMAIL_NOT_VERIFIED", "Please verify your email address before logging in. Check your inbox or request a new OTP via /auth/resend-email-otp")
 		case errors.Is(err, application.ErrRateLimited):
-			meta := map[string]interface{}{}
+			retryAfter := 0
 			if resp != nil {
-				meta["retry_after_seconds"] = resp.RetryAfterSeconds
+				retryAfter = resp.RetryAfterSeconds
 			}
-			return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
-				Success: false,
-				Error:   &httpresponse.ErrorDetail{Code: "RATE_LIMITED", Message: "Too many login attempts from this network. Please wait before trying again"},
-				Meta:    meta,
-			})
+			return rateLimitedResponse(c, retryAfter, "Too many login attempts from this network. Please wait before trying again")
 		default:
 			h.log.Error("login failed", "error", err)
 			return httpcallError(c, err)
@@ -413,9 +409,8 @@ func (h *AuthHandler) Login(c echo.Context) error {
 // @Router       /v1/auth/change-password [post]
 func (h *AuthHandler) ChangePassword(c echo.Context) error {
 	var payload dto.ChangePasswordRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("change password rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "change password", &payload); err != nil {
+		return err
 	}
 
 	resp, err := h.sessionUseCase.ChangePassword(c.Request().Context(), auth.ChangePasswordRequest{
@@ -464,9 +459,8 @@ func (h *AuthHandler) ChangePassword(c echo.Context) error {
 // @Router       /v1/auth/refresh [post]
 func (h *AuthHandler) RefreshToken(c echo.Context) error {
 	var payload dto.RefreshTokenRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("refresh rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "refresh", &payload); err != nil {
+		return err
 	}
 
 	resp, err := h.sessionUseCase.RefreshToken(c.Request().Context(), auth.RefreshTokenRequest{
@@ -508,9 +502,8 @@ func (h *AuthHandler) RefreshToken(c echo.Context) error {
 // @Router       /v1/auth/logout [post]
 func (h *AuthHandler) Logout(c echo.Context) error {
 	var payload dto.LogoutRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("logout rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "logout", &payload); err != nil {
+		return err
 	}
 
 	err := h.sessionUseCase.Logout(c.Request().Context(), auth.LogoutRequest{
@@ -576,9 +569,8 @@ func (h *AuthHandler) LogoutAll(c echo.Context) error {
 // @Router       /v1/auth/forgot-password [post]
 func (h *AuthHandler) ForgotPassword(c echo.Context) error {
 	var payload dto.ForgotPasswordRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("forgot password rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "forgot password", &payload); err != nil {
+		return err
 	}
 
 	resp, err := h.accountUseCase.ForgotPassword(c.Request().Context(), auth.ForgotPasswordRequest{
@@ -589,15 +581,11 @@ func (h *AuthHandler) ForgotPassword(c echo.Context) error {
 		case errors.Is(err, application.ErrInvalidInput):
 			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
 		case errors.Is(err, application.ErrRateLimited):
-			meta := map[string]interface{}{}
+			retryAfter := 0
 			if resp != nil {
-				meta["retry_after_seconds"] = resp.RetryAfterSeconds
+				retryAfter = resp.RetryAfterSeconds
 			}
-			return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
-				Success: false,
-				Error:   &httpresponse.ErrorDetail{Code: "RATE_LIMITED", Message: "Too many reset requests. Please wait before requesting again"},
-				Meta:    meta,
-			})
+			return rateLimitedResponse(c, retryAfter, "Too many reset requests. Please wait before requesting again")
 		default:
 			h.log.Error("forgot password failed", "error", err)
 			return httpcallError(c, err)
@@ -626,9 +614,8 @@ func (h *AuthHandler) ForgotPassword(c echo.Context) error {
 // @Router       /v1/auth/verify-reset-otp [post]
 func (h *AuthHandler) VerifyResetOTP(c echo.Context) error {
 	var payload dto.VerifyResetOTPRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("verify reset otp rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "verify reset otp", &payload); err != nil {
+		return err
 	}
 
 	resp, err := h.sessionUseCase.VerifyResetOTP(c.Request().Context(), auth.VerifyResetOTPRequest{
@@ -636,36 +623,19 @@ func (h *AuthHandler) VerifyResetOTP(c echo.Context) error {
 		OTP:   payload.OTP,
 	})
 	if err != nil {
-		meta := map[string]interface{}{}
-		if resp != nil {
-			meta["attempts_remaining"] = resp.AttemptsRemaining
+		if errors.Is(err, application.ErrInvalidInput) {
+			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
 		}
 
-		switch {
-		case errors.Is(err, application.ErrInvalidInput):
-			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
-		case errors.Is(err, application.ErrInvalidOTP):
-			return c.JSON(http.StatusBadRequest, httpresponse.Response{
-				Success: false,
-				Error:   &httpresponse.ErrorDetail{Code: "INVALID_OTP", Message: "The OTP code is incorrect"},
-				Meta:    meta,
-			})
-		case errors.Is(err, application.ErrOTPExpired):
-			return c.JSON(http.StatusBadRequest, httpresponse.Response{
-				Success: false,
-				Error:   &httpresponse.ErrorDetail{Code: "OTP_EXPIRED", Message: "The OTP code has expired. Please request a new one via /auth/forgot-password"},
-				Meta:    meta,
-			})
-		case errors.Is(err, application.ErrOTPMaxAttempts):
-			return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
-				Success: false,
-				Error:   &httpresponse.ErrorDetail{Code: "OTP_MAX_ATTEMPTS", Message: "Maximum verification attempts exceeded. Please request a new OTP via /auth/forgot-password"},
-				Meta:    meta,
-			})
-		default:
-			h.log.Error("verify reset otp failed", "error", err)
-			return httpcallError(c, err)
+		attemptsRemaining := 0
+		if resp != nil {
+			attemptsRemaining = resp.AttemptsRemaining
 		}
+		if otpErr := otpVerifyError(c, err, attemptsRemaining, "/auth/forgot-password"); otpErr != nil {
+			return otpErr
+		}
+		h.log.Error("verify reset otp failed", "error", err)
+		return httpcallError(c, err)
 	}
 
 	return httpcallSuccess(c, http.StatusOK, resp, nil)
@@ -693,9 +663,8 @@ func (h *AuthHandler) VerifyResetOTP(c echo.Context) error {
 // @Router       /v1/auth/reset-password [post]
 func (h *AuthHandler) ResetPassword(c echo.Context) error {
 	var payload dto.ResetPasswordRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("reset password rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "reset password", &payload); err != nil {
+		return err
 	}
 
 	resp, err := h.sessionUseCase.ResetPassword(c.Request().Context(), auth.ResetPasswordRequest{

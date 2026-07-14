@@ -52,8 +52,8 @@ func (h *AssessmentHandler) Submit(c echo.Context) error {
 	}
 
 	var payload dto.SubmitRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+	if err := bindJSON(c, h.log, "submit assessment", &payload); err != nil {
+		return err
 	}
 
 	sessionID := middleware.UserIDFromContext(c)

@@ -52,9 +52,8 @@ func NewAccountHandler(
 // @Router       /v1/account/profile [patch]
 func (h *AccountHandler) UpdateProfile(c echo.Context) error {
 	var payload dto.UpdateProfileRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		h.log.Warn("update profile rejected", "reason", "bind_error", "error", err)
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format")
+	if err := bindJSON(c, h.log, "update profile", &payload); err != nil {
+		return err
 	}
 
 	resp, err := h.profileUseCase.UpdateProfile(c.Request().Context(), profile.UpdateProfileRequest{

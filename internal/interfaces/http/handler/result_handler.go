@@ -100,8 +100,8 @@ func (h *ResultHandler) GetResult(c echo.Context) error {
 // @Router       /v1/results/{id}/mascot-style [patch]
 func (h *ResultHandler) UpdateMascotStyle(c echo.Context) error {
 	var payload dto.UpdateMascotStyleRequestDTO
-	if err := c.Bind(&payload); err != nil {
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+	if err := bindJSON(c, h.log, "update mascot style", &payload); err != nil {
+		return err
 	}
 
 	userID, guestSessionID := callerIdentity(c)
