@@ -3,6 +3,7 @@ package assessment
 import (
 	"context"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
@@ -83,4 +84,30 @@ func (r *AnswerRepository) FindByTestResultID(ctx context.Context, testResultID 
 		entities[i] = toAnswerEntity(&m)
 	}
 	return entities, nil
+}
+
+// DeleteByTestResultID hard-deletes every answer belonging to a single test result
+func (r *AnswerRepository) DeleteByTestResultID(ctx context.Context, testResultID string) error {
+	err := r.db.WithContext(ctx).
+		Where("test_result_id = ?", testResultID).
+		Delete(&postgres.AnswerModel{}).Error
+	return postgres.LogQueryError(r.log, "DeleteByTestResultID", err)
+}
+
+// ScrubEssayAnswersByUser blanks out essay-type answer text for every test
+// result owned by userID, as part of account anonymization — SJT/Likert
+// answers are left intact since they hold no PII, only free-text essays do.
+func (r *AnswerRepository) ScrubEssayAnswersByUser(ctx context.Context, userID string) error {
+	essayQuestionIDs := r.db.Model(&postgres.QuestionModel{}).
+		Select("id").
+		Where("type = ?", string(content.TypeEssayPrompt))
+	userResultIDs := r.db.Model(&postgres.TestResultModel{}).
+		Select("id").
+		Where("user_id = ?", userID)
+
+	err := r.db.WithContext(ctx).Model(&postgres.AnswerModel{}).
+		Where("test_result_id IN (?)", userResultIDs).
+		Where("question_id IN (?)", essayQuestionIDs).
+		Update("value", "").Error
+	return postgres.LogQueryError(r.log, "ScrubEssayAnswersByUser", err)
 }

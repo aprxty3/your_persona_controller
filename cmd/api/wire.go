@@ -20,7 +20,6 @@ import (
 	asynqclient "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/queue/asynq"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/security"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/storage/s3"
-	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/stubs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
 	appmiddleware "github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/middleware"
@@ -111,8 +110,7 @@ func InitializeAPI(
 		wire.Bind(new(assessment.QuestionCatalogRepository), new(*pgassessment.QuestionRepository)),
 		wire.Bind(new(dashboard.TestResultRepository), new(testresult.TestResultRepository)),
 
-		// Stubs for assessment interfaces
-		stubs.NewStubPDFQueueService,
+		asynqclient.NewPDFQueueService,
 
 		// Redis Services
 		redis.NewOTPRateLimitService,

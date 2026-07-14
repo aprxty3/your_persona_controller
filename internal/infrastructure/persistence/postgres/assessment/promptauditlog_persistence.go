@@ -54,3 +54,18 @@ func (r *PromptAuditLogRepository) DeleteExpired(ctx context.Context) error {
 
 	return postgres.LogQueryError(r.log, "DeleteExpired", err)
 }
+
+// DeleteByUserID removes every prompt audit log tied to any test result
+// owned by userID. The table has no user_id column of its own, so
+// ownership is resolved via a subquery through test_results.
+func (r *PromptAuditLogRepository) DeleteByUserID(ctx context.Context, userID string) error {
+	userResultIDs := r.db.Model(&postgres.TestResultModel{}).
+		Select("id").
+		Where("user_id = ?", userID)
+
+	err := r.db.WithContext(ctx).
+		Where("test_result_id IN (?)", userResultIDs).
+		Delete(&postgres.PromptAuditLogModel{}).Error
+
+	return postgres.LogQueryError(r.log, "DeleteByUserID", err)
+}

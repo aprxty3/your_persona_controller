@@ -221,6 +221,13 @@ func (r *TestResultRepository) FindHistoryByUser(ctx context.Context, userID str
 	return results, total, nil
 }
 
+// DeleteByID hard-deletes a single test result row — used by the Guest TTL
+// purge job after its R2 PDF object has already been removed.
+func (r *TestResultRepository) DeleteByID(ctx context.Context, id string) error {
+	err := r.db.WithContext(ctx).Delete(&postgres.TestResultModel{}, "id = ?", id).Error
+	return postgres.LogQueryError(r.log, "DeleteByID", err)
+}
+
 func toModel(res *testresult.TestResult) (postgres.TestResultModel, error) {
 	traits := []byte("{}")
 	if res.TraitScores != nil {

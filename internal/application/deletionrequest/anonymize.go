@@ -146,6 +146,12 @@ func (uc *AnonymizeUseCase) Anonymize(ctx context.Context, req AnonymizeRequest)
 		if err := pgassessment.NewTestResultRepository(tx, uc.log).ScrubPersonalDataByUser(ctx, dr.UserID); err != nil {
 			return fmt.Errorf("tx: scrub test results: %w", err)
 		}
+		if err := pgassessment.NewAnswerRepository(tx, uc.log).ScrubEssayAnswersByUser(ctx, dr.UserID); err != nil {
+			return fmt.Errorf("tx: scrub essay answers: %w", err)
+		}
+		if err := pgassessment.NewPromptAuditLogRepository(tx, uc.log).DeleteByUserID(ctx, dr.UserID); err != nil {
+			return fmt.Errorf("tx: delete prompt audit logs: %w", err)
+		}
 		return nil
 	})
 	if txErr != nil {

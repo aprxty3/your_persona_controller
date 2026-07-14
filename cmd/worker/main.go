@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -10,7 +11,11 @@ import (
 	"syscall"
 
 	appdeletion "github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/guestpurge"
+	apppdf "github.com/aprxty3/your_persona_controller.git/internal/application/pdf"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/mailer"
+	pdfrenderer "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/pdf"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 	pgaccount "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/account"
 	pgassessment "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres/assessment"
@@ -85,17 +90,39 @@ func main() {
 	)
 	emailHandler := workerhandler.NewEmailHandler(smtpMailer, logInstance)
 
+	// Shared repos — reused across use cases so each doesn't reopen its own
+	// db-bound instance (tx-scoped writes still construct their own via
+	// pg*.NewXRepository(tx, log) inside db.Transaction, per this repo's convention).
+	testResultRepo := pgassessment.NewTestResultRepository(db, logInstance)
+	guestSessionRepo := pgaccount.NewGuestSessionRepository(db, logInstance)
+
 	anonymizeUseCase := appdeletion.NewAnonymizeUseCase(
 		db,
 		pgdeletionrequest.NewRepository(db, logInstance),
 		pgaccount.NewUserRepository(db, logInstance),
-		pgaccount.NewGuestSessionRepository(db, logInstance),
-		pgassessment.NewTestResultRepository(db, logInstance),
+		guestSessionRepo,
+		testResultRepo,
 		s3Client,
 		dispatcher,
 		logInstance,
 	)
 	anonymizeHandler := workerhandler.NewAnonymizeHandler(anonymizeUseCase, logInstance)
+
+	purgeUseCase := guestpurge.NewPurgeGuestTTLUseCase(db, testResultRepo, guestSessionRepo, s3Client, logInstance)
+	purgeHandler := workerhandler.NewPurgeHandler(purgeUseCase, logInstance)
+
+	generatePDFUseCase := apppdf.NewGeneratePDFUseCase(
+		testResultRepo,
+		pgassessment.NewAnswerRepository(db, logInstance),
+		pgassessment.NewQuestionRepository(db, logInstance),
+		pgassessment.NewInsightTemplateRepository(db, logInstance),
+		pgaccount.NewUserRepository(db, logInstance),
+		guestSessionRepo,
+		pdfrenderer.NewMarotoRenderer(),
+		s3Client,
+		logInstance,
+	)
+	pdfHandler := workerhandler.NewPDFHandler(generatePDFUseCase, logInstance)
 
 	log.Println("Starting background worker...")
 	srv := asynq.NewServer(
@@ -108,6 +135,24 @@ func main() {
 				"pdf":      2,
 				"low":      1,
 			},
+			ErrorHandler: asynq.ErrorHandlerFunc(func(ctx context.Context, task *asynq.Task, err error) {
+				if task.Type() != taskqueue.TaskGeneratePDF {
+					return
+				}
+				retried, _ := asynq.GetRetryCount(ctx)
+				maxRetry, _ := asynq.GetMaxRetry(ctx)
+				if retried < maxRetry {
+					return
+				}
+				var payload taskqueue.GeneratePDFPayload
+				if jsonErr := json.Unmarshal(task.Payload(), &payload); jsonErr != nil {
+					logInstance.Error("pdf worker: failed to unmarshal payload on final failure", "error", jsonErr)
+					return
+				}
+				if updErr := testResultRepo.UpdatePDFStatus(context.Background(), payload.TestResultID, nil, testresult.PDFStatusFailed); updErr != nil {
+					logInstance.Error("pdf worker: failed to mark pdf_status=failed after max retries", "test_result_id", payload.TestResultID, "error", updErr)
+				}
+			}),
 		},
 	)
 
@@ -115,8 +160,9 @@ func main() {
 	mux.HandleFunc(taskqueue.TaskSendEmail, emailHandler.ProcessTask)
 	mux.HandleFunc(taskqueue.TaskDeletionScan, anonymizeHandler.ProcessScan)
 	mux.HandleFunc(taskqueue.TaskAnonymize, anonymizeHandler.ProcessAnonymize)
+	mux.HandleFunc(taskqueue.TaskPurgeGuest, purgeHandler.ProcessPurge)
+	mux.HandleFunc(taskqueue.TaskGeneratePDF, pdfHandler.ProcessTask)
 
-	// Scheduler: hourly grace-period scan (a day-scale deadline doesn't need a tighter tick).
 	scheduler := asynq.NewScheduler(redisOpt, nil)
 	if _, err := scheduler.Register(
 		"@every 1h",
@@ -124,6 +170,13 @@ func main() {
 		asynq.Queue(taskqueue.QueueLow),
 	); err != nil {
 		log.Fatalf("Failed to register deletion scan schedule: %v", err)
+	}
+	if _, err := scheduler.Register(
+		"@daily",
+		asynq.NewTask(taskqueue.TaskPurgeGuest, nil),
+		asynq.Queue(taskqueue.QueueLow),
+	); err != nil {
+		log.Fatalf("Failed to register guest ttl purge schedule: %v", err)
 	}
 	if err := scheduler.Start(); err != nil {
 		log.Fatalf("Failed to start scheduler: %v", err)
@@ -133,6 +186,10 @@ func main() {
 	if _, err := asynqClient.EnqueueContext(context.Background(),
 		asynq.NewTask(taskqueue.TaskDeletionScan, nil), asynq.Queue(taskqueue.QueueLow)); err != nil {
 		log.Printf("WARN: failed to enqueue startup deletion scan (next hourly tick will cover it): %v", err)
+	}
+	if _, err := asynqClient.EnqueueContext(context.Background(),
+		asynq.NewTask(taskqueue.TaskPurgeGuest, nil), asynq.Queue(taskqueue.QueueLow)); err != nil {
+		log.Printf("WARN: failed to enqueue startup guest ttl purge (next daily tick will cover it): %v", err)
 	}
 
 	go func() {

@@ -19,12 +19,15 @@ type TestResultRepository interface {
 	FindPDFURLsByUser(ctx context.Context, userID string) ([]string, error)
 	ScrubPersonalDataByUser(ctx context.Context, userID string) error
 	FindHistoryByUser(ctx context.Context, userID string, page, limit int) (results []TestResult, total int64, err error)
+	DeleteByID(ctx context.Context, id string) error
 }
 
 // AnswerRepository defines the contract for Answer data persistence.
 type AnswerRepository interface {
 	UpsertAnswers(ctx context.Context, testResultID string, answers []Answer) error
 	FindByTestResultID(ctx context.Context, testResultID string) ([]Answer, error)
+	DeleteByTestResultID(ctx context.Context, testResultID string) error
+	ScrubEssayAnswersByUser(ctx context.Context, userID string) error
 }
 
 // PromptAuditLogRepository defines the contract for PromptAuditLog data persistence.
@@ -32,4 +35,5 @@ type PromptAuditLogRepository interface {
 	Create(ctx context.Context, log *PromptAuditLog) error
 	DeleteByTestResultID(ctx context.Context, testResultID string) error
 	DeleteExpired(ctx context.Context) error
+	DeleteByUserID(ctx context.Context, userID string) error
 }

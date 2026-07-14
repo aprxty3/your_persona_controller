@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net/url"
@@ -43,6 +44,19 @@ func NewClient(endpoint, region, bucket, accessKey, secretKey string, usePathSty
 	}
 
 	return &Client{mc: mc, bucket: bucket}, nil
+}
+
+// Upload writes data to key and returns its stored URL — the same URL shape
+// DeleteByURL/PresignedGetURL parse back out via keyFromURL, so a value
+// returned here round-trips through either without a separate convention.
+func (c *Client) Upload(ctx context.Context, key string, data []byte, contentType string) (string, error) {
+	_, err := c.mc.PutObject(ctx, c.bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{
+		ContentType: contentType,
+	})
+	if err != nil {
+		return "", fmt.Errorf("s3: upload object %q: %w", key, err)
+	}
+	return c.mc.EndpointURL().String() + "/" + c.bucket + "/" + key, nil
 }
 
 // DeleteByURL removes the object a stored URL (e.g. TEST_RESULT.pdf_url) points to.
