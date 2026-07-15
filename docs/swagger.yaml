@@ -50,21 +50,6 @@ definitions:
       wellbeing_flag:
         type: boolean
     type: object
-  assessment.SubmitResponse:
-    properties:
-      aisummaryText:
-        type: string
-      gritScore:
-        type: integer
-      mbtitype:
-        type: string
-      resultID:
-        type: string
-      status:
-        type: string
-      wellbeingFlag:
-        type: boolean
-    type: object
   auth.ChangePasswordResponse:
     properties:
       access_token:
@@ -125,6 +110,10 @@ definitions:
         type: array
       latest_mbti_type:
         type: string
+      micro_insights:
+        items:
+          type: string
+        type: array
       quota_limit:
         type: integer
       quota_remaining:
@@ -327,6 +316,21 @@ definitions:
         type: array
       locale:
         type: string
+    type: object
+  dto.SubmitResponse:
+    properties:
+      aisummaryText:
+        type: string
+      gritScore:
+        type: integer
+      mbtitype:
+        type: string
+      resultID:
+        type: string
+      status:
+        type: string
+      wellbeingFlag:
+        type: boolean
     type: object
   dto.UpdateMascotStyleRequestDTO:
     properties:
@@ -611,7 +615,7 @@ paths:
             - $ref: '#/definitions/httpresponse.Response'
             - properties:
                 data:
-                  $ref: '#/definitions/assessment.SubmitResponse'
+                  $ref: '#/definitions/dto.SubmitResponse'
               type: object
         "400":
           description: VALIDATION_ERROR — missing Idempotency-Key, malformed body,
@@ -1404,7 +1408,8 @@ paths:
   /v1/user-dashboard:
     get:
       description: |-
-        Member's personal dashboard: remaining monthly quota (derived on-the-fly) and recent GRIT trend.
+        Member's personal dashboard: remaining monthly quota (derived on-the-fly), recent GRIT trend,
+        and rule-based micro_insights (no Gemini call — locale-aware INSIGHT_TEMPLATE lookups only).
         This is the USER (Member) dashboard — not an admin dashboard; this API has no admin concept.
       produces:
       - application/json

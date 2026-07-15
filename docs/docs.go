@@ -306,7 +306,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/assessment.SubmitResponse"
+                                            "$ref": "#/definitions/dto.SubmitResponse"
                                         }
                                     }
                                 }
@@ -1374,7 +1374,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Member's personal dashboard: remaining monthly quota (derived on-the-fly) and recent GRIT trend.\nThis is the USER (Member) dashboard — not an admin dashboard; this API has no admin concept.",
+                "description": "Member's personal dashboard: remaining monthly quota (derived on-the-fly), recent GRIT trend,\nand rule-based micro_insights (no Gemini call — locale-aware INSIGHT_TEMPLATE lookups only).\nThis is the USER (Member) dashboard — not an admin dashboard; this API has no admin concept.",
                 "produces": [
                     "application/json"
                 ],
@@ -1563,29 +1563,6 @@ const docTemplate = `{
                 }
             }
         },
-        "assessment.SubmitResponse": {
-            "type": "object",
-            "properties": {
-                "aisummaryText": {
-                    "type": "string"
-                },
-                "gritScore": {
-                    "type": "integer"
-                },
-                "mbtitype": {
-                    "type": "string"
-                },
-                "resultID": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "wellbeingFlag": {
-                    "type": "boolean"
-                }
-            }
-        },
         "auth.ChangePasswordResponse": {
             "type": "object",
             "properties": {
@@ -1679,6 +1656,12 @@ const docTemplate = `{
                 },
                 "latest_mbti_type": {
                     "type": "string"
+                },
+                "micro_insights": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "quota_limit": {
                     "type": "integer"
@@ -1981,6 +1964,29 @@ const docTemplate = `{
                 },
                 "locale": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.SubmitResponse": {
+            "type": "object",
+            "properties": {
+                "aisummaryText": {
+                    "type": "string"
+                },
+                "gritScore": {
+                    "type": "integer"
+                },
+                "mbtitype": {
+                    "type": "string"
+                },
+                "resultID": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "wellbeingFlag": {
+                    "type": "boolean"
                 }
             }
         },
