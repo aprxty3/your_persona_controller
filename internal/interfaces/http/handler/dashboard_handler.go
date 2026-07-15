@@ -21,16 +21,17 @@ func NewDashboardHandler(useCase *dashboard.DashboardUseCase, log logger.Logger)
 	return &DashboardHandler{useCase: useCase, log: log.With("handler", "dashboard")}
 }
 
-// GetDashboard handles GET /v1/dashboard
-// @Summary      Get dashboard summary
-// @Description  Remaining monthly quota (derived on-the-fly) and recent GRIT trend.
-// @Tags         Dashboard
+// GetDashboard handles GET /v1/user-dashboard
+// @Summary      Get user dashboard summary
+// @Description  Member's personal dashboard: remaining monthly quota (derived on-the-fly) and recent GRIT trend.
+// @Description  This is the USER (Member) dashboard — not an admin dashboard; this API has no admin concept.
+// @Tags         User Dashboard
 // @Produce      json
 // @Security     BearerAuth
 // @Success      200 {object} httpresponse.Response{data=dashboard.DashboardResponse} "Dashboard summary"
 // @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | TOKEN_VERSION_MISMATCH"
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
-// @Router       /v1/dashboard [get]
+// @Router       /v1/user-dashboard [get]
 func (h *DashboardHandler) GetDashboard(c echo.Context) error {
 	resp, err := h.useCase.GetDashboard(c.Request().Context(), middleware.UserIDFromContext(c))
 	if err != nil {
@@ -40,10 +41,10 @@ func (h *DashboardHandler) GetDashboard(c echo.Context) error {
 	return httpcallSuccess(c, http.StatusOK, resp, nil)
 }
 
-// GetHistory handles GET /v1/dashboard/history
+// GetHistory handles GET /v1/user-dashboard/history
 // @Summary      Get paginated test-result history
 // @Description  Ordered newest-first.
-// @Tags         Dashboard
+// @Tags         User Dashboard
 // @Produce      json
 // @Security     BearerAuth
 // @Param        page  query int false "Page number, 1-indexed (default 1)"
@@ -51,7 +52,7 @@ func (h *DashboardHandler) GetDashboard(c echo.Context) error {
 // @Success      200 {object} httpresponse.Response{data=[]dashboard.HistoryItem,meta=dashboard.PaginationMeta} "History page"
 // @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | TOKEN_VERSION_MISMATCH"
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
-// @Router       /v1/dashboard/history [get]
+// @Router       /v1/user-dashboard/history [get]
 func (h *DashboardHandler) GetHistory(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	limit, _ := strconv.Atoi(c.QueryParam("limit"))

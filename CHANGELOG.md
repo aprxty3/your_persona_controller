@@ -5,6 +5,14 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-07-15
+
+#### [C] Route rename: `/v1/dashboard` → `/v1/user-dashboard` (disambiguation, pre-consumer so non-breaking)
+- Owner decision (2026-07-15): the word "dashboard" now has two officially distinct meanings — these endpoints are the **user (Member) dashboard** (Epic F), while the sibling repo `dashboard/` is a future **admin/internal dashboard** (V2). Path renamed so the distinction reads straight from the URL; safe now because no client consumes the API yet (FE not integrated) — after FE integration this would have required a `/v2`.
+- Changed: `router.go` group, Swagger annotations/tags in `dashboard_handler.go` (`docs/` regenerated), Tech Doc Section 5.4/4.3, PRD Epic F notes, MEMORY.md entry. Go package/handler names (`dashboard`, `DashboardHandler`) intentionally unchanged — only the public contract needed the disambiguation.
+
+---
+
 ## [UNRELEASED] — 2026-07-14
 
 ### Background workers — PDF generation, Guest TTL purge, Answer/PromptAuditLog scrub (TICKET-06, TICKET-08, TICKET-09)

@@ -1015,124 +1015,6 @@
                 }
             }
         },
-        "/v1/dashboard": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Remaining monthly quota (derived on-the-fly) and recent GRIT trend.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Dashboard"
-                ],
-                "summary": "Get dashboard summary",
-                "responses": {
-                    "200": {
-                        "description": "Dashboard summary",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/httpresponse.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/dashboard.DashboardResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
-                        "schema": {
-                            "$ref": "#/definitions/httpresponse.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "INTERNAL_ERROR — unexpected server error",
-                        "schema": {
-                            "$ref": "#/definitions/httpresponse.Response"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/dashboard/history": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "Ordered newest-first.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Dashboard"
-                ],
-                "summary": "Get paginated test-result history",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "Page number, 1-indexed (default 1)",
-                        "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Results per page, max 50 (default 10)",
-                        "name": "limit",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "History page",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/httpresponse.Response"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/definitions/dashboard.HistoryItem"
-                                            }
-                                        },
-                                        "meta": {
-                                            "$ref": "#/definitions/dashboard.PaginationMeta"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "401": {
-                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
-                        "schema": {
-                            "$ref": "#/definitions/httpresponse.Response"
-                        }
-                    },
-                    "500": {
-                        "description": "INTERNAL_ERROR — unexpected server error",
-                        "schema": {
-                            "$ref": "#/definitions/httpresponse.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/v1/guest-session": {
             "post": {
                 "description": "Starts an anonymous onboarding session before the user registers an account.\nSets a `session_id` HttpOnly cookie that is automatically carried through to `/auth/register`\nto link the guest session to the new account.\n\n**status** — accepted values:\n- `student`    — currently studying at school or university\n- `worker`     — employed full-time or part-time\n- `freelancer` — self-employed / project-based work\n- `unemployed` — not currently working\n- `other`      — anything that does not fit the options above\n\n**locale** — accepted values:\n- `en` — English (UI labels and email content will be in English)\n- `id` — Indonesian (UI labels and email content will be in Bahasa Indonesia)",
@@ -1466,6 +1348,124 @@
                     },
                     "404": {
                         "description": "RESULT_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/user-dashboard": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Member's personal dashboard: remaining monthly quota (derived on-the-fly) and recent GRIT trend.\nThis is the USER (Member) dashboard — not an admin dashboard; this API has no admin concept.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User Dashboard"
+                ],
+                "summary": "Get user dashboard summary",
+                "responses": {
+                    "200": {
+                        "description": "Dashboard summary",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dashboard.DashboardResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/user-dashboard/history": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Ordered newest-first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User Dashboard"
+                ],
+                "summary": "Get paginated test-result history",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number, 1-indexed (default 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Results per page, max 50 (default 10)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "History page",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/definitions/dashboard.HistoryItem"
+                                            }
+                                        },
+                                        "meta": {
+                                            "$ref": "#/definitions/dashboard.PaginationMeta"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }

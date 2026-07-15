@@ -79,8 +79,10 @@ func SetupRouter(
 	resultGroup.GET("/:id/pdf-status", resultHandler.GetPDFStatus)
 	resultGroup.GET("/:id/pdf", resultHandler.GetPDF)
 
-	// Dashboard Group (Member Only)
-	dashboardGroup := v1.Group("/dashboard", authMiddleware.RequireAuth)
+	// User Dashboard Group (Member Only) — "user-dashboard" is deliberate:
+	// distinguishes this from the separate admin dashboard app (V2, sibling
+	// repo `dashboard/`), so the path can never be mistaken for admin routes.
+	dashboardGroup := v1.Group("/user-dashboard", authMiddleware.RequireAuth)
 	dashboardGroup.GET("", dashboardHandler.GetDashboard)
 	dashboardGroup.GET("/history", dashboardHandler.GetHistory)
 
