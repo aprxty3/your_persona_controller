@@ -9,9 +9,9 @@ package main
 import (
 	assessment2 "github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
-	"github.com/aprxty3/your_persona_controller.git/internal/application/dashboard"
 	deletionrequest2 "github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/profile"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/user_dashboard"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/gemini"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/jwt"

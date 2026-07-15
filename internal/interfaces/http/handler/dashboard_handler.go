@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/application/dashboard"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/user_dashboard"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/middleware"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/labstack/echo/v4"

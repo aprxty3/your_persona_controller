@@ -1,12 +1,5 @@
 package auth
 
-// Session & token lifecycle: everything that mints, validates, rotates, or
-// revokes a JWT lives here — access/refresh tokens (login, refresh, logout,
-// logout-all) AND the password-reset token (verify-reset-otp, reset-password).
-// VerifyResetOTP/ResetPassword belong in this family, not in account.go,
-// because they lean on the exact same jwtService/tokenStore machinery as
-// every other method here, not on the OTP-dispatch machinery in account.go.
-
 import (
 	"context"
 	"fmt"
