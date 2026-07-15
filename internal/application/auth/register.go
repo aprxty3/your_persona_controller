@@ -64,7 +64,7 @@ type RegisterUseCase struct {
 	testResultRepo testresult.TestResultRepository
 	breachChecker  PasswordBreachChecker
 	dispatcher     taskqueue.Dispatcher
-	ipRateLimiter  *redis.IPRateLimitService
+	ipRateLimiter  IPRateLimiter
 	log            logger.Logger
 }
 
@@ -78,7 +78,7 @@ func NewRegisterUseCase(
 	testResultRepo testresult.TestResultRepository,
 	breachChecker PasswordBreachChecker,
 	dispatcher taskqueue.Dispatcher,
-	ipRateLimiter *redis.IPRateLimitService,
+	ipRateLimiter IPRateLimiter,
 	log logger.Logger,
 ) *RegisterUseCase {
 	return &RegisterUseCase{

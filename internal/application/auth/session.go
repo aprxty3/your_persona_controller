@@ -150,7 +150,7 @@ type SessionUseCase struct {
 	breachChecker    PasswordBreachChecker
 	jwtService       *jwtservice.JWTService
 	tokenStore       SessionTokenStore
-	ipRateLimiter    *redis.IPRateLimitService
+	ipRateLimiter    IPRateLimiter
 	log              logger.Logger
 	loginMaxAttempts int
 	lockDuration     time.Duration
@@ -164,7 +164,7 @@ func NewSessionUseCase(
 	breachChecker PasswordBreachChecker,
 	jwtService *jwtservice.JWTService,
 	tokenStore SessionTokenStore,
-	ipRateLimiter *redis.IPRateLimitService,
+	ipRateLimiter IPRateLimiter,
 	log logger.Logger,
 ) *SessionUseCase {
 	return &SessionUseCase{

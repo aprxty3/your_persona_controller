@@ -6,42 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/application/user_dashboard/mocks"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
+	"github.com/stretchr/testify/mock"
 )
 
 func testLogger() logger.Logger { return logger.NewLogger("test") }
-
-type mockTestResultRepo struct {
-	usage      int64
-	usageErr   error
-	history    []testresult.TestResult
-	historyErr error
-}
-
-func (m *mockTestResultRepo) CountMonthlyUsage(ctx context.Context, userID string) (int64, error) {
-	return m.usage, m.usageErr
-}
-
-func (m *mockTestResultRepo) FindHistoryByUser(ctx context.Context, userID string, page, limit int) ([]testresult.TestResult, int64, error) {
-	return m.history, int64(len(m.history)), m.historyErr
-}
-
-// mockInsightTemplateRepo is a hand-written fake satisfying InsightTemplateRepository.
-type mockInsightTemplateRepo struct {
-	templates []content.InsightTemplate
-	err       error
-
-	gotTrait  string
-	gotLocale string
-}
-
-func (m *mockInsightTemplateRepo) FindMatchingTemplates(ctx context.Context, trait, locale string) ([]content.InsightTemplate, error) {
-	m.gotTrait = trait
-	m.gotLocale = locale
-	return m.templates, m.err
-}
 
 func floatPtr(v float64) *float64 { return &v }
 
@@ -49,16 +21,27 @@ func newResult(id string, gritScore int, when time.Time) testresult.TestResult {
 	return testresult.TestResult{ID: id, GritScore: gritScore, CreatedAt: when}
 }
 
+// newTestDashboardUseCase stubs CountMonthlyUsage (irrelevant to micro-insight
+// tests) and wires the given history/templates.
+func newTestDashboardUseCase(t *testing.T, history []testresult.TestResult, templates []content.InsightTemplate, templatesErr error) (*DashboardUseCase, *mocks.MockInsightTemplateRepository) {
+	t.Helper()
+	trRepo := mocks.NewMockTestResultRepository(t)
+	trRepo.EXPECT().CountMonthlyUsage(mock.Anything, mock.Anything).Return(int64(0), nil).Once()
+	trRepo.EXPECT().FindHistoryByUser(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(history, int64(len(history)), nil).Once()
+
+	itRepo := mocks.NewMockInsightTemplateRepository(t)
+	itRepo.EXPECT().FindMatchingTemplates(mock.Anything, mock.Anything, mock.Anything).Return(templates, templatesErr).Once()
+
+	return NewDashboardUseCase(trRepo, itRepo, testLogger()), itRepo
+}
+
 func TestGetDashboard_MicroInsight_IncreaseTriggers(t *testing.T) {
 	now := time.Now()
-	trRepo := &mockTestResultRepo{history: []testresult.TestResult{
-		newResult("r2", 76, now),
-		newResult("r1", 70, now.Add(-24*time.Hour)),
-	}}
-	itRepo := &mockInsightTemplateRepo{templates: []content.InsightTemplate{
+	history := []testresult.TestResult{newResult("r2", 76, now), newResult("r1", 70, now.Add(-24*time.Hour))}
+	templates := []content.InsightTemplate{
 		{InsightKey: "grit_increase", ConditionType: content.ConditionIncrease, MinDelta: floatPtr(5), TemplateText: "GRIT kamu naik {delta} poin"},
-	}}
-	uc := NewDashboardUseCase(trRepo, itRepo, testLogger())
+	}
+	uc, itRepo := newTestDashboardUseCase(t, history, templates, nil)
 
 	resp, err := uc.GetDashboard(context.Background(), "user-1", "id")
 	if err != nil {
@@ -67,21 +50,16 @@ func TestGetDashboard_MicroInsight_IncreaseTriggers(t *testing.T) {
 	if len(resp.MicroInsights) != 1 || resp.MicroInsights[0] != "GRIT kamu naik 6 poin" {
 		t.Fatalf("expected 1 increase insight with delta substituted, got %v", resp.MicroInsights)
 	}
-	if itRepo.gotTrait != "grit" || itRepo.gotLocale != "id" {
-		t.Fatalf("expected lookup for trait=grit locale=id, got trait=%s locale=%s", itRepo.gotTrait, itRepo.gotLocale)
-	}
+	itRepo.AssertCalled(t, "FindMatchingTemplates", mock.Anything, "grit", "id")
 }
 
 func TestGetDashboard_MicroInsight_IncreaseBelowMinDelta(t *testing.T) {
 	now := time.Now()
-	trRepo := &mockTestResultRepo{history: []testresult.TestResult{
-		newResult("r2", 74, now),
-		newResult("r1", 70, now.Add(-24*time.Hour)),
-	}}
-	itRepo := &mockInsightTemplateRepo{templates: []content.InsightTemplate{
+	history := []testresult.TestResult{newResult("r2", 74, now), newResult("r1", 70, now.Add(-24*time.Hour))}
+	templates := []content.InsightTemplate{
 		{InsightKey: "grit_increase", ConditionType: content.ConditionIncrease, MinDelta: floatPtr(5), TemplateText: "GRIT kamu naik {delta} poin"},
-	}}
-	uc := NewDashboardUseCase(trRepo, itRepo, testLogger())
+	}
+	uc, _ := newTestDashboardUseCase(t, history, templates, nil)
 
 	resp, err := uc.GetDashboard(context.Background(), "user-1", "id")
 	if err != nil {
@@ -94,14 +72,11 @@ func TestGetDashboard_MicroInsight_IncreaseBelowMinDelta(t *testing.T) {
 
 func TestGetDashboard_MicroInsight_DecreaseTriggers(t *testing.T) {
 	now := time.Now()
-	trRepo := &mockTestResultRepo{history: []testresult.TestResult{
-		newResult("r2", 60, now),
-		newResult("r1", 70, now.Add(-24*time.Hour)),
-	}}
-	itRepo := &mockInsightTemplateRepo{templates: []content.InsightTemplate{
+	history := []testresult.TestResult{newResult("r2", 60, now), newResult("r1", 70, now.Add(-24*time.Hour))}
+	templates := []content.InsightTemplate{
 		{InsightKey: "grit_decrease", ConditionType: content.ConditionDecrease, MinDelta: floatPtr(5), TemplateText: "GRIT kamu turun {delta} poin"},
-	}}
-	uc := NewDashboardUseCase(trRepo, itRepo, testLogger())
+	}
+	uc, _ := newTestDashboardUseCase(t, history, templates, nil)
 
 	resp, err := uc.GetDashboard(context.Background(), "user-1", "id")
 	if err != nil {
@@ -114,13 +89,11 @@ func TestGetDashboard_MicroInsight_DecreaseTriggers(t *testing.T) {
 
 // Threshold only needs the single latest result — must fire even with just 1 result total.
 func TestGetDashboard_MicroInsight_ThresholdTriggersWithSingleResult(t *testing.T) {
-	trRepo := &mockTestResultRepo{history: []testresult.TestResult{
-		newResult("r1", 85, time.Now()),
-	}}
-	itRepo := &mockInsightTemplateRepo{templates: []content.InsightTemplate{
+	history := []testresult.TestResult{newResult("r1", 85, time.Now())}
+	templates := []content.InsightTemplate{
 		{InsightKey: "grit_high_threshold", ConditionType: content.ConditionThreshold, ThresholdValue: floatPtr(80), TemplateText: "GRIT kamu sudah {value}, luar biasa"},
-	}}
-	uc := NewDashboardUseCase(trRepo, itRepo, testLogger())
+	}
+	uc, _ := newTestDashboardUseCase(t, history, templates, nil)
 
 	resp, err := uc.GetDashboard(context.Background(), "user-1", "en")
 	if err != nil {
@@ -132,13 +105,11 @@ func TestGetDashboard_MicroInsight_ThresholdTriggersWithSingleResult(t *testing.
 }
 
 func TestGetDashboard_MicroInsight_ThresholdBelowValueDoesNotTrigger(t *testing.T) {
-	trRepo := &mockTestResultRepo{history: []testresult.TestResult{
-		newResult("r1", 79, time.Now()),
-	}}
-	itRepo := &mockInsightTemplateRepo{templates: []content.InsightTemplate{
+	history := []testresult.TestResult{newResult("r1", 79, time.Now())}
+	templates := []content.InsightTemplate{
 		{InsightKey: "grit_high_threshold", ConditionType: content.ConditionThreshold, ThresholdValue: floatPtr(80), TemplateText: "GRIT kamu sudah {value}"},
-	}}
-	uc := NewDashboardUseCase(trRepo, itRepo, testLogger())
+	}
+	uc, _ := newTestDashboardUseCase(t, history, templates, nil)
 
 	resp, err := uc.GetDashboard(context.Background(), "user-1", "en")
 	if err != nil {
@@ -151,13 +122,11 @@ func TestGetDashboard_MicroInsight_ThresholdBelowValueDoesNotTrigger(t *testing.
 
 // Fewer than 2 results: delta-based conditions (increase/decrease) must never fire.
 func TestGetDashboard_MicroInsight_FewerThanTwoResults_NoDeltaInsight(t *testing.T) {
-	trRepo := &mockTestResultRepo{history: []testresult.TestResult{
-		newResult("r1", 90, time.Now()),
-	}}
-	itRepo := &mockInsightTemplateRepo{templates: []content.InsightTemplate{
+	history := []testresult.TestResult{newResult("r1", 90, time.Now())}
+	templates := []content.InsightTemplate{
 		{InsightKey: "grit_increase", ConditionType: content.ConditionIncrease, MinDelta: floatPtr(5), TemplateText: "naik {delta}"},
-	}}
-	uc := NewDashboardUseCase(trRepo, itRepo, testLogger())
+	}
+	uc, _ := newTestDashboardUseCase(t, history, templates, nil)
 
 	resp, err := uc.GetDashboard(context.Background(), "user-1", "en")
 	if err != nil {
@@ -169,10 +138,10 @@ func TestGetDashboard_MicroInsight_FewerThanTwoResults_NoDeltaInsight(t *testing
 }
 
 func TestGetDashboard_MicroInsight_NoResults_EmptyArray(t *testing.T) {
-	trRepo := &mockTestResultRepo{history: nil}
-	itRepo := &mockInsightTemplateRepo{templates: []content.InsightTemplate{
-		{InsightKey: "grit_high_threshold", ConditionType: content.ConditionThreshold, ThresholdValue: floatPtr(1), TemplateText: "x"},
-	}}
+	trRepo := mocks.NewMockTestResultRepository(t)
+	trRepo.EXPECT().CountMonthlyUsage(mock.Anything, mock.Anything).Return(int64(0), nil).Once()
+	trRepo.EXPECT().FindHistoryByUser(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, int64(0), nil).Once()
+	itRepo := mocks.NewMockInsightTemplateRepository(t) // no EXPECT(): with 0 results, template lookup is skipped entirely
 	uc := NewDashboardUseCase(trRepo, itRepo, testLogger())
 
 	resp, err := uc.GetDashboard(context.Background(), "user-1", "en")
@@ -189,15 +158,12 @@ func TestGetDashboard_MicroInsight_NoResults_EmptyArray(t *testing.T) {
 
 func TestGetDashboard_MicroInsight_ZeroScoreGuardSkipsDelta(t *testing.T) {
 	now := time.Now()
-	trRepo := &mockTestResultRepo{history: []testresult.TestResult{
-		newResult("r2", 74, now),
-		newResult("r1", 0, now.Add(-24*time.Hour)), // pre-scoring row
-	}}
-	itRepo := &mockInsightTemplateRepo{templates: []content.InsightTemplate{
+	history := []testresult.TestResult{newResult("r2", 74, now), newResult("r1", 0, now.Add(-24*time.Hour))} // pre-scoring row
+	templates := []content.InsightTemplate{
 		{InsightKey: "grit_increase", ConditionType: content.ConditionIncrease, MinDelta: floatPtr(5), TemplateText: "naik {delta}"},
 		{InsightKey: "grit_decrease", ConditionType: content.ConditionDecrease, MinDelta: floatPtr(5), TemplateText: "turun {delta}"},
-	}}
-	uc := NewDashboardUseCase(trRepo, itRepo, testLogger())
+	}
+	uc, _ := newTestDashboardUseCase(t, history, templates, nil)
 
 	resp, err := uc.GetDashboard(context.Background(), "user-1", "en")
 	if err != nil {
@@ -210,13 +176,11 @@ func TestGetDashboard_MicroInsight_ZeroScoreGuardSkipsDelta(t *testing.T) {
 
 // A latest GritScore of 0 must not spuriously satisfy a threshold check either.
 func TestGetDashboard_MicroInsight_ZeroScoreGuardSkipsThreshold(t *testing.T) {
-	trRepo := &mockTestResultRepo{history: []testresult.TestResult{
-		newResult("r1", 0, time.Now()),
-	}}
-	itRepo := &mockInsightTemplateRepo{templates: []content.InsightTemplate{
+	history := []testresult.TestResult{newResult("r1", 0, time.Now())}
+	templates := []content.InsightTemplate{
 		{InsightKey: "grit_high_threshold", ConditionType: content.ConditionThreshold, ThresholdValue: floatPtr(0), TemplateText: "x"},
-	}}
-	uc := NewDashboardUseCase(trRepo, itRepo, testLogger())
+	}
+	uc, _ := newTestDashboardUseCase(t, history, templates, nil)
 
 	resp, err := uc.GetDashboard(context.Background(), "user-1", "en")
 	if err != nil {
@@ -228,11 +192,21 @@ func TestGetDashboard_MicroInsight_ZeroScoreGuardSkipsThreshold(t *testing.T) {
 }
 
 func TestGetDashboard_MicroInsight_TemplateLookupError(t *testing.T) {
-	trRepo := &mockTestResultRepo{history: []testresult.TestResult{newResult("r1", 90, time.Now())}}
-	itRepo := &mockInsightTemplateRepo{err: errors.New("db down")}
-	uc := NewDashboardUseCase(trRepo, itRepo, testLogger())
+	history := []testresult.TestResult{newResult("r1", 90, time.Now())}
+	uc, _ := newTestDashboardUseCase(t, history, nil, errors.New("db down"))
 
 	if _, err := uc.GetDashboard(context.Background(), "user-1", "en"); err == nil {
 		t.Fatal("expected error to propagate when template lookup fails")
+	}
+}
+
+func TestGetDashboard_CountUsageError_Propagates(t *testing.T) {
+	trRepo := mocks.NewMockTestResultRepository(t)
+	trRepo.EXPECT().CountMonthlyUsage(mock.Anything, "user-1").Return(int64(0), errors.New("db down")).Once()
+	itRepo := mocks.NewMockInsightTemplateRepository(t) // no EXPECT(): never reached
+	uc := NewDashboardUseCase(trRepo, itRepo, testLogger())
+
+	if _, err := uc.GetDashboard(context.Background(), "user-1", "en"); err == nil {
+		t.Fatal("expected the count-usage error to propagate")
 	}
 }

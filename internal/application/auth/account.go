@@ -131,7 +131,7 @@ type AccountUseCase struct {
 	userRepo    account.UserRepository
 	tokenRepo   account.VerificationTokenRepository
 	dispatcher  taskqueue.Dispatcher
-	rateLimiter *redis.OTPRateLimitService
+	rateLimiter OTPRateLimiter
 	log         logger.Logger
 }
 
@@ -140,7 +140,7 @@ func NewAccountUseCase(
 	userRepo account.UserRepository,
 	tokenRepo account.VerificationTokenRepository,
 	dispatcher taskqueue.Dispatcher,
-	rateLimiter *redis.OTPRateLimitService,
+	rateLimiter OTPRateLimiter,
 	log logger.Logger,
 ) *AccountUseCase {
 	return &AccountUseCase{

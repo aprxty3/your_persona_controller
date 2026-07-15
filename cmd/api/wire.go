@@ -138,7 +138,9 @@ func InitializeAPI(
 
 		// Redis Services
 		redis.NewOTPRateLimitService,
+		wire.Bind(new(auth.OTPRateLimiter), new(*redis.OTPRateLimitService)),
 		redis.NewIPRateLimitService,
+		wire.Bind(new(auth.IPRateLimiter), new(*redis.IPRateLimitService)),
 		redis.NewTokenStore,
 		wire.Bind(new(auth.SessionTokenStore), new(*redis.TokenStore)),
 		redis.NewDistributedLockService,

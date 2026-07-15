@@ -7,6 +7,17 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ## [UNRELEASED] — 2026-07-16
 
+### Full `internal/application` test coverage, migrated to mockery (post-TICKET-21 follow-up)
+
+#### [A] Every use case in `internal/application` now has unit tests; hand-written mocks migrated to mockery
+- Adopted [mockery](https://github.com/vektra/mockery) (`.mockery.yaml`, `with-expecter: true`) for every repository/service interface across `internal/domain/{account,content,deletionrequest,testresult}`, `internal/application/{assessment,auth,deletionrequest,guestpurge,pdf,user_dashboard}`, and `pkg/taskqueue` — generated mocks are checked into git (same convention as `wire_gen.go`). New direct dependency: `github.com/stretchr/testify` (was already an indirect transitive dependency).
+- Two packages (`assessment`, `pdf`) generate `inpackage: true` mocks into `mock_*_test.go` files instead of a `mocks` subpackage — `assessment.IdempotencyService` and `pdf.PDFRenderer` both reference a type defined in their own package (`SubmitResponse`, `PDFData`), and a subpackage mock importing back would hit Go's "import cycle not allowed in test" as soon as that package's own internal test files import it.
+- **New testability refactor**: `IPRateLimiter`/`OTPRateLimiter` interfaces (`internal/application/auth/rate_limiter.go`) replace the concrete `*redis.IPRateLimitService`/`*redis.OTPRateLimitService` fields on `SessionUseCase`/`RegisterUseCase`/`AccountUseCase` — same pattern as TICKET-21's `SessionTokenStore`, non-breaking (2 new `wire.Bind` lines).
+- **Converted to mockery**: `submit_assessment_test.go`, `session_test.go`, `account_test.go`, `user_dashboard_test.go`.
+- **New test files**: `assessment/result_query_test.go`, `assessment/question_catalog_test.go`, `assessment/wellbeing_test.go`, `auth/register_test.go`, `auth/create_guest_session_test.go`, `auditpurge/purge_audit_ttl_test.go`, `deletionrequest/deletionrequest_test.go`, `deletionrequest/anonymize_test.go`, `guestpurge/purge_guest_ttl_test.go`, `pdf/generate_pdf_test.go`, `profile/profile_test.go` — also adds Login/VerifyEmailOTP/LogoutAll/Logout coverage to `SessionUseCase` that TICKET-21 didn't require.
+- **Consistent boundary rule**: any use case calling `uc.db.Transaction(...)` with a concrete Postgres constructor inside the closure (`RegisterUseCase.Register`, `SessionUseCase.ResetPassword`/`ChangePassword`, `AnonymizeUseCase.Anonymize`, `PurgeGuestTTLUseCase.Execute`'s per-row transaction) is unit-tested only up to that boundary — the transaction body needs a real DB and belongs to integration tests, not unit tests (AGENTS.md's own rule). Every such test file marks this boundary explicitly in comments.
+- `go build ./...`, `go vet ./...`, and `go vet -tags=integration ./...` all clean. `go test ./...` itself left for the user to run (standing instruction).
+
 ### Dashboard Micro-Insight & Test Suite (TICKET-20, TICKET-21)
 
 #### [A] Dashboard micro-insight, rule-based, no Gemini (TICKET-20, FR-F4)

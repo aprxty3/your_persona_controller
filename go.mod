@@ -9,6 +9,7 @@ require (
 	github.com/johnfercher/maroto/v2 v2.3.3
 	github.com/labstack/echo/v4 v4.15.4
 	github.com/minio/minio-go/v7 v7.2.1
+	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/echo-swagger v1.5.2
 	github.com/swaggo/swag v1.16.6
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.43.0
@@ -98,7 +99,7 @@ require (
 	github.com/rs/xid v1.6.0 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.5 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
+	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/sv-tools/openapi v0.2.1 // indirect
 	github.com/swaggo/files/v2 v2.0.0 // indirect
 	github.com/swaggo/swag/v2 v2.0.0-rc4 // indirect
