@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/application/user_dashboard"
+	dashboard "github.com/aprxty3/your_persona_controller.git/internal/application/user_dashboard"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/middleware"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/labstack/echo/v4"
@@ -23,7 +23,8 @@ func NewDashboardHandler(useCase *dashboard.DashboardUseCase, log logger.Logger)
 
 // GetDashboard handles GET /v1/user-dashboard
 // @Summary      Get user dashboard summary
-// @Description  Member's personal dashboard: remaining monthly quota (derived on-the-fly) and recent GRIT trend.
+// @Description  Member's personal dashboard: remaining monthly quota (derived on-the-fly), recent GRIT trend,
+// @Description  and rule-based micro_insights (no Gemini call — locale-aware INSIGHT_TEMPLATE lookups only).
 // @Description  This is the USER (Member) dashboard — not an admin dashboard; this API has no admin concept.
 // @Tags         User Dashboard
 // @Produce      json
@@ -33,7 +34,7 @@ func NewDashboardHandler(useCase *dashboard.DashboardUseCase, log logger.Logger)
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
 // @Router       /v1/user-dashboard [get]
 func (h *DashboardHandler) GetDashboard(c echo.Context) error {
-	resp, err := h.useCase.GetDashboard(c.Request().Context(), middleware.UserIDFromContext(c))
+	resp, err := h.useCase.GetDashboard(c.Request().Context(), middleware.UserIDFromContext(c), middleware.LocaleFromContext(c))
 	if err != nil {
 		h.log.Error("get dashboard failed", "error", err)
 		return httpcallError(c, err)

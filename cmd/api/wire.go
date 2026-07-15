@@ -9,6 +9,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/application/user_dashboard"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/profile"
+	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/gemini"
@@ -124,12 +125,14 @@ func InitializeAPI(
 		pgdeletionrequest.NewRepository,
 		pgassessment.NewTestResultRepository,
 		pgassessment.NewQuestionRepository,
+		pgassessment.NewInsightTemplateRepository,
 
 		wire.Bind(new(assessment.TestResultRepository), new(testresult.TestResultRepository)),
 		wire.Bind(new(assessment.QuestionRepository), new(*pgassessment.QuestionRepository)),
 		wire.Bind(new(assessment.ResultRepository), new(testresult.TestResultRepository)),
 		wire.Bind(new(assessment.QuestionCatalogRepository), new(*pgassessment.QuestionRepository)),
 		wire.Bind(new(dashboard.TestResultRepository), new(testresult.TestResultRepository)),
+		wire.Bind(new(dashboard.InsightTemplateRepository), new(content.InsightTemplateRepository)),
 
 		asynqclient.NewPDFQueueService,
 
@@ -137,6 +140,7 @@ func InitializeAPI(
 		redis.NewOTPRateLimitService,
 		redis.NewIPRateLimitService,
 		redis.NewTokenStore,
+		wire.Bind(new(auth.SessionTokenStore), new(*redis.TokenStore)),
 		redis.NewDistributedLockService,
 		redis.NewIdempotencyService,
 

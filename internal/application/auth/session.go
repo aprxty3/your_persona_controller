@@ -28,6 +28,18 @@ const (
 // ResetTokenTTL is the validity window of the short-lived reset_token JWT
 const ResetTokenTTL = 15 * time.Minute
 
+// SessionTokenStore is the narrow slice of Redis-backed token bookkeeping
+// SessionUseCase needs — scoped smaller than the full *redis.TokenStore, and
+// declared as an interface (rather than the concrete struct) so unit tests
+// can fake the single-use reset_token / refresh-token-denylist contracts
+// without a real Redis connection.
+type SessionTokenStore interface {
+	StoreResetJTI(ctx context.Context, jti, userID string, ttl time.Duration) error
+	ConsumeResetJTI(ctx context.Context, jti string) (userID string, err error)
+	DenylistRefreshJTI(ctx context.Context, jti string, ttl time.Duration) error
+	IsRefreshJTIDenylisted(ctx context.Context, jti string) (bool, error)
+}
+
 // TokenPair carries one full JWT session credential set.
 type TokenPair struct {
 	AccessToken  string
@@ -137,7 +149,7 @@ type SessionUseCase struct {
 	tokenRepo        account.VerificationTokenRepository
 	breachChecker    PasswordBreachChecker
 	jwtService       *jwtservice.JWTService
-	tokenStore       *redis.TokenStore
+	tokenStore       SessionTokenStore
 	ipRateLimiter    *redis.IPRateLimitService
 	log              logger.Logger
 	loginMaxAttempts int
@@ -151,7 +163,7 @@ func NewSessionUseCase(
 	tokenRepo account.VerificationTokenRepository,
 	breachChecker PasswordBreachChecker,
 	jwtService *jwtservice.JWTService,
-	tokenStore *redis.TokenStore,
+	tokenStore SessionTokenStore,
 	ipRateLimiter *redis.IPRateLimitService,
 	log logger.Logger,
 ) *SessionUseCase {

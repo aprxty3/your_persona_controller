@@ -5,6 +5,33 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-07-16
+
+### Dashboard Micro-Insight & Test Suite (TICKET-20, TICKET-21)
+
+#### [A] Dashboard micro-insight, rule-based, no Gemini (TICKET-20, FR-F4)
+- `GET /v1/user-dashboard` gains `micro_insights []string`. Evaluates the GRIT dimension only against `INSIGHT_TEMPLATE` rows — reuses `content.InsightTemplateRepository.FindMatchingTemplates` (the same repository the PDF worker already consumes for Strengths/Blind Spots), newly wired into `cmd/api` (previously only reachable from `cmd/worker`).
+- Three `condition_type`s evaluated: `increase`/`decrease` (delta between the 2 most recent results vs `min_delta`, `{delta}` substituted) and `threshold` (latest result vs `threshold_value`, `{value}` substituted, needs only 1 result). Delta is derived from the same `FindHistoryByUser` call `GetDashboard` already makes for `grit_trend` — no extra query.
+- Guards against fabricating insights from incomplete/pre-scoring data: fewer than 2 results skips delta entirely; either delta-input result having `grit_score == 0` (a pre-TICKET-17 row, not a real zero) skips delta; a `0` latest score also can't satisfy a threshold. `micro_insights` is always `[]`, never `null`, when empty.
+- `DashboardUseCase.GetDashboard` gains a `locale` parameter, resolved in the handler via `middleware.LocaleFromContext(c)` (same pattern as `assessment_handler.go`/`result_handler.go`) — fallback-to-EN is not duplicated here, `FindMatchingTemplates` already owns that (FR-I9).
+- New `user_dashboard_test.go`: 10 unit tests covering the PRD's own worked example (70→76 fires, 70→74 doesn't), threshold-with-single-result, both zero-score guards, empty-history, and template-lookup-error propagation.
+
+#### [A] Test suite — security-critical unit tests + testcontainers-go integration tests (TICKET-21)
+- **Unit tests** (mocked repositories, no DB/Redis — `internal/application/...`, `internal/infrastructure/security`, `internal/infrastructure/i18n`, `internal/interfaces/http`):
+  - OTP attempt-limit gate (`validateOTPAttempt`): 5th wrong guess rejects with `ErrOTPMaxAttempts`; any further attempt — including the correct code — stays rejected without incrementing further.
+  - `ResetPassword` single-use contract: a jti Redis already returned empty (replay) rejects with `ErrInvalidToken` without touching the DB transaction; subject-mismatch defense-in-depth; malformed JWT rejects before ever calling `ConsumeResetJTI`.
+  - `RefreshToken`: stale `token_version` rejects with `ErrTokenVersionMismatch`; denylisted jti rejects with `ErrInvalidToken`.
+  - `SubmitAssessmentUseCase.Execute`: idempotency-key-reused and cache-hit both return before the lock/Gemini are ever touched; lock-not-acquired; Member and Guest quota-exceeded (post-TICKET-19) both reject and still release the lock.
+  - `runAIPhase` (isolated from the DB-bound rest of `Execute`): no-essay skip, Gemini transport error → `fallback_static` (FR-C2, never surfaces as an error), invalid/too-short output → `fallback_static`, valid output → `completed`.
+  - Cloudflare Turnstile: explicit `success:false` fails closed; transport/5xx/timeout/malformed-JSON all fail open (TICKET-11 contract); empty secret key → noop verifier, zero HTTP calls.
+  - i18n catalog: both locales load; unsupported/empty locale falls back to EN content (FR-I9); unknown purpose → `ok=false`.
+  - `ParseAllowedOrigins`: trims/splits/skips-empty; a bare `"*"` or `"*"` among other origins panics (TICKET-14 contract, now test-locked).
+- **Refactors enabling the above** (no behavior change): `turnstileClient` gained an injectable `verifyURL` field (test-only override, deliberately not an env var — production callers still hit the real Cloudflare constant). `SessionUseCase.tokenStore` changed from the concrete `*redis.TokenStore` to a new narrow interface `auth.SessionTokenStore` (same 4 methods) — application-layer tests can now fake Redis token bookkeeping instead of needing a live connection; `*redis.TokenStore` still satisfies it, so `cmd/api` wiring is unaffected beyond an added `wire.Bind`.
+- **Integration tests** (new dependency `github.com/testcontainers/testcontainers-go` + `.../modules/postgres` + `.../modules/redis`, gated behind `//go:build integration` so they never slow down `make test`):
+  - Postgres (`internal/infrastructure/persistence/postgres/assessment/integration_test.go`, one shared container via `TestMain`): `UpsertAnswers` ON CONFLICT collapses a re-submitted question to 1 row; `CountMonthlyUsage` correctly buckets a row sitting exactly on the Asia/Jakarta month boundary (17:00 UTC on the last day of the prior month) vs. one second earlier; `ScrubEssayAnswersByUser` blanks only essay-type answers, Likert survives; `PromptAuditLogRepository.DeleteByUserID`'s `test_result_id IN (subquery on user_id)` scoping deletes only the target user's logs; the partial unique index `uniq_active_deletion_per_user` rejects a second `pending_grace`/`processing` row for the same user (`gorm.ErrDuplicatedKey`) but allows one once the first is `cancelled`.
+  - Redis (`internal/infrastructure/cache/redis/integration_test.go`, one shared container via `TestMain`): `ConsumeResetJTI` under 2 concurrent goroutines on the same jti — exactly 1 winner (real Redis `GETDEL` atomicity, not simulated); `ReleaseLock`'s CAS Lua script refuses to delete a key whose value changed underneath it (simulated new owner) but does delete on a matching token; `IdempotencyService.Check`/`Save` round-trip and cache-miss/hash-mismatch paths against real Redis.
+- **README**: `## Testing` section now documents the real `make test` vs `go test -tags=integration ./...` split and the Docker requirement for the latter; CI still runs unit-only (`make test`), integration tag intentionally not wired into CI yet (would need Docker-in-Docker on the runner — tracked as a follow-up, not blocking this ticket).
+
 ## [UNRELEASED] — 2026-07-15
 
 ### Scoring Engine, Retention Sweeps, Guest Quota (TICKET-17, TICKET-18, TICKET-19)
@@ -470,4 +497,5 @@ go build ./cmd/migrate; go build ./cmd/worker     ✅ OK (auxiliary entrypoints 
 - [x] ~~Email i18n message catalog externalized to JSON~~ — done 2026-07-15 (TICKET-12; locale wiring itself was already complete)
 - [x] ~~Database backup script + restore drill docs~~ — done 2026-07-15 (TICKET-13); cron not yet scheduled on a real server (no production VM yet, see be_tickets/ticket-26)
 - [x] ~~CSRF & CORS protection~~ — done 2026-07-15 (TICKET-14)
-- [ ] Add integration testing via testcontainers-go (be_tickets/ticket-21)
+- [x] ~~Add integration testing via testcontainers-go~~ — done 2026-07-16 (TICKET-21; unit tests for every security-critical path listed in Tech Doc Section 10, + Postgres/Redis integration tests behind the `integration` build tag)
+- [x] ~~Dashboard micro-insight (FR-F4, rule-based)~~ — done 2026-07-16 (TICKET-20)

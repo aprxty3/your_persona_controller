@@ -69,7 +69,8 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	}
 	resultUseCase := assessment2.NewResultUseCase(testResultRepository, s3Client, loggerInstance)
 	resultHandler := handler.NewResultHandler(questionCatalogUseCase, resultUseCase, loggerInstance)
-	dashboardUseCase := dashboard.NewDashboardUseCase(testResultRepository, loggerInstance)
+	insightTemplateRepository := assessment.NewInsightTemplateRepository(db, loggerInstance)
+	dashboardUseCase := dashboard.NewDashboardUseCase(testResultRepository, insightTemplateRepository, loggerInstance)
 	dashboardHandler := handler.NewDashboardHandler(dashboardUseCase, loggerInstance)
 	guestSessionRepository := account.NewGuestSessionRepository(db, loggerInstance)
 	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(guestSessionRepository, loggerInstance)

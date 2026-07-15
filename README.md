@@ -70,12 +70,14 @@ After adding a new repository, use case, or handler constructor:
 ## Testing
 
 ```bash
-make test          # all tests with -race -cover
-make lint          # static analysis via golangci-lint
+make test                              # unit tests only — fast, no Docker required
+go test -tags=integration ./...        # + infrastructure integration tests (needs Docker running)
+make lint                              # static analysis via golangci-lint
 ```
 
-- **Domain & Application layer**: unit tests (mock repository interfaces, no DB).
-- **Infrastructure layer**: integration tests via testcontainers-go.
+- **Domain & Application layer**: unit tests, hand-written mocks per repository/service interface (declared in the same test file that needs them — no mocking framework). Never open a real DB/Redis connection; if a test needs one, it's in the wrong layer.
+- **Infrastructure layer**: integration tests via [testcontainers-go](https://golang.testcontainers.org/) — real ephemeral Postgres/Redis containers, gated behind the `integration` build tag (`//go:build integration`) so `make test`/`go test ./...` stays fast and Docker-free. Requires a local Docker daemon; each package with integration tests spins up ONE shared container per `go test` run (see `TestMain` in `internal/infrastructure/persistence/postgres/assessment/integration_test.go` and `internal/infrastructure/cache/redis/integration_test.go`) rather than one per test.
+- CI runs `make test` (unit only) on every push. The `integration` tag is **not** wired into CI yet (would need Docker-in-Docker on the runner) — run it locally before merging changes to `internal/infrastructure/persistence/postgres/` or `internal/infrastructure/cache/redis/`.
 
 ## Documentation
 
