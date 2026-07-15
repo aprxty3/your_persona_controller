@@ -11,6 +11,7 @@ type TestResultRepository interface {
 	FindByShareToken(ctx context.Context, shareToken string) (*TestResult, error)
 	Update(ctx context.Context, result *TestResult) error
 	CountMonthlyUsage(ctx context.Context, userID string) (int64, error)
+	CountMonthlyUsageByGuestSession(ctx context.Context, guestSessionID string) (int64, error)
 	CountCompletedByUser(ctx context.Context, userID string) (int64, error)
 	FindExpiredGuestResults(ctx context.Context) ([]TestResult, error)
 	UpdatePDFStatus(ctx context.Context, id string, pdfURL *string, status PDFStatus) error
@@ -34,6 +35,6 @@ type AnswerRepository interface {
 type PromptAuditLogRepository interface {
 	Create(ctx context.Context, log *PromptAuditLog) error
 	DeleteByTestResultID(ctx context.Context, testResultID string) error
-	DeleteExpired(ctx context.Context) error
+	DeleteExpired(ctx context.Context) (int64, error)
 	DeleteByUserID(ctx context.Context, userID string) error
 }

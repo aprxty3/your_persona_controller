@@ -95,7 +95,12 @@ func SetupRouter(
 		CookieSameSite: http.SameSiteLaxMode,
 		CookieSecure:   isProduction,
 		Skipper: func(c echo.Context) bool {
-			return !csrfProtectedPaths[c.Path()]
+			switch c.Request().Method {
+			case http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodTrace:
+				return false
+			default:
+				return !csrfProtectedPaths[c.Path()]
+			}
 		},
 	}))
 

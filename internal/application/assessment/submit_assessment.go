@@ -54,6 +54,7 @@ type SubmitResponse struct {
 
 type TestResultRepository interface {
 	CountMonthlyUsage(ctx context.Context, userID string) (int64, error)
+	CountMonthlyUsageByGuestSession(ctx context.Context, guestSessionID string) (int64, error)
 	CountCompletedByUser(ctx context.Context, userID string) (int64, error)
 }
 
@@ -156,6 +157,17 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 		if usage >= application.MemberMonthlyQuota {
 			return nil, application.ErrQuotaExceeded
 		}
+	} else {
+		// Soft Guest quota per session_id: clearing the cookie
+		// mints a new session and resets this — accepted by design; the check
+		// only blocks the same session spamming paid Gemini calls.
+		usage, err := uc.testResultRepo.CountMonthlyUsageByGuestSession(ctx, req.SessionID)
+		if err != nil {
+			return nil, fmt.Errorf("submit: count guest monthly usage: %w", err)
+		}
+		if usage >= application.GuestMonthlyQuota {
+			return nil, application.ErrQuotaExceeded
+		}
 	}
 
 	questionByID, err := uc.loadQuestions(ctx, req.Answers)
@@ -173,6 +185,13 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 	aiCtx := context.WithoutCancel(ctx)
 	outcome := uc.runAIPhase(aiCtx, resultID, essayTexts, req.Locale)
 
+	// Scores are pure math over the answers — computed for every outcome,
+	// including fallback_static, since they don't depend on Gemini.
+	scores := ComputeScores(req.Answers, questionByID)
+	for _, dim := range scores.NeutralFallbackDimensions {
+		uc.log.Warn("scoring: no valid answer for dimension, defaulted to neutral 50", "dimension", dim, "result_id", resultID)
+	}
+
 	referredByCode, referralEligible := uc.checkReferralEligibility(ctx, req)
 
 	result := &testresult.TestResult{
@@ -180,6 +199,9 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 		Locale:        req.Locale,
 		MascotStyle:   MascotStyleA, // visual-only default; changeable later via PATCH /v1/results/:id/mascot-style (TICKET-04)
 		ShareToken:    uuid.New().String(),
+		MBTIType:      scores.MBTIType,
+		GritScore:     scores.GritScore,
+		TraitScores:   scores.TraitScores,
 		AISummaryText: &outcome.summary,
 		Status:        outcome.status,
 		WellbeingFlag: isWellbeingFlagged,

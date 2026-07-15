@@ -3,6 +3,8 @@ package pdf
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
@@ -214,19 +216,45 @@ func (uc *GeneratePDFUseCase) collectEssayQuotes(ctx context.Context, testResult
 }
 
 // collectInsights matches TraitScores against the InsightTemplate registry
-// for the "Strengths & Blind Spots" section.
+// for the "Strengths & Blind Spots" section. Only templates whose condition
+// actually holds for this result are included: threshold templates require
+// the trait value to reach ThresholdValue; increase/decrease templates need a
+// previous result to diff against, which this single-result job doesn't have,
+// so they're skipped (they belong to the dashboard trend surface).
 func (uc *GeneratePDFUseCase) collectInsights(ctx context.Context, result *testresult.TestResult) ([]string, error) {
 	var texts []string
-	for trait := range result.TraitScores {
-		templates, err := uc.insightRepo.FindMatchingTemplates(ctx, trait, result.Locale)
+	for trait, raw := range result.TraitScores {
+		value, ok := toNumeric(raw)
+		if !ok {
+			continue
+		}
+		// The template registry stores traits lowercase ("grit"); trait_scores
+		// keys are uppercase dimension codes ("GRIT") — normalize to match.
+		templates, err := uc.insightRepo.FindMatchingTemplates(ctx, strings.ToLower(trait), result.Locale)
 		if err != nil {
 			return nil, fmt.Errorf("find matching templates for trait %q: %w", trait, err)
 		}
 		for _, t := range templates {
-			texts = append(texts, t.TemplateText)
+			if t.ConditionType != content.ConditionThreshold || t.ThresholdValue == nil || value < *t.ThresholdValue {
+				continue
+			}
+			texts = append(texts, strings.ReplaceAll(t.TemplateText, "{value}", strconv.Itoa(int(value))))
 		}
 	}
 	return texts, nil
+}
+
+// toNumeric coerces a jsonb-roundtripped trait score (float64 after
+// unmarshal, int fresh from ComputeScores) into a comparable float64.
+func toNumeric(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int:
+		return float64(n), true
+	default:
+		return 0, false
+	}
 }
 
 // objectKey builds the mandatory R2 key convention from

@@ -47,12 +47,15 @@ func (r *PromptAuditLogRepository) DeleteByTestResultID(ctx context.Context, tes
 	return postgres.LogQueryError(r.log, "DeleteByTestResultID", err)
 }
 
-func (r *PromptAuditLogRepository) DeleteExpired(ctx context.Context) error {
-	err := r.db.WithContext(ctx).
+func (r *PromptAuditLogRepository) DeleteExpired(ctx context.Context) (int64, error) {
+	res := r.db.WithContext(ctx).
 		Where("expires_at < ?", time.Now()).
-		Delete(&postgres.PromptAuditLogModel{}).Error
+		Delete(&postgres.PromptAuditLogModel{})
 
-	return postgres.LogQueryError(r.log, "DeleteExpired", err)
+	if err := postgres.LogQueryError(r.log, "DeleteExpired", res.Error); err != nil {
+		return 0, err
+	}
+	return res.RowsAffected, nil
 }
 
 // DeleteByUserID removes every prompt audit log tied to any test result

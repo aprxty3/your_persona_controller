@@ -67,21 +67,38 @@ func (r *TestResultRepository) Update(ctx context.Context, res *testresult.TestR
 	return postgres.LogQueryError(r.log, "Update", r.db.WithContext(ctx).Save(&m).Error)
 }
 
-// CountMonthlyUsage counts completed/fallback_static results for the given user in the current month in Asia/Jakarta timezone.
-func (r *TestResultRepository) CountMonthlyUsage(ctx context.Context, userID string) (int64, error) {
+// startOfCurrentMonthJakarta returns the first instant of the current
+// calendar month in Asia/Jakarta — the quota month boundary.
+func startOfCurrentMonthJakarta() time.Time {
 	loc, err := time.LoadLocation("Asia/Jakarta")
 	if err != nil {
 		loc = time.Local
 	}
 	now := time.Now().In(loc)
-	startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+	return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+}
 
+// CountMonthlyUsage counts completed/fallback_static results for the given user in the current month in Asia/Jakarta timezone.
+func (r *TestResultRepository) CountMonthlyUsage(ctx context.Context, userID string) (int64, error) {
 	var count int64
-	err = r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
-		Where("(user_id = ? OR guest_session_id = ?) AND status IN (?, ?) AND created_at >= ?",
-			userID, userID, string(testresult.StatusCompleted), string(testresult.StatusFallbackStatic), startOfMonth).
+	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
+		Where("user_id = ? AND status IN (?, ?) AND created_at >= ?",
+			userID, string(testresult.StatusCompleted), string(testresult.StatusFallbackStatic), startOfCurrentMonthJakarta()).
 		Count(&count).Error
 	if err := postgres.LogQueryError(r.log, "CountMonthlyUsage", err); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// CountMonthlyUsageByGuestSession counts completed/fallback_static results for the given guest session in the current month in Asia/Jakarta timezone.
+func (r *TestResultRepository) CountMonthlyUsageByGuestSession(ctx context.Context, guestSessionID string) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).Model(&postgres.TestResultModel{}).
+		Where("guest_session_id = ? AND status IN (?, ?) AND created_at >= ?",
+			guestSessionID, string(testresult.StatusCompleted), string(testresult.StatusFallbackStatic), startOfCurrentMonthJakarta()).
+		Count(&count).Error
+	if err := postgres.LogQueryError(r.log, "CountMonthlyUsageByGuestSession", err); err != nil {
 		return 0, err
 	}
 	return count, nil

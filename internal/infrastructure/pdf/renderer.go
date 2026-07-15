@@ -122,6 +122,9 @@ func addChartSection(m core.Maroto, data pdf.PDFData, ph placeholderSet) {
 		addBarRow(m, "GRIT", float64(data.GritScore), 100)
 	}
 	for _, trait := range sortedTraitKeys(data.TraitScores) {
+		if trait == "GRIT" {
+			continue // already drawn above from data.GritScore — same number, avoid a duplicate bar
+		}
 		v, ok := toFloat64(data.TraitScores[trait])
 		if !ok {
 			continue

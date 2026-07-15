@@ -36,6 +36,8 @@ func toQuestionEntity(model *postgres.QuestionModel) content.Question {
 		IsReverseScored:  model.IsReverseScored,
 		IsAttentionCheck: model.IsAttentionCheck,
 		DisplayOrder:     model.DisplayOrder,
+		Trait:            model.Trait,
+		OptionTraitMap:   model.OptionTraitMap,
 	}
 }
 

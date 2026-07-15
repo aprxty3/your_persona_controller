@@ -78,15 +78,10 @@ func NewResultUseCase(repo ResultRepository, signer PDFSignerService, log logger
 // GetByID returns a TestResult's public detail view. Any caller holding the
 // (unguessable UUID) result ID may view it.
 func (uc *ResultUseCase) GetByID(ctx context.Context, id, callerUserID, callerGuestSessionID string) (*ResultResponse, error) {
-	result, err := uc.repo.FindByID(ctx, id)
+	result, err := uc.findVisible(ctx, id)
 	if err != nil {
-		uc.log.Error("get result failed", "step", "lookup", "result_id", id, "error", err)
-		return nil, fmt.Errorf("get_result: %w", err)
+		return nil, err
 	}
-	if result == nil {
-		return nil, application.ErrResultNotFound
-	}
-
 	return toResultResponse(result, isResultOwner(result, callerUserID, callerGuestSessionID)), nil
 }
 
@@ -96,16 +91,9 @@ func (uc *ResultUseCase) UpdateMascotStyle(ctx context.Context, req UpdateMascot
 		return nil, fmt.Errorf("%w: mascot_style must be %q or %q", application.ErrInvalidInput, MascotStyleA, MascotStyleB)
 	}
 
-	result, err := uc.repo.FindByID(ctx, req.ResultID)
+	result, err := uc.findOwned(ctx, req.ResultID, req.CallerUserID, req.CallerGuestSessionID)
 	if err != nil {
-		uc.log.Error("update mascot style failed", "step", "lookup", "result_id", req.ResultID, "error", err)
-		return nil, fmt.Errorf("update_mascot_style: %w", err)
-	}
-	if result == nil {
-		return nil, application.ErrResultNotFound
-	}
-	if !isResultOwner(result, req.CallerUserID, req.CallerGuestSessionID) {
-		return nil, application.ErrForbidden
+		return nil, err
 	}
 
 	result.MascotStyle = req.MascotStyle
@@ -144,15 +132,27 @@ func (uc *ResultUseCase) GetPDFDownloadURL(ctx context.Context, id, callerUserID
 	return &PDFDownloadResponse{URL: signedURL}, nil
 }
 
-// findOwned loads a result and enforces ownership
-func (uc *ResultUseCase) findOwned(ctx context.Context, id, callerUserID, callerGuestSessionID string) (*testresult.TestResult, error) {
+// findVisible loads a result and applies the retention visibility rule shared
+// by every result-access path: a row past its expires_at is treated as 404
+// whether or not the daily purge has physically removed it yet. This makes
+// the purge design idempotent without an is_purging marker.
+func (uc *ResultUseCase) findVisible(ctx context.Context, id string) (*testresult.TestResult, error) {
 	result, err := uc.repo.FindByID(ctx, id)
 	if err != nil {
-		uc.log.Error("find owned result failed", "step", "lookup", "result_id", id, "error", err)
-		return nil, fmt.Errorf("find_owned_result: %w", err)
+		uc.log.Error("find result failed", "step", "lookup", "result_id", id, "error", err)
+		return nil, fmt.Errorf("find_result: %w", err)
 	}
-	if result == nil {
+	if result == nil || result.IsExpired() {
 		return nil, application.ErrResultNotFound
+	}
+	return result, nil
+}
+
+// findOwned loads a visible result and enforces ownership
+func (uc *ResultUseCase) findOwned(ctx context.Context, id, callerUserID, callerGuestSessionID string) (*testresult.TestResult, error) {
+	result, err := uc.findVisible(ctx, id)
+	if err != nil {
+		return nil, err
 	}
 	if !isResultOwner(result, callerUserID, callerGuestSessionID) {
 		return nil, application.ErrForbidden

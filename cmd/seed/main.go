@@ -61,28 +61,36 @@ func main() {
 }
 
 func seedQuestions(db *gorm.DB) error {
+	// SJT option → dimension point maps. Positive points lean toward
+	// the dimension's FIRST pole (E/S/T/J), negative toward the second (I/N/F/P).
+	sjtTraitMap1 := `{"A":{"EI":2},"B":{"EI":-2},"C":{"TF":-1},"D":{"EI":-1},"E":{}}`
+	sjtTraitMap2 := `{"A":{"JP":1},"B":{"TF":1},"C":{"EI":1},"D":{"JP":-1},"E":{}}`
+	sjtTraitMap3 := `{"A":{"TF":1,"EI":1},"B":{},"C":{"TF":-1},"D":{"JP":1},"E":{}}`
+
 	questions := []postgres.QuestionModel{
-		// Section A - SJT (mc)
-		{ID: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", Section: "A", Type: "mc", DisplayOrder: 1},
-		{ID: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12", Section: "A", Type: "mc", DisplayOrder: 2},
-		{ID: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13", Section: "A", Type: "mc", DisplayOrder: 3},
+		// Section A - SJT (mc) — scored via option_trait_map, not trait
+		{ID: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11", Section: "A", Type: "mc", DisplayOrder: 1, OptionTraitMap: &sjtTraitMap1},
+		{ID: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12", Section: "A", Type: "mc", DisplayOrder: 2, OptionTraitMap: &sjtTraitMap2},
+		{ID: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13", Section: "A", Type: "mc", DisplayOrder: 3, OptionTraitMap: &sjtTraitMap3},
 
-		// Section B - Likert
-		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b11", Section: "B", Type: "likert", DisplayOrder: 4},
-		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b12", Section: "B", Type: "likert", DisplayOrder: 5},
-		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b13", Section: "B", Type: "likert", DisplayOrder: 6},
-		// Reverse-scored (FR-B2)
-		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b14", Section: "B", Type: "likert", IsReverseScored: true, DisplayOrder: 7},
-		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b15", Section: "B", Type: "likert", DisplayOrder: 8},
-		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b16", Section: "B", Type: "likert", DisplayOrder: 9},
-		// Attention check (FR-B2)
+		// Section B - Likert — each item measures exactly one dimension (trait)
+		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b11", Section: "B", Type: "likert", DisplayOrder: 4, Trait: "EI"},
+		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b12", Section: "B", Type: "likert", DisplayOrder: 5, Trait: "SN"},
+		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b13", Section: "B", Type: "likert", DisplayOrder: 6, Trait: "TF"},
+		// Reverse-scored
+		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b14", Section: "B", Type: "likert", IsReverseScored: true, DisplayOrder: 7, Trait: "GRIT"},
+		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b15", Section: "B", Type: "likert", DisplayOrder: 8, Trait: "JP"},
+		// Reverse-scored: statement measures the N pole, so agreement must move away from S
+		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b16", Section: "B", Type: "likert", IsReverseScored: true, DisplayOrder: 9, Trait: "SN"},
+		// Attention check  — excluded from scoring entirely, no trait
 		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b17", Section: "B", Type: "likert", IsAttentionCheck: true, DisplayOrder: 10},
-		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b18", Section: "B", Type: "likert", DisplayOrder: 11},
-		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b19", Section: "B", Type: "likert", DisplayOrder: 12},
-		// Reverse-scored (FR-B2)
-		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b20", Section: "B", Type: "likert", IsReverseScored: true, DisplayOrder: 13},
+		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b18", Section: "B", Type: "likert", DisplayOrder: 11, Trait: "GRIT"},
+		// Reverse-scored: classic Duckworth Grit Scale reverse-keyed item — agreement = lower grit
+		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b19", Section: "B", Type: "likert", IsReverseScored: true, DisplayOrder: 12, Trait: "GRIT"},
+		// Reverse-scored
+		{ID: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b20", Section: "B", Type: "likert", IsReverseScored: true, DisplayOrder: 13, Trait: "GRIT"},
 
-		// Section C - Essay Prompt
+		// Section C - Essay Prompt — analyzed by Gemini, never scored numerically
 		{ID: "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380c11", Section: "C", Type: "essay_prompt", DisplayOrder: 14},
 		{ID: "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380c12", Section: "C", Type: "essay_prompt", DisplayOrder: 15},
 	}
@@ -91,7 +99,7 @@ func seedQuestions(db *gorm.DB) error {
 	for _, q := range questions {
 		err := db.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "id"}},
-			DoUpdates: clause.AssignmentColumns([]string{"section", "type", "is_reverse_scored", "is_attention_check", "display_order"}),
+			DoUpdates: clause.AssignmentColumns([]string{"section", "type", "is_reverse_scored", "is_attention_check", "display_order", "trait", "option_trait_map"}),
 		}).Create(&q).Error
 		if err != nil {
 			return err
@@ -248,7 +256,7 @@ func seedQuestions(db *gorm.DB) error {
 			QuestionText: "Saya aktif mencari pengalaman baru dan perubahan.",
 			Options:      &likertOptionsID,
 		},
-		// Likert 7 (Attention check - FR-B2: select "Agree / Setuju")
+		// Likert 7 (Attention check)
 		{
 			ID:           "b7eebc99-9c0b-4ef8-bb6d-6bb9bd380b11",
 			QuestionID:   "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b17",

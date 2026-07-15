@@ -97,8 +97,33 @@ func (uc *PurgeGuestTTLUseCase) Execute(ctx context.Context) (int, error) {
 		}
 	}
 
-	if purged > 0 || len(expiredSessionIDs) > 0 {
-		uc.log.Info("guest ttl purge done", "results_purged", purged, "guest_sessions_purged", len(expiredSessionIDs))
+	orphansPurged := uc.purgeOrphanSessions(ctx)
+
+	if purged > 0 || len(expiredSessionIDs) > 0 || orphansPurged > 0 {
+		uc.log.Info("guest ttl purge done", "results_purged", purged, "guest_sessions_purged", len(expiredSessionIDs), "orphan_sessions_purged", orphansPurged)
 	}
 	return purged, nil
+}
+
+// purgeOrphanSessions sweeps expired, unclaimed guest sessions that never
+// produced a test result. FindExpiredUnclaimed's query excludes
+// any session that still has a test_results row, so sessions whose result is
+// alive — or pending deletion by the result loop above — are never touched.
+// Per-row skip-on-error, same policy as the rest of this job.
+func (uc *PurgeGuestTTLUseCase) purgeOrphanSessions(ctx context.Context) int {
+	orphans, err := uc.guestRepo.FindExpiredUnclaimed(ctx)
+	if err != nil {
+		uc.log.Error("guest ttl purge failed", "step", "find_orphan_sessions", "error", err)
+		return 0
+	}
+
+	purged := 0
+	for _, s := range orphans {
+		if err := uc.guestRepo.DeleteBySessionID(ctx, s.SessionID); err != nil {
+			uc.log.Error("guest ttl purge failed", "step", "delete_orphan_session", "session_id", s.SessionID, "error", err)
+			continue
+		}
+		purged++
+	}
+	return purged
 }

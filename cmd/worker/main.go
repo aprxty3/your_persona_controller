@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"syscall"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/application/auditpurge"
 	appdeletion "github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/guestpurge"
 	apppdf "github.com/aprxty3/your_persona_controller.git/internal/application/pdf"
@@ -116,7 +117,8 @@ func main() {
 	anonymizeHandler := workerhandler.NewAnonymizeHandler(anonymizeUseCase, logInstance)
 
 	purgeUseCase := guestpurge.NewPurgeGuestTTLUseCase(db, testResultRepo, guestSessionRepo, s3Client, logInstance)
-	purgeHandler := workerhandler.NewPurgeHandler(purgeUseCase, logInstance)
+	auditPurgeUseCase := auditpurge.NewPurgeAuditTTLUseCase(pgassessment.NewPromptAuditLogRepository(db, logInstance), logInstance)
+	purgeHandler := workerhandler.NewPurgeHandler(purgeUseCase, auditPurgeUseCase, logInstance)
 
 	generatePDFUseCase := apppdf.NewGeneratePDFUseCase(
 		testResultRepo,
@@ -168,6 +170,7 @@ func main() {
 	mux.HandleFunc(taskqueue.TaskDeletionScan, anonymizeHandler.ProcessScan)
 	mux.HandleFunc(taskqueue.TaskAnonymize, anonymizeHandler.ProcessAnonymize)
 	mux.HandleFunc(taskqueue.TaskPurgeGuest, purgeHandler.ProcessPurge)
+	mux.HandleFunc(taskqueue.TaskPurgeAuditLog, purgeHandler.ProcessAuditPurge)
 	mux.HandleFunc(taskqueue.TaskGeneratePDF, pdfHandler.ProcessTask)
 
 	scheduler := asynq.NewScheduler(redisOpt, nil)
@@ -185,6 +188,13 @@ func main() {
 	); err != nil {
 		log.Fatalf("Failed to register guest ttl purge schedule: %v", err)
 	}
+	if _, err := scheduler.Register(
+		"@daily",
+		asynq.NewTask(taskqueue.TaskPurgeAuditLog, nil),
+		asynq.Queue(taskqueue.QueueLow),
+	); err != nil {
+		log.Fatalf("Failed to register audit ttl purge schedule: %v", err)
+	}
 	if err := scheduler.Start(); err != nil {
 		log.Fatalf("Failed to start scheduler: %v", err)
 	}
@@ -197,6 +207,10 @@ func main() {
 	if _, err := asynqClient.EnqueueContext(context.Background(),
 		asynq.NewTask(taskqueue.TaskPurgeGuest, nil), asynq.Queue(taskqueue.QueueLow)); err != nil {
 		log.Printf("WARN: failed to enqueue startup guest ttl purge (next daily tick will cover it): %v", err)
+	}
+	if _, err := asynqClient.EnqueueContext(context.Background(),
+		asynq.NewTask(taskqueue.TaskPurgeAuditLog, nil), asynq.Queue(taskqueue.QueueLow)); err != nil {
+		log.Printf("WARN: failed to enqueue startup audit ttl purge (next daily tick will cover it): %v", err)
 	}
 
 	go func() {

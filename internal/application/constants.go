@@ -8,6 +8,13 @@ import "time"
 // it) so the two never drift out of sync — see PRD Section 5.1's quota table.
 const MemberMonthlyQuota = 3
 
+// GuestMonthlyQuota is the number of assessments a Guest session_id may
+// complete per calendar month (Asia/Jakarta). Soft enforcement per PRD
+// Section 5: clearing the cookie mints a new session and resets this — that
+// bypass is accepted by design; the point is blocking the cheapest
+// Denial-of-Wallet path (same session spamming paid Gemini calls). TICKET-19.
+const GuestMonthlyQuota = 1
+
 // OTPLength is the digit count of every generated one-time-password —
 // email verification and password reset both mint codes via pkg/otp.GenerateOTP(OTPLength).
 const OTPLength = 6

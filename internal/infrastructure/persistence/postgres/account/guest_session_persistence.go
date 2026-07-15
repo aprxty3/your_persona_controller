@@ -46,11 +46,17 @@ func (r *GuestSessionRepository) Update(ctx context.Context, s *account.GuestSes
 	return postgres.LogQueryError(r.log, "Update", r.db.WithContext(ctx).Save(&m).Error)
 }
 
-// FindExpiredUnclaimed retrieves guest sessions that are expired and unclaimed.
+// FindExpiredUnclaimed retrieves expired, unclaimed guest sessions that have
+// no test result at all (orphans: onboarding filled, never submitted). The
+// NOT EXISTS guard matters — a session can expire while its result is still
+// inside the 14-day TTL (result TTL counts from submit, session TTL from
+// creation), and those sessions belong to the result-driven purge path, not
+// this sweep.
 func (r *GuestSessionRepository) FindExpiredUnclaimed(ctx context.Context) ([]account.GuestSession, error) {
 	var models []postgres.GuestSessionModel
 	err := r.db.WithContext(ctx).
 		Where("expires_at < NOW() AND claimed_by_user_id IS NULL").
+		Where("NOT EXISTS (SELECT 1 FROM test_results WHERE test_results.guest_session_id = guest_sessions.session_id)").
 		Find(&models).Error
 	if err := postgres.LogQueryError(r.log, "FindExpiredUnclaimed", err); err != nil {
 		return nil, err

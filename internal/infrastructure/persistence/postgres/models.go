@@ -116,12 +116,14 @@ func (DataDeletionRequestModel) TableName() string { return "data_deletion_reque
 
 // QuestionModel represents GORM model for questions table.
 type QuestionModel struct {
-	ID               string `gorm:"primaryKey;type:uuid"`
-	Section          string `gorm:"type:varchar(10);not null"`
-	Type             string `gorm:"type:varchar(20);not null"`
-	IsReverseScored  bool   `gorm:"not null;default:false"`
-	IsAttentionCheck bool   `gorm:"not null;default:false"`
-	DisplayOrder     int    `gorm:"not null"`
+	ID               string  `gorm:"primaryKey;type:uuid"`
+	Section          string  `gorm:"type:varchar(10);not null"`
+	Type             string  `gorm:"type:varchar(20);not null"`
+	IsReverseScored  bool    `gorm:"not null;default:false"`
+	IsAttentionCheck bool    `gorm:"not null;default:false"`
+	DisplayOrder     int     `gorm:"not null"`
+	Trait            string  `gorm:"type:varchar(10);not null;default:''"` // scoring dimension a Likert item measures (EI/SN/TF/JP/GRIT); empty for SJT, essay, and attention checks
+	OptionTraitMap   *string `gorm:"type:jsonb"`                           // SJT only: per-option signed dimension points, e.g. {"A":{"EI":2},"B":{"EI":-2}}
 }
 
 func (QuestionModel) TableName() string { return "questions" }

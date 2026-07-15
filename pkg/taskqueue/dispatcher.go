@@ -16,11 +16,12 @@ const (
 )
 
 const (
-	TaskSendEmail    = "send:email"
-	TaskGeneratePDF  = "generate:pdf"
-	TaskAnonymize    = "anonymize:user"
-	TaskPurgeGuest   = "purge:guest-ttl"
-	TaskDeletionScan = "deletion:scan-expired"
+	TaskSendEmail     = "send:email"
+	TaskGeneratePDF   = "generate:pdf"
+	TaskAnonymize     = "anonymize:user"
+	TaskPurgeGuest    = "purge:guest-ttl"
+	TaskPurgeAuditLog = "purge:audit-ttl"
+	TaskDeletionScan  = "deletion:scan-expired"
 )
 
 // SendEmailPayload is the canonical payload for all send:email tasks.
