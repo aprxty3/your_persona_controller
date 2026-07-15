@@ -10,10 +10,6 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 )
 
-// gritTrendPoints caps how many recent results feed the GRIT trend  —
-// a handful of points is enough for a sparkline, and keeps the query cheap.
-const gritTrendPoints = 5
-
 // TestResultRepository is the narrow slice of TestResult persistence the
 // dashboard needs — scoped smaller than the full domain testresult.TestResultRepository.
 type TestResultRepository interface {
@@ -72,7 +68,7 @@ func (uc *DashboardUseCase) GetDashboard(ctx context.Context, userID string) (*D
 		return nil, fmt.Errorf("get_dashboard: count usage: %w", err)
 	}
 
-	recent, _, err := uc.testResultRepo.FindHistoryByUser(ctx, userID, 1, gritTrendPoints)
+	recent, _, err := uc.testResultRepo.FindHistoryByUser(ctx, userID, 1, application.GritTrendPoints)
 	if err != nil {
 		uc.log.Error("get dashboard failed", "step", "find_recent", "user_id", userID, "error", err)
 		return nil, fmt.Errorf("get_dashboard: find recent: %w", err)

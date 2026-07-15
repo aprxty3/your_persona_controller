@@ -43,3 +43,7 @@ const GuestDataRetention = 14 * 24 * time.Hour
 // deletion grace period vs. guest data auto-purge) — kept as its own
 // constant so the two can diverge independently if either policy changes.
 const DeletionGracePeriod = 14 * 24 * time.Hour
+
+// GritTrendPoints caps how many recent results feed the GRIT trend  —
+// a handful of points is enough for a sparkline, and keeps the query cheap.
+const GritTrendPoints = 5
