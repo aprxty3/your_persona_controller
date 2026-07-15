@@ -9,6 +9,9 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ### Scoring Engine, Retention Sweeps, Guest Quota (TICKET-17, TICKET-18, TICKET-19)
 
+#### [C] `GET /v1/questions` no longer exposes scoring metadata (contract change, pre-FE-integration)
+- `is_reverse_scored` and `is_attention_check` removed from the public question-bank response (present since TICKET-04). Both are scoring internals, not rendering data: exposing which item is the attention check lets a bot always answer it correctly (defeating its entire purpose), and exposing scoring direction helps users game their MBTI/GRIT results. Found while deliberately keeping TICKET-17's new `trait`/`option_trait_map` columns (the literal answer key) out of this DTO — the two older fields fail the same test. FE renders every question identically and never needed them. Non-breaking in practice: no client consumes the API yet. Swagger regenerated.
+
 #### [A] Scoring engine — MBTI type, GRIT score & trait scores now computed on every submit (TICKET-17)
 - **Closes the biggest remaining backend gap**: `TEST_RESULT.mbti_type`/`grit_score`/`trait_scores` were zero-value since TICKET-03 (flagged in every downstream ticket). New pure function `assessment.ComputeScores` (`internal/application/assessment/scoring.go`) — no DB, no side effects; returns a `ScoreResult` struct (deliberate deviation from the ticket's 3-bare-returns signature: the struct also carries `NeutralFallbackDimensions` so the use case can Warn-log empty dimensions while the function itself stays pure/loggerless).
 - **Schema**: `QuestionModel` gained `Trait varchar(10)` (Likert → one of EI/SN/TF/JP/GRIT) and `OptionTraitMap jsonb` (SJT → per-option signed points, positive = first pole). Mirrored (tagless) on domain entity `content.Question` + mapper. AutoMigrate picks the columns up; re-running the seeder backfills existing rows (upsert `DoUpdates` extended).

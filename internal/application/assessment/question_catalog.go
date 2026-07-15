@@ -14,19 +14,23 @@ type QuestionCatalogRepository interface {
 	FindAllWithTranslation(ctx context.Context, locale string) ([]content.Question, map[string]content.QuestionTranslation, error)
 }
 
-// QuestionResponse is a single question bank entry translated to the negotiated locale.
+// QuestionResponse is a single question bank entry translated to the
+// negotiated locale. Deliberately excludes ALL scoring metadata
+// (is_reverse_scored, is_attention_check, trait, option_trait_map): this
+// endpoint is public and unauthenticated, and those fields are an answer key —
+// exposing which item is the attention check lets a bot always pass it, and
+// exposing scoring direction lets users game their MBTI/GRIT results. The FE
+// renders every question identically and never needs them.
 type QuestionResponse struct {
-	ID               string  `json:"id"`
-	Section          string  `json:"section"`
-	Type             string  `json:"type"`
-	IsReverseScored  bool    `json:"is_reverse_scored"`
-	IsAttentionCheck bool    `json:"is_attention_check"`
-	DisplayOrder     int     `json:"display_order"`
-	QuestionText     string  `json:"question_text"`
-	Options          *string `json:"options,omitempty"`
+	ID           string  `json:"id"`
+	Section      string  `json:"section"`
+	Type         string  `json:"type"`
+	DisplayOrder int     `json:"display_order"`
+	QuestionText string  `json:"question_text"`
+	Options      *string `json:"options,omitempty"`
 }
 
-// QuestionCatalogUseCase serves the locale-aware question bank (FR-I4).
+// QuestionCatalogUseCase serves the locale-aware question bank.
 type QuestionCatalogUseCase struct {
 	repo QuestionCatalogRepository
 	log  logger.Logger
@@ -50,14 +54,12 @@ func (uc *QuestionCatalogUseCase) ListQuestions(ctx context.Context, locale stri
 	for _, q := range questions {
 		tr := translations[q.ID]
 		resp = append(resp, QuestionResponse{
-			ID:               q.ID,
-			Section:          string(q.Section),
-			Type:             string(q.Type),
-			IsReverseScored:  q.IsReverseScored,
-			IsAttentionCheck: q.IsAttentionCheck,
-			DisplayOrder:     q.DisplayOrder,
-			QuestionText:     tr.QuestionText,
-			Options:          tr.Options,
+			ID:           q.ID,
+			Section:      string(q.Section),
+			Type:         string(q.Type),
+			DisplayOrder: q.DisplayOrder,
+			QuestionText: tr.QuestionText,
+			Options:      tr.Options,
 		})
 	}
 	return resp, nil

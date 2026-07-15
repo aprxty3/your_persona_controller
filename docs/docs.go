@@ -1504,12 +1504,6 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "is_attention_check": {
-                    "type": "boolean"
-                },
-                "is_reverse_scored": {
-                    "type": "boolean"
-                },
                 "options": {
                     "type": "string"
                 },
