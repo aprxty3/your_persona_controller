@@ -25,6 +25,9 @@ var (
 	trackColor = props.Color{Red: 226, Green: 232, Blue: 240}
 )
 
+// MarotoRenderer is the maroto v2 implementation of pdf.PDFRenderer.
+type MarotoRenderer struct{}
+
 // placeholderSet is the locale-specific copy shown for sections whose source
 // data doesn't exist yet (MBTIType/GritScore/TraitScores/StrengthsBlindSpots
 // are zero-value until the scoring algorithm ticket lands).
@@ -56,9 +59,6 @@ func placeholderFor(locale string) placeholderSet {
 	}
 	return placeholders["en"]
 }
-
-// MarotoRenderer is the maroto v2 implementation of pdf.PDFRenderer.
-type MarotoRenderer struct{}
 
 // NewMarotoRenderer creates a new MarotoRenderer.
 func NewMarotoRenderer() pdf.PDFRenderer {

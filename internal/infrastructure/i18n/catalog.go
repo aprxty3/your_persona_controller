@@ -1,6 +1,3 @@
-// Package i18n loads transactional-email message catalogs from external
-// JSON files (locales/*.json) — separate from Go code so content/translator
-// teams can edit copy without touching or recompiling business logic.
 package i18n
 
 import (
@@ -48,10 +45,8 @@ func LoadCatalog() (*Catalog, error) {
 }
 
 // Message returns the subject/body pair for purpose in the requested
-// locale, resolving unsupported/unset locales to EN via pkg/locale.Resolve —
-// the same fallback authority used by QUESTION_TRANSLATION and
-// INSIGHT_TEMPLATE lookups (FR-I9), so there is exactly one fallback rule
-// in the codebase. ok is false when purpose doesn't exist in any locale.
+// locale, resolving unsupported/unset locales to EN via pkg/locale.Resolve
+// ok is false when purpose doesn't exist in any locale.
 func (c *Catalog) Message(purpose, locale string) (msg Message, ok bool) {
 	perPurpose, found := c.messages[pkglocale.Resolve(locale)]
 	if !found {
