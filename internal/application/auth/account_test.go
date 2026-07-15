@@ -37,6 +37,14 @@ func TestValidateOTPAttempt_FifthWrongGuess_RejectsWithMaxAttempts(t *testing.T)
 	tok := newActiveToken("123456")
 	tokenRepo := accountmocks.NewMockVerificationTokenRepository(t)
 	tokenRepo.EXPECT().FindActiveByUserAndType(mock.Anything, "user-1", account.TokenTypeEmailVerification).Return(tok, nil).Times(application.MaxWrongOTPAttempts)
+	// Unlike the single-call tests below, this mutates tok.AttemptCount: this
+	// test drives 5 SEPARATE validateOTPAttempt calls, each doing its own
+	// FindActiveByUserAndType — mutating here simulates the DB row's
+	// attempt_count actually persisting between those calls (a real repeat
+	// lookup would see it). It only matters across calls, not within one, so
+	// it doesn't skew any single call's "remaining" arithmetic here — this
+	// test only asserts the final error and final count, not intermediate
+	// remaining values.
 	tokenRepo.EXPECT().IncrementAttemptCount(mock.Anything, "token-1").RunAndReturn(func(ctx context.Context, id string) error {
 		tok.AttemptCount++
 		return nil
@@ -93,10 +101,12 @@ func TestValidateOTPAttempt_WrongCode_IncrementsAndReturnsRemaining(t *testing.T
 	tok := newActiveToken("123456")
 	tokenRepo := accountmocks.NewMockVerificationTokenRepository(t)
 	tokenRepo.EXPECT().FindActiveByUserAndType(mock.Anything, "user-1", account.TokenTypeEmailVerification).Return(tok, nil).Once()
-	tokenRepo.EXPECT().IncrementAttemptCount(mock.Anything, "token-1").RunAndReturn(func(ctx context.Context, id string) error {
-		tok.AttemptCount++
-		return nil
-	}).Once()
+	// Deliberately does NOT mutate tok.AttemptCount here: the real Postgres
+	// repository only issues an UPDATE against the DB row (by token ID) — it
+	// never has access to, and never mutates, the caller's in-memory struct.
+	// validateOTPAttempt's "remaining" formula relies on that: it reads
+	// token.AttemptCount as the PRE-increment snapshot and adds 1 itself.
+	tokenRepo.EXPECT().IncrementAttemptCount(mock.Anything, "token-1").Return(nil).Once()
 
 	_, remaining, err := validateOTPAttempt(context.Background(), tokenRepo, "user-1", "000000", account.TokenTypeEmailVerification, testLogger())
 	if !errors.Is(err, application.ErrInvalidOTP) {
