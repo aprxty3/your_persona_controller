@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application/pdf"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/pdf/dto"
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
@@ -65,7 +66,7 @@ func NewMarotoRenderer() pdf.PDFRenderer {
 	return &MarotoRenderer{}
 }
 
-func (r *MarotoRenderer) Render(_ context.Context, data pdf.PDFData) ([]byte, error) {
+func (r *MarotoRenderer) Render(_ context.Context, data dto.PDFData) ([]byte, error) {
 	m := maroto.New(config.NewBuilder().WithPageSize(pagesize.A4).Build())
 	ph := placeholderFor(data.Locale)
 
@@ -83,7 +84,7 @@ func (r *MarotoRenderer) Render(_ context.Context, data pdf.PDFData) ([]byte, er
 	return doc.GetBytes(), nil
 }
 
-func addHeader(m core.Maroto, data pdf.PDFData, ph placeholderSet) {
+func addHeader(m core.Maroto, data dto.PDFData, ph placeholderSet) {
 	m.AddRow(16, text.NewCol(gridSize, "Your Persona's — Laporan Kepribadian", props.Text{
 		Size: 18, Style: fontstyle.Bold, Align: align.Left,
 	}))
@@ -99,7 +100,7 @@ func displayNameOrDefault(name string) string {
 	return name
 }
 
-func addMBTISection(m core.Maroto, data pdf.PDFData, ph placeholderSet) {
+func addMBTISection(m core.Maroto, data dto.PDFData, ph placeholderSet) {
 	m.AddRow(8, text.NewCol(gridSize, "Tipe MBTI", props.Text{Size: 13, Style: fontstyle.Bold}))
 	if data.MBTIType != "" {
 		m.AddRow(10, text.NewCol(gridSize, data.MBTIType, props.Text{Size: 12, Style: fontstyle.Bold, Color: &brandColor}))
@@ -109,7 +110,7 @@ func addMBTISection(m core.Maroto, data pdf.PDFData, ph placeholderSet) {
 	m.AddRow(4, col.New(gridSize))
 }
 
-func addChartSection(m core.Maroto, data pdf.PDFData, ph placeholderSet) {
+func addChartSection(m core.Maroto, data dto.PDFData, ph placeholderSet) {
 	m.AddRow(8, text.NewCol(gridSize, "Spektrum Kepribadian & GRIT", props.Text{Size: 13, Style: fontstyle.Bold}))
 
 	if len(data.TraitScores) == 0 && data.GritScore == 0 {
@@ -182,7 +183,7 @@ func toFloat64(v interface{}) (float64, bool) {
 	}
 }
 
-func addInsightsSection(m core.Maroto, data pdf.PDFData, ph placeholderSet) {
+func addInsightsSection(m core.Maroto, data dto.PDFData, ph placeholderSet) {
 	m.AddRow(8, text.NewCol(gridSize, "Kekuatan & Area Pengembangan", props.Text{Size: 13, Style: fontstyle.Bold}))
 	if len(data.StrengthsBlindSpots) == 0 {
 		m.AddRow(10, text.NewCol(gridSize, ph.Insights, props.Text{Size: 10, Style: fontstyle.Italic, Color: &mutedColor}))
@@ -194,7 +195,7 @@ func addInsightsSection(m core.Maroto, data pdf.PDFData, ph placeholderSet) {
 	m.AddRow(4, col.New(gridSize))
 }
 
-func addAIDeepDiveSection(m core.Maroto, data pdf.PDFData) {
+func addAIDeepDiveSection(m core.Maroto, data dto.PDFData) {
 	m.AddRow(8, text.NewCol(gridSize, "AI Deep Dive", props.Text{Size: 13, Style: fontstyle.Bold}))
 	if data.AISummaryText == "" {
 		return
@@ -203,7 +204,7 @@ func addAIDeepDiveSection(m core.Maroto, data pdf.PDFData) {
 	m.AddRow(4, col.New(gridSize))
 }
 
-func addEssayQuotesSection(m core.Maroto, data pdf.PDFData) {
+func addEssayQuotesSection(m core.Maroto, data dto.PDFData) {
 	if len(data.EssayQuotes) == 0 {
 		return
 	}

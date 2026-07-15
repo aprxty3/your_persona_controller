@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment/mocks"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 	"github.com/stretchr/testify/mock"
 )
@@ -19,7 +20,7 @@ func TestListQuestions_MapsAndOrders(t *testing.T) {
 		"q1": {QuestionText: "Question one"},
 		"q2": {QuestionText: "Question two", Options: &opts},
 	}
-	repo := NewMockQuestionCatalogRepository(t)
+	repo := mocks.NewMockQuestionCatalogRepository(t)
 	repo.EXPECT().FindAllWithTranslation(mock.Anything, "id").Return(questions, translations, nil).Once()
 	uc := NewQuestionCatalogUseCase(repo, testLogger())
 
@@ -43,7 +44,7 @@ func TestListQuestions_NeverExposesScoringMetadata(t *testing.T) {
 	questions := []content.Question{
 		{ID: "q1", Section: "b", Type: content.TypeLikert, Trait: "EI", IsReverseScored: true, IsAttentionCheck: true, OptionTraitMap: &optionMap},
 	}
-	repo := NewMockQuestionCatalogRepository(t)
+	repo := mocks.NewMockQuestionCatalogRepository(t)
 	repo.EXPECT().FindAllWithTranslation(mock.Anything, "en").Return(questions, map[string]content.QuestionTranslation{}, nil).Once()
 	uc := NewQuestionCatalogUseCase(repo, testLogger())
 
@@ -60,7 +61,7 @@ func TestListQuestions_NeverExposesScoringMetadata(t *testing.T) {
 }
 
 func TestListQuestions_RepoError_Propagates(t *testing.T) {
-	repo := NewMockQuestionCatalogRepository(t)
+	repo := mocks.NewMockQuestionCatalogRepository(t)
 	repo.EXPECT().FindAllWithTranslation(mock.Anything, "en").Return(nil, nil, errors.New("db down")).Once()
 	uc := NewQuestionCatalogUseCase(repo, testLogger())
 

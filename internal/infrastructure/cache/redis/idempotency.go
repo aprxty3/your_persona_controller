@@ -9,14 +9,15 @@ import (
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment/dto"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/redis/go-redis/v9"
 )
 
 // idempotencyEnvelope is the JSON shape stored in Redis
 type idempotencyEnvelope struct {
-	PayloadHash string                    `json:"payload_hash"`
-	Response    assessment.SubmitResponse `json:"response"`
+	PayloadHash string             `json:"payload_hash"`
+	Response    dto.SubmitResponse `json:"response"`
 }
 
 // IdempotencyService implements assessment.IdempotencyService using Redis.
@@ -31,7 +32,7 @@ func NewIdempotencyService(client *redis.Client, log logger.Logger) assessment.I
 }
 
 // Check returns the cached response if key exists and payloadHash matches.
-func (s *IdempotencyService) Check(ctx context.Context, key string, payloadHash string) (*assessment.SubmitResponse, error) {
+func (s *IdempotencyService) Check(ctx context.Context, key string, payloadHash string) (*dto.SubmitResponse, error) {
 	raw, err := s.client.Get(ctx, key).Result()
 	if errors.Is(err, redis.Nil) {
 		return nil, nil
@@ -55,7 +56,7 @@ func (s *IdempotencyService) Check(ctx context.Context, key string, payloadHash 
 }
 
 // Save writes the response under key, tagged with payloadHash, for ttl.
-func (s *IdempotencyService) Save(ctx context.Context, key string, payloadHash string, response *assessment.SubmitResponse, ttl time.Duration) error {
+func (s *IdempotencyService) Save(ctx context.Context, key string, payloadHash string, response *dto.SubmitResponse, ttl time.Duration) error {
 	env := idempotencyEnvelope{PayloadHash: payloadHash, Response: *response}
 
 	raw, err := json.Marshal(env)

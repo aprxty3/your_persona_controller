@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment/dto"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	goredis "github.com/redis/go-redis/v9"
 	tcredis "github.com/testcontainers/testcontainers-go/modules/redis"
@@ -148,7 +148,7 @@ func TestIntegration_IdempotencyService_CheckSaveRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	key := "idempotency_key:integration-test-" + time.Now().Format("150405.000000")
 
-	resp := &assessment.SubmitResponse{ResultID: "result-abc", MBTIType: "ENTJ", Status: "completed"}
+	resp := &dto.SubmitResponse{ResultID: "result-abc", MBTIType: "ENTJ", Status: "completed"}
 	if err := svc.Save(ctx, key, "hash-a", resp, time.Minute); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}

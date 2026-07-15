@@ -38,7 +38,7 @@ func NewAssessmentHandler(uc *assessment.SubmitAssessmentUseCase, log logger.Log
 // @Produce      json
 // @Param        Idempotency-Key header string true "Client-generated UUIDv4, replayed to dedupe retries"
 // @Param        request body dto.SubmitRequestDTO true "Locale + answer set"
-// @Success      200 {object} httpresponse.Response{data=assessment.SubmitResponse} "Assessment result"
+// @Success      200 {object} httpresponse.Response{data=dto.SubmitResponse} "Assessment result"
 // @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR — missing Idempotency-Key, malformed body, or neither session_id cookie nor access token present"
 // @Failure      409 {object} httpresponse.Response "IDEMPOTENCY_KEY_REUSED — same key replayed with a different payload"
 // @Failure      423 {object} httpresponse.Response "LOCK_NOT_ACQUIRED — a submission for this identity is already in flight"

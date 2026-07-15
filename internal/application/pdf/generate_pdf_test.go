@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/application/pdf/dto"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/pdf/mocks"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	accountmocks "github.com/aprxty3/your_persona_controller.git/internal/domain/account/mocks"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
@@ -55,10 +57,10 @@ func TestExecute_Success_UploadsAndMarksCompleted(t *testing.T) {
 	userRepo := accountmocks.NewMockUserRepository(t)
 	userRepo.EXPECT().FindByID(mock.Anything, "user-1").Return(&account.User{ID: "user-1", DisplayName: "Budi"}, nil).Once()
 
-	renderer := NewMockPDFRenderer(t)
-	renderer.EXPECT().Render(mock.Anything, mock.MatchedBy(func(d PDFData) bool { return d.DisplayName == "Budi" && d.MBTIType == "ENTJ" })).Return([]byte("%PDF-1.4..."), nil).Once()
+	renderer := mocks.NewMockPDFRenderer(t)
+	renderer.EXPECT().Render(mock.Anything, mock.MatchedBy(func(d dto.PDFData) bool { return d.DisplayName == "Budi" && d.MBTIType == "ENTJ" })).Return([]byte("%PDF-1.4..."), nil).Once()
 
-	uploader := NewMockPDFUploader(t)
+	uploader := mocks.NewMockPDFUploader(t)
 	uploader.EXPECT().Upload(mock.Anything, "member/user-1/r1.pdf", mock.Anything, "application/pdf").Return("https://r2.example/member/user-1/r1.pdf", nil).Once()
 
 	uc := NewGeneratePDFUseCase(trRepo, answerRepo, nil, nil, userRepo, nil, renderer, uploader, testLogger())
@@ -77,7 +79,7 @@ func TestExecute_RenderError_Propagates(t *testing.T) {
 	answerRepo.EXPECT().FindByTestResultID(mock.Anything, "r1").Return(nil, nil).Once()
 	guestRepo := accountmocks.NewMockGuestSessionRepository(t)
 	guestRepo.EXPECT().FindBySessionID(mock.Anything, "guest-1").Return(&account.GuestSession{SessionID: "guest-1", DisplayName: "Tamu"}, nil).Once()
-	renderer := NewMockPDFRenderer(t)
+	renderer := mocks.NewMockPDFRenderer(t)
 	renderer.EXPECT().Render(mock.Anything, mock.Anything).Return(nil, errors.New("render failed")).Once()
 
 	uc := NewGeneratePDFUseCase(trRepo, answerRepo, nil, nil, nil, guestRepo, renderer, nil, testLogger())

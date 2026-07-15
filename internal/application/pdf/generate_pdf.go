@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/application/pdf/dto"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
@@ -17,25 +17,12 @@ const pdfContentType = "application/pdf"
 
 // PDFRenderer turns assembled report data into PDF bytes.
 type PDFRenderer interface {
-	Render(ctx context.Context, data PDFData) ([]byte, error)
+	Render(ctx context.Context, data dto.PDFData) ([]byte, error)
 }
 
 // PDFUploader stores rendered PDF bytes and returns their public/stored URL.
 type PDFUploader interface {
 	Upload(ctx context.Context, key string, data []byte, contentType string) (url string, err error)
-}
-
-// PDFData is everything the renderer needs to produce one report.
-type PDFData struct {
-	DisplayName         string
-	Locale              string
-	MBTIType            string
-	GritScore           int
-	TraitScores         map[string]interface{}
-	AISummaryText       string
-	EssayQuotes         []string
-	StrengthsBlindSpots []string
-	CreatedAt           time.Time
 }
 
 // GeneratePDFUseCase implements the generate:pdf worker job : render a report from a completed TestResult and upload it to
@@ -120,20 +107,20 @@ func (uc *GeneratePDFUseCase) Execute(ctx context.Context, testResultID string) 
 	return nil
 }
 
-func (uc *GeneratePDFUseCase) buildData(ctx context.Context, result *testresult.TestResult) (PDFData, error) {
+func (uc *GeneratePDFUseCase) buildData(ctx context.Context, result *testresult.TestResult) (dto.PDFData, error) {
 	displayName, err := uc.resolveDisplayName(ctx, result)
 	if err != nil {
-		return PDFData{}, err
+		return dto.PDFData{}, err
 	}
 
 	essayQuotes, err := uc.collectEssayQuotes(ctx, result.ID)
 	if err != nil {
-		return PDFData{}, err
+		return dto.PDFData{}, err
 	}
 
 	strengthsBlindSpots, err := uc.collectInsights(ctx, result)
 	if err != nil {
-		return PDFData{}, err
+		return dto.PDFData{}, err
 	}
 
 	summary := ""
@@ -141,7 +128,7 @@ func (uc *GeneratePDFUseCase) buildData(ctx context.Context, result *testresult.
 		summary = *result.AISummaryText
 	}
 
-	return PDFData{
+	return dto.PDFData{
 		DisplayName:         displayName,
 		Locale:              result.Locale,
 		MBTIType:            result.MBTIType,

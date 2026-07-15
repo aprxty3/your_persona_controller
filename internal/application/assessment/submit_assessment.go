@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment/dto"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
@@ -43,15 +44,6 @@ type SubmitRequest struct {
 	Answers        []AnswerInput
 }
 
-type SubmitResponse struct {
-	ResultID      string
-	MBTIType      string
-	GritScore     int
-	AISummaryText string
-	WellbeingFlag bool
-	Status        string
-}
-
 type TestResultRepository interface {
 	CountMonthlyUsage(ctx context.Context, userID string) (int64, error)
 	CountMonthlyUsageByGuestSession(ctx context.Context, guestSessionID string) (int64, error)
@@ -72,8 +64,8 @@ type DistributedLockService interface {
 }
 
 type IdempotencyService interface {
-	Check(ctx context.Context, key string, payloadHash string) (*SubmitResponse, error)
-	Save(ctx context.Context, key string, payloadHash string, response *SubmitResponse, ttl time.Duration) error
+	Check(ctx context.Context, key string, payloadHash string) (*dto.SubmitResponse, error)
+	Save(ctx context.Context, key string, payloadHash string, response *dto.SubmitResponse, ttl time.Duration) error
 }
 
 type PDFQueueService interface {
@@ -118,7 +110,7 @@ func NewSubmitAssessmentUseCase(
 }
 
 // Execute orchestrates the entire assessment submission flow.
-func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitRequest) (*SubmitResponse, error) {
+func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitRequest) (*dto.SubmitResponse, error) {
 	if len(req.Answers) == 0 {
 		return nil, fmt.Errorf("%w: answers is required", application.ErrInvalidInput)
 	}
@@ -283,7 +275,7 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 		uc.log.Warn("enqueue pdf generation failed", "result_id", resultID, "error", err)
 	}
 
-	resp := &SubmitResponse{
+	resp := &dto.SubmitResponse{
 		ResultID:      resultID,
 		MBTIType:      result.MBTIType,
 		GritScore:     result.GritScore,

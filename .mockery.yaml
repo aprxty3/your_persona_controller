@@ -17,19 +17,8 @@ packages:
   github.com/aprxty3/your_persona_controller.git/internal/domain/testresult:
     config:
       all: true
-  # assessment's IdempotencyService references *assessment.SubmitResponse (a
-  # type defined in this same package) — a subpackage mock would have to
-  # import "assessment" back, which Go refuses ("import cycle not allowed in
-  # test") the moment this package's own internal _test.go files import that
-  # mocks subpackage. inpackage:true + a _test.go filename sidesteps this:
-  # the mock is compiled directly into package assessment, only during tests,
-  # never shipped in the production binary.
   github.com/aprxty3/your_persona_controller.git/internal/application/assessment:
     config:
-      inpackage: true
-      dir: "internal/application/assessment"
-      outpkg: assessment
-      filename: "mock_{{.InterfaceName}}_test.go"
       all: true
   github.com/aprxty3/your_persona_controller.git/internal/application/auth:
     config:
@@ -40,14 +29,8 @@ packages:
   github.com/aprxty3/your_persona_controller.git/internal/application/guestpurge:
     config:
       all: true
-  # Same self-reference issue as assessment above: PDFRenderer takes a
-  # PDFData param defined in this same package.
   github.com/aprxty3/your_persona_controller.git/internal/application/pdf:
     config:
-      inpackage: true
-      dir: "internal/application/pdf"
-      outpkg: pdf
-      filename: "mock_{{.InterfaceName}}_test.go"
       all: true
   github.com/aprxty3/your_persona_controller.git/internal/application/user_dashboard:
     config:
