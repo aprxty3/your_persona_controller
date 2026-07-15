@@ -18,6 +18,8 @@ type AuthHandler struct {
 	registerUseCase           *auth.RegisterUseCase
 	accountUseCase            *auth.AccountUseCase
 	sessionUseCase            *auth.SessionUseCase
+	turnstileVerifier         auth.TurnstileVerifier
+	isProduction              bool
 	log                       logger.Logger
 }
 
@@ -27,6 +29,8 @@ func NewAuthHandler(
 	registerUseCase *auth.RegisterUseCase,
 	accountUseCase *auth.AccountUseCase,
 	sessionUseCase *auth.SessionUseCase,
+	turnstileVerifier auth.TurnstileVerifier,
+	isProduction bool,
 	log logger.Logger,
 ) *AuthHandler {
 	return &AuthHandler{
@@ -34,8 +38,32 @@ func NewAuthHandler(
 		registerUseCase:           registerUseCase,
 		accountUseCase:            accountUseCase,
 		sessionUseCase:            sessionUseCase,
+		turnstileVerifier:         turnstileVerifier,
+		isProduction:              isProduction,
 		log:                       log.With("handler", "auth"),
 	}
+}
+
+// verifyTurnstile gates Register/Login/ForgotPassword against Cloudflare
+// Turnstile — shared by all three so the bot-check logic exists in exactly
+// one place. Returns nil when verification passes (including the fail-open
+// path on a Cloudflare-side error) and an already-written HTTP response
+// error otherwise (VALIDATION_ERROR for a missing token, TURNSTILE_VERIFICATION_FAILED
+// for an explicit Cloudflare rejection).
+func (h *AuthHandler) verifyTurnstile(c echo.Context, token string) error {
+	if token == "" {
+		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "cf_turnstile_response is required")
+	}
+
+	ok, err := h.turnstileVerifier.Verify(c.Request().Context(), token, c.RealIP())
+	if err != nil {
+		h.log.Warn("turnstile verify error, failing open", "error", err)
+		return nil
+	}
+	if !ok {
+		return httpcallErrorCustom(c, http.StatusBadRequest, "TURNSTILE_VERIFICATION_FAILED", "Bot verification failed. Please retry the challenge and try again")
+	}
+	return nil
 }
 
 // rateLimitedResponse is the shared 429 shape for every rate-limited auth
@@ -134,8 +162,8 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 		Expires:  resp.ExpiresAt,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
+		Secure:   h.isProduction,
+		SameSite: http.SameSiteStrictMode,
 	})
 
 	return httpresponse.Success(c, http.StatusCreated, resp, nil)
@@ -156,12 +184,15 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 // @Description
 // @Description  **referral_code** — completely optional.
 // @Description  If you do not have a referral code, omit the field, set it to `null`, or send `""` — all three are treated identically.
+// @Description
+// @Description  **cf_turnstile_response** — required. The token returned by the Cloudflare Turnstile
+// @Description  widget after the user completes the challenge.
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
 // @Param        request body dto.RegisterRequestDTO true "Registration Data"
 // @Success      201 {object} httpresponse.Response{data=auth.RegisterResponse} "Account created. OTP sent to email. Verify via /auth/verify-email-otp."
-// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR | EMAIL_ALREADY_REGISTERED | PASSWORD_TOO_SHORT | INVALID_REFERRAL_CODE"
+// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR | EMAIL_ALREADY_REGISTERED | PASSWORD_TOO_SHORT | TURNSTILE_VERIFICATION_FAILED"
 // @Failure      409 {object} httpresponse.Response "EMAIL_ALREADY_REGISTERED — email is already in use"
 // @Failure      429 {object} httpresponse.Response "RATE_LIMITED — too many registration attempts from this IP. Check meta.retry_after_seconds."
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
@@ -169,6 +200,9 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 func (h *AuthHandler) Register(c echo.Context) error {
 	var payload dto.RegisterRequestDTO
 	if err := bindJSON(c, h.log, "register", &payload); err != nil {
+		return err
+	}
+	if err := h.verifyTurnstile(c, payload.CFTurnstileResponse); err != nil {
 		return err
 	}
 
@@ -333,12 +367,15 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 // @Description  lock expires. Attempting to log in during a lockout will continue returning HTTP 423.
 // @Description
 // @Description  The email must be verified before login is permitted.
+// @Description
+// @Description  **cf_turnstile_response** — required. The token returned by the Cloudflare Turnstile
+// @Description  widget after the user completes the challenge.
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
 // @Param        request body dto.LoginRequestDTO true "Email and password credentials"
 // @Success      200 {object} httpresponse.Response{data=auth.LoginResponse} "Login successful. Use access_token as Bearer token."
-// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR — email or password field is missing"
+// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR | TURNSTILE_VERIFICATION_FAILED — email/password missing, or bot verification failed"
 // @Failure      401 {object} httpresponse.Response "INVALID_CREDENTIALS — email or password is incorrect"
 // @Failure      403 {object} httpresponse.Response "EMAIL_NOT_VERIFIED — account email is not yet verified"
 // @Failure      423 {object} httpresponse.Response "ACCOUNT_LOCKED — account is temporarily locked. Check meta.locked_until."
@@ -348,6 +385,9 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 func (h *AuthHandler) Login(c echo.Context) error {
 	var payload dto.LoginRequestDTO
 	if err := bindJSON(c, h.log, "login", &payload); err != nil {
+		return err
+	}
+	if err := h.verifyTurnstile(c, payload.CFTurnstileResponse); err != nil {
 		return err
 	}
 
@@ -558,18 +598,24 @@ func (h *AuthHandler) LogoutAll(c echo.Context) error {
 // @Description  includes `meta.retry_after_seconds`.
 // @Description
 // @Description  Flow: `/forgot-password` → `/verify-reset-otp` → `/reset-password`.
+// @Description
+// @Description  **cf_turnstile_response** — required. The token returned by the Cloudflare Turnstile
+// @Description  widget after the user completes the challenge.
 // @Tags         Auth
 // @Accept       json
 // @Produce      json
 // @Param        request body dto.ForgotPasswordRequestDTO true "Account email"
 // @Success      200 {object} httpresponse.Response "Generic response — OTP sent if the email is registered"
-// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR — email field is missing"
+// @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR | TURNSTILE_VERIFICATION_FAILED — email missing, or bot verification failed"
 // @Failure      429 {object} httpresponse.Response "RATE_LIMITED — check meta.retry_after_seconds"
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
 // @Router       /v1/auth/forgot-password [post]
 func (h *AuthHandler) ForgotPassword(c echo.Context) error {
 	var payload dto.ForgotPasswordRequestDTO
 	if err := bindJSON(c, h.log, "forgot password", &payload); err != nil {
+		return err
+	}
+	if err := h.verifyTurnstile(c, payload.CFTurnstileResponse); err != nil {
 		return err
 	}
 

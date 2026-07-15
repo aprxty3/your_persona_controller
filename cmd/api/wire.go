@@ -57,6 +57,21 @@ func provideS3Client(endpoint S3Endpoint, region S3Region, bucket S3Bucket, acce
 	return s3.NewClient(string(endpoint), string(region), string(bucket), string(accessKey), string(secretKey), bool(usePathStyle))
 }
 
+func provideTurnstileVerifier(secretKey TurnstileSecretKey, log logger.Logger) auth.TurnstileVerifier {
+	return security.NewTurnstileVerifier(string(secretKey), log)
+}
+
+// provideIsProduction unwraps the typed alias into the plain bool that
+// router.go / auth_handler.go actually consume — those HTTP-layer files stay
+// Wire-agnostic and just take a bool, matching ordinary Go convention.
+func provideIsProduction(v IsProduction) bool {
+	return bool(v)
+}
+
+func provideAllowedOrigins(v AllowedOrigins) []string {
+	return http.ParseAllowedOrigins(string(v))
+}
+
 // InitializeAPI wires up the entire application and returns the Echo router.
 func InitializeAPI(
 	geminiAPIKey GeminiAPIKey,
@@ -73,6 +88,9 @@ func InitializeAPI(
 	s3AccessKey S3AccessKey,
 	s3SecretKey S3SecretKey,
 	s3UsePathStyle S3UsePathStyle,
+	turnstileSecretKey TurnstileSecretKey,
+	isProduction IsProduction,
+	allowedOrigins AllowedOrigins,
 	loggerInstance logger.Logger,
 ) (*echo.Echo, error) {
 	wire.Build(
@@ -88,6 +106,9 @@ func InitializeAPI(
 		provideJWTService,
 		taskqueue.NewAsynqDispatcher,
 		security.NewHIBPBreachChecker,
+		provideTurnstileVerifier,
+		provideIsProduction,
+		provideAllowedOrigins,
 
 		provideS3Client,
 		wire.Bind(new(assessment.PDFSignerService), new(*s3.Client)),

@@ -24,10 +24,11 @@ type CreateGuestSessionRequestDTO struct {
 	Locale      Locale      `json:"locale" validate:"required,oneof=en id"`
 }
 type RegisterRequestDTO struct {
-	Email           string  `json:"email" validate:"required,email"`
-	Password        string  `json:"password" validate:"required,min=10"`
-	PreferredLocale Locale  `json:"preferred_locale" validate:"required,oneof=en id"`
-	ReferralCode    *string `json:"referral_code,omitempty"`
+	Email               string  `json:"email" validate:"required,email"`
+	Password            string  `json:"password" validate:"required,min=10"`
+	PreferredLocale     Locale  `json:"preferred_locale" validate:"required,oneof=en id"`
+	ReferralCode        *string `json:"referral_code,omitempty"`
+	CFTurnstileResponse string  `json:"cf_turnstile_response" validate:"required"`
 }
 
 type VerifyEmailOTPRequestDTO struct {
@@ -39,8 +40,9 @@ type ResendEmailOTPRequestDTO struct {
 	Email string `json:"email" validate:"required,email"`
 }
 type LoginRequestDTO struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required"`
+	Email               string `json:"email" validate:"required,email"`
+	Password            string `json:"password" validate:"required"`
+	CFTurnstileResponse string `json:"cf_turnstile_response" validate:"required"`
 }
 
 type RefreshTokenRequestDTO struct {
@@ -52,7 +54,8 @@ type LogoutRequestDTO struct {
 }
 
 type ForgotPasswordRequestDTO struct {
-	Email string `json:"email" validate:"required,email"`
+	Email               string `json:"email" validate:"required,email"`
+	CFTurnstileResponse string `json:"cf_turnstile_response" validate:"required"`
 }
 
 type VerifyResetOTPRequestDTO struct {

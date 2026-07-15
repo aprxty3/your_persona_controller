@@ -1,6 +1,9 @@
 package http
 
 import (
+	"net/http"
+	"strings"
+
 	_ "github.com/aprxty3/your_persona_controller.git/docs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
 	appmiddleware "github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/middleware"
@@ -8,6 +11,41 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	echoSwagger "github.com/swaggo/echo-swagger"
 )
+
+// csrfProtectedPaths lists the exact routes Security Rules
+// mandate CSRF protection for — state-changing endpoints reachable via the
+// ambient `session_id` Guest cookie (submit) or that mutate account state
+// (profile, deletion request start/cancel). Bearer-token-only endpoints
+// (register/login/etc.) are deliberately NOT in this list: a page cannot
+// forge an Authorization header the way it can silently ride an ambient
+// cookie, so CSRF isn't the relevant defense there — Turnstile + per-IP
+// rate limiting cover that surface instead. Add new routes here, do not
+// duplicate the CSRF middleware registration per-group.
+var csrfProtectedPaths = map[string]bool{
+	"/v1/assessment/submit":             true,
+	"/v1/account/profile":               true,
+	"/v1/account/delete-request":        true,
+	"/v1/account/delete-request/cancel": true,
+}
+
+// ParseAllowedOrigins splits a comma-separated ALLOWED_ORIGINS env value
+// into a whitelist for CORS. It panics on a literal "*" entry — the ticket
+// this implements DILARANG (forbids) a wildcard origin, and enforcing that
+// at startup (fail fast) is more robust than a code-review-only convention.
+func ParseAllowedOrigins(raw string) []string {
+	var origins []string
+	for _, o := range strings.Split(raw, ",") {
+		o = strings.TrimSpace(o)
+		if o == "" {
+			continue
+		}
+		if o == "*" {
+			panic("ALLOWED_ORIGINS must not contain a wildcard \"*\" — list explicit frontend origins")
+		}
+		origins = append(origins, o)
+	}
+	return origins
+}
 
 // SetupRouter initializes the Echo instance, applies global middlewares,
 func SetupRouter(
@@ -19,6 +57,8 @@ func SetupRouter(
 	healthHandler *handler.HealthHandler,
 	authMiddleware *appmiddleware.AuthMiddleware,
 	localeMiddleware *appmiddleware.LocaleMiddleware,
+	allowedOrigins []string,
+	isProduction bool,
 ) *echo.Echo {
 	e := echo.New()
 
@@ -28,7 +68,37 @@ func SetupRouter(
 	e.Use(middleware.Recover())
 	e.Use(middleware.Logger())
 
+	// CORS — no wildcard (see ParseAllowedOrigins), credentials allowed so
+	// the browser sends session_id/csrf_token cookies cross-origin to the
+	// separate front-end.
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: allowedOrigins,
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowHeaders: []string{
+			echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization,
+			"X-CSRF-Token", "Idempotency-Key",
+		},
+		AllowCredentials: true,
+	}))
+
 	e.Use(middleware.BodyLimit("32K"))
+
+	// CSRF — double-submit cookie pattern. Registered globally (not per-group)
+	// so the cookie is primed on ANY request (including plain GETs like
+	// /v1/questions) before the frontend ever needs to submit a protected
+	// POST/PATCH; Skipper narrows actual *enforcement* to csrfProtectedPaths.
+	// Safe methods (GET/HEAD/OPTIONS/TRACE) are exempted by Echo itself.
+	e.Use(middleware.CSRFWithConfig(middleware.CSRFConfig{
+		TokenLookup:    "header:X-CSRF-Token",
+		CookieName:     "csrf_token",
+		CookieHTTPOnly: false, // frontend must read it to echo back in the header
+		CookieSameSite: http.SameSiteLaxMode,
+		CookieSecure:   isProduction,
+		Skipper: func(c echo.Context) bool {
+			return !csrfProtectedPaths[c.Path()]
+		},
+	}))
+
 	e.Use(localeMiddleware.Negotiate)
 
 	// Operational

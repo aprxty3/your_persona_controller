@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/smtp"
 
-	pkglocale "github.com/aprxty3/your_persona_controller.git/pkg/locale"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/i18n"
 )
 
 // Mailer defines the contract for sending transactional emails.
@@ -22,16 +22,21 @@ type SMTPMailer struct {
 	username string
 	password string
 	from     string
+	catalog  *i18n.Catalog
 }
 
-// NewSMTPMailer creates a new configured SMTPMailer.
-func NewSMTPMailer(host string, port int, username, password, from string) *SMTPMailer {
+// NewSMTPMailer creates a new configured SMTPMailer. catalog supplies the
+// locale-aware subject/body copy (see internal/infrastructure/i18n) — the
+// same *i18n.Catalog instance should be loaded once at process startup and
+// shared, not reloaded per call.
+func NewSMTPMailer(host string, port int, username, password, from string, catalog *i18n.Catalog) *SMTPMailer {
 	return &SMTPMailer{
 		host:     host,
 		port:     port,
 		username: username,
 		password: password,
 		from:     from,
+		catalog:  catalog,
 	}
 }
 
@@ -67,19 +72,17 @@ func (m *SMTPMailer) SendEmail(ctx context.Context, to, subject, body string) er
 }
 
 // SendOTP formats and sends an OTP email based on the purpose and locale,
-// looking up copy from the otpTemplates registry (templates.go).
+// looking up copy from the message catalog (internal/infrastructure/i18n).
 func (m *SMTPMailer) SendOTP(ctx context.Context, to, otp, purpose, locale string) error {
-	purposeTemplates, ok := otpTemplates[purpose]
+	tmpl, ok := m.catalog.Message(purpose, locale)
 	if !ok {
 		return fmt.Errorf("smtp mailer: unknown OTP purpose %q", purpose)
 	}
-
-	tmpl := purposeTemplates[pkglocale.Resolve(locale)]
 	return m.SendEmail(ctx, to, tmpl.Subject, fmt.Sprintf(tmpl.Body, otp))
 }
 
 // SendDeletionConfirmed notifies the (snapshot) address that anonymization has completed deletion request.
 func (m *SMTPMailer) SendDeletionConfirmed(ctx context.Context, to, locale string) error {
-	tmpl := deletionConfirmedTemplates[pkglocale.Resolve(locale)]
+	tmpl, _ := m.catalog.Message("deletion_confirmed", locale)
 	return m.SendEmail(ctx, to, tmpl.Subject, tmpl.Body)
 }

@@ -60,3 +60,8 @@ var (
 	ErrForbidden      = errors.New("FORBIDDEN")
 	ErrPDFNotReady    = errors.New("PDF_NOT_READY")
 )
+
+// Bot protection errors
+var (
+	ErrTurnstileFailed = errors.New("TURNSTILE_VERIFICATION_FAILED")
+)

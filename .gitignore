@@ -1,6 +1,7 @@
-# Secrets — NEVER commit this file (see AGENTS.md Security Rules)
+# Secrets — NEVER commit these (see AGENTS.md Security Rules)
 .env
 .env.local
+.env.*.local
 *.pem
 *.key
 
@@ -10,27 +11,48 @@
 *.test
 *.out
 
+# Explicit binary names (builds produce extensionless files)
+/api
+/worker
+/migrate
+/seed
+
 # Air hot-reload
 tmp/
 build-errors.log
 
-# Go
+# Go tooling
 vendor/
+
+# Delve debugger
+__debug_bin*
+
+# Database dumps
+*.sql
+*.sql.gz
+*.dump
+*.pgdump
 
 # IDE
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
+ehthumbs.db
 
-# Coverage
+# Coverage & profiling
 coverage.out
 coverage.html
+*.prof
+*.pprof
 
-# Documentation produced outside source control (sensitive/internal)
+# Documentation — internal/sensitive, produced outside source control
 AGENTS.md
 CLAUDE.md
 TECHNICAL_DOCUMENTATION.md

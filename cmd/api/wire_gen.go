@@ -36,7 +36,7 @@ import (
 // Injectors from wire.go:
 
 // InitializeAPI wires up the entire application and returns the Echo router.
-func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, s3Endpoint S3Endpoint, s3Region S3Region, s3Bucket S3Bucket, s3AccessKey S3AccessKey, s3SecretKey S3SecretKey, s3UsePathStyle S3UsePathStyle, loggerInstance logger.Logger) (*echo.Echo, error) {
+func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, s3Endpoint S3Endpoint, s3Region S3Region, s3Bucket S3Bucket, s3AccessKey S3AccessKey, s3SecretKey S3SecretKey, s3UsePathStyle S3UsePathStyle, turnstileSecretKey TurnstileSecretKey, isProduction IsProduction, allowedOrigins AllowedOrigins, loggerInstance logger.Logger) (*echo.Echo, error) {
 	db, err := providePostgresDB(dbDSN)
 	if err != nil {
 		return nil, err
@@ -83,7 +83,9 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	jwtService := provideJWTService(jwtSecret)
 	tokenStore := redis.NewTokenStore(redisClient)
 	sessionUseCase := auth.NewSessionUseCase(db, userRepository, verificationTokenRepository, passwordBreachChecker, jwtService, tokenStore, ipRateLimitService, loggerInstance)
-	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, accountUseCase, sessionUseCase, loggerInstance)
+	turnstileVerifier := provideTurnstileVerifier(turnstileSecretKey, loggerInstance)
+	bool2 := provideIsProduction(isProduction)
+	authHandler := handler.NewAuthHandler(createGuestSessionUseCase, registerUseCase, accountUseCase, sessionUseCase, turnstileVerifier, bool2, loggerInstance)
 	profileUseCase := profile.NewProfileUseCase(userRepository, referralRepository, loggerInstance)
 	repository := deletionrequest.NewRepository(db, loggerInstance)
 	deletionUseCase := deletionrequest2.NewDeletionUseCase(userRepository, repository, loggerInstance)
@@ -91,7 +93,8 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	healthHandler := handler.NewHealthHandler(db, redisClient)
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)
 	localeMiddleware := middleware.NewLocaleMiddleware(jwtService, userRepository, loggerInstance)
-	echoEcho := http.SetupRouter(assessmentHandler, resultHandler, dashboardHandler, authHandler, accountHandler, healthHandler, authMiddleware, localeMiddleware)
+	v := provideAllowedOrigins(allowedOrigins)
+	echoEcho := http.SetupRouter(assessmentHandler, resultHandler, dashboardHandler, authHandler, accountHandler, healthHandler, authMiddleware, localeMiddleware, v, bool2)
 	return echoEcho, nil
 }
 
@@ -120,4 +123,19 @@ func provideJWTService(secret JWTSecret) *jwtservice.JWTService {
 
 func provideS3Client(endpoint S3Endpoint, region S3Region, bucket S3Bucket, accessKey S3AccessKey, secretKey S3SecretKey, usePathStyle S3UsePathStyle) (*s3.Client, error) {
 	return s3.NewClient(string(endpoint), string(region), string(bucket), string(accessKey), string(secretKey), bool(usePathStyle))
+}
+
+func provideTurnstileVerifier(secretKey TurnstileSecretKey, log logger.Logger) auth.TurnstileVerifier {
+	return security.NewTurnstileVerifier(string(secretKey), log)
+}
+
+// provideIsProduction unwraps the typed alias into the plain bool that
+// router.go / auth_handler.go actually consume — those HTTP-layer files stay
+// Wire-agnostic and just take a bool, matching ordinary Go convention.
+func provideIsProduction(v IsProduction) bool {
+	return bool(v)
+}
+
+func provideAllowedOrigins(v AllowedOrigins) []string {
+	return http.ParseAllowedOrigins(string(v))
 }

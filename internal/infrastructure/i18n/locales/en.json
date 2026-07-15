@@ -1,0 +1,14 @@
+{
+  "otp_verification": {
+    "subject": "Your Persona's - Verification Code",
+    "body": "Hello,\n\nYour verification code is: %s\n\nIt is valid for 15 minutes. Please do not share this code with anyone.\n\nBest regards,\nYour Persona Team"
+  },
+  "otp_reset": {
+    "subject": "Your Persona's - Password Reset Request",
+    "body": "Hello,\n\nYour password reset verification code is: %s\n\nIt is valid for 15 minutes. Please do not share this code with anyone.\n\nBest regards,\nYour Persona Team"
+  },
+  "deletion_confirmed": {
+    "subject": "Your Persona's - Data Deletion Completed",
+    "body": "Hello,\n\nAs you requested, your personal data (email, name, essay answers, and AI summary) has been permanently deleted/anonymized from our systems. Your account can no longer be used to log in.\n\nThank you for using Your Persona's.\n\nBest regards,\nYour Persona Team"
+  }
+}

@@ -28,6 +28,9 @@ type S3Bucket string
 type S3AccessKey string
 type S3SecretKey string
 type S3UsePathStyle bool
+type TurnstileSecretKey string
+type IsProduction bool
+type AllowedOrigins string
 
 // @title Your Persona API
 // @version 1.0
@@ -138,6 +141,9 @@ func main() {
 		appEnv = "development"
 	}
 	logInstance := logger.NewLogger(appEnv)
+	isProduction := appEnv == "production"
+	turnstileSecretKey := os.Getenv("TURNSTILE_SECRET_KEY")
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
 
 	// ---------------------------------------------------------
 	// DEPENDENCY INJECTION (Wire)
@@ -158,6 +164,9 @@ func main() {
 		S3AccessKey(s3AccessKey),
 		S3SecretKey(s3SecretKey),
 		S3UsePathStyle(s3UsePathStyle),
+		TurnstileSecretKey(turnstileSecretKey),
+		IsProduction(isProduction),
+		AllowedOrigins(allowedOrigins),
 		logInstance,
 	)
 	if err != nil {

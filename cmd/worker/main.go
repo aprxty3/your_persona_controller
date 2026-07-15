@@ -14,6 +14,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/application/guestpurge"
 	apppdf "github.com/aprxty3/your_persona_controller.git/internal/application/pdf"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/i18n"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/mailer"
 	pdfrenderer "github.com/aprxty3/your_persona_controller.git/internal/infrastructure/pdf"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
@@ -83,10 +84,16 @@ func main() {
 	defer asynqClient.Close()
 	dispatcher := taskqueue.NewAsynqDispatcher(asynqClient)
 
+	i18nCatalog, err := i18n.LoadCatalog()
+	if err != nil {
+		log.Fatalf("Worker failed to load i18n catalog: %v", err)
+	}
+
 	smtpMailer := mailer.NewSMTPMailer(
 		envOr("SMTP_HOST", "localhost"), smtpPort,
 		os.Getenv("SMTP_USER"), os.Getenv("SMTP_PASSWORD"),
 		envOr("SMTP_FROM", "noreply@yourpersonas.com"),
+		i18nCatalog,
 	)
 	emailHandler := workerhandler.NewEmailHandler(smtpMailer, logInstance)
 

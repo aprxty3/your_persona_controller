@@ -1,0 +1,14 @@
+{
+  "otp_verification": {
+    "subject": "Your Persona's - Kode Verifikasi",
+    "body": "Halo,\n\nKode verifikasi Anda adalah: %s\n\nKode ini berlaku selama 15 menit. Mohon jangan membagikan kode ini kepada siapa pun.\n\nHormat kami,\nTim Your Persona"
+  },
+  "otp_reset": {
+    "subject": "Your Persona's - Permintaan Reset Password",
+    "body": "Halo,\n\nKode verifikasi untuk reset password Anda adalah: %s\n\nKode ini berlaku selama 15 menit. Mohon jangan membagikan kode ini kepada siapa pun.\n\nHormat kami,\nTim Your Persona"
+  },
+  "deletion_confirmed": {
+    "subject": "Your Persona's - Penghapusan Data Selesai",
+    "body": "Halo,\n\nSesuai permintaan Anda, data pribadi Anda (email, nama, jawaban esai, dan ringkasan AI) telah dihapus/dianonimkan secara permanen dari sistem kami. Akun Anda tidak lagi dapat digunakan untuk login.\n\nTerima kasih telah menggunakan Your Persona's.\n\nHormat kami,\nTim Your Persona"
+  }
+}

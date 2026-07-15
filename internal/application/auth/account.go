@@ -33,6 +33,11 @@ func (c *NoopBreachChecker) IsBreached(_ context.Context, _ string) (bool, error
 	return false, nil
 }
 
+// TurnstileVerifier defines the contract for Cloudflare Turnstile bot checks.
+type TurnstileVerifier interface {
+	Verify(ctx context.Context, token, remoteIP string) (bool, error)
+}
+
 // ValidateNewPassword enforces the single shared password policy
 func ValidateNewPassword(ctx context.Context, checker PasswordBreachChecker, fieldName, password string) error {
 	if err := application.ValidateRequired(fieldName, password); err != nil {

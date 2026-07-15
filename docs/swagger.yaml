@@ -220,9 +220,12 @@ definitions:
     type: object
   dto.ForgotPasswordRequestDTO:
     properties:
+      cf_turnstile_response:
+        type: string
       email:
         type: string
     required:
+    - cf_turnstile_response
     - email
     type: object
   dto.GuestStatus:
@@ -249,11 +252,14 @@ definitions:
     - LocaleIndonesian
   dto.LoginRequestDTO:
     properties:
+      cf_turnstile_response:
+        type: string
       email:
         type: string
       password:
         type: string
     required:
+    - cf_turnstile_response
     - email
     - password
     type: object
@@ -273,6 +279,8 @@ definitions:
     type: object
   dto.RegisterRequestDTO:
     properties:
+      cf_turnstile_response:
+        type: string
       email:
         type: string
       password:
@@ -287,6 +295,7 @@ definitions:
       referral_code:
         type: string
     required:
+    - cf_turnstile_response
     - email
     - password
     - preferred_locale
@@ -701,6 +710,9 @@ paths:
         includes `meta.retry_after_seconds`.
 
         Flow: `/forgot-password` → `/verify-reset-otp` → `/reset-password`.
+
+        **cf_turnstile_response** — required. The token returned by the Cloudflare Turnstile
+        widget after the user completes the challenge.
       parameters:
       - description: Account email
         in: body
@@ -716,7 +728,8 @@ paths:
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "400":
-          description: VALIDATION_ERROR — email field is missing
+          description: VALIDATION_ERROR | TURNSTILE_VERIFICATION_FAILED — email missing,
+            or bot verification failed
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "429":
@@ -744,6 +757,9 @@ paths:
         lock expires. Attempting to log in during a lockout will continue returning HTTP 423.
 
         The email must be verified before login is permitted.
+
+        **cf_turnstile_response** — required. The token returned by the Cloudflare Turnstile
+        widget after the user completes the challenge.
       parameters:
       - description: Email and password credentials
         in: body
@@ -764,7 +780,8 @@ paths:
                   $ref: '#/definitions/auth.LoginResponse'
               type: object
         "400":
-          description: VALIDATION_ERROR — email or password field is missing
+          description: VALIDATION_ERROR | TURNSTILE_VERIFICATION_FAILED — email/password
+            missing, or bot verification failed
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "401":
@@ -922,6 +939,9 @@ paths:
 
         **referral_code** — completely optional.
         If you do not have a referral code, omit the field, set it to `null`, or send `""` — all three are treated identically.
+
+        **cf_turnstile_response** — required. The token returned by the Cloudflare Turnstile
+        widget after the user completes the challenge.
       parameters:
       - description: Registration Data
         in: body
@@ -943,7 +963,7 @@ paths:
               type: object
         "400":
           description: VALIDATION_ERROR | EMAIL_ALREADY_REGISTERED | PASSWORD_TOO_SHORT
-            | INVALID_REFERRAL_CODE
+            | TURNSTILE_VERIFICATION_FAILED
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "409":

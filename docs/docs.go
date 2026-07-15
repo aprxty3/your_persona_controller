@@ -417,7 +417,7 @@ const docTemplate = `{
         },
         "/v1/auth/forgot-password": {
             "post": {
-                "description": "Sends a 6-digit password reset OTP to the given email address.\n\n**Anti-enumeration:** this endpoint ALWAYS returns the same generic 200 response,\nwhether or not the email is registered. Do not use it to probe for accounts.\n\n**Rate limiting:** 60-second cooldown + max 5 requests per 24 hours per email\n(separate budget from ` + "`" + `/auth/resend-email-otp` + "`" + `). When throttled, the response\nincludes ` + "`" + `meta.retry_after_seconds` + "`" + `.\n\nFlow: ` + "`" + `/forgot-password` + "`" + ` → ` + "`" + `/verify-reset-otp` + "`" + ` → ` + "`" + `/reset-password` + "`" + `.",
+                "description": "Sends a 6-digit password reset OTP to the given email address.\n\n**Anti-enumeration:** this endpoint ALWAYS returns the same generic 200 response,\nwhether or not the email is registered. Do not use it to probe for accounts.\n\n**Rate limiting:** 60-second cooldown + max 5 requests per 24 hours per email\n(separate budget from ` + "`" + `/auth/resend-email-otp` + "`" + `). When throttled, the response\nincludes ` + "`" + `meta.retry_after_seconds` + "`" + `.\n\nFlow: ` + "`" + `/forgot-password` + "`" + ` → ` + "`" + `/verify-reset-otp` + "`" + ` → ` + "`" + `/reset-password` + "`" + `.\n\n**cf_turnstile_response** — required. The token returned by the Cloudflare Turnstile\nwidget after the user completes the challenge.",
                 "consumes": [
                     "application/json"
                 ],
@@ -447,7 +447,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "VALIDATION_ERROR — email field is missing",
+                        "description": "VALIDATION_ERROR | TURNSTILE_VERIFICATION_FAILED — email missing, or bot verification failed",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -469,7 +469,7 @@ const docTemplate = `{
         },
         "/v1/auth/login": {
             "post": {
-                "description": "Authenticates a registered and verified member account.\nReturns a short-lived ` + "`" + `access_token` + "`" + ` (JWT) and a long-lived ` + "`" + `refresh_token` + "`" + `.\n\n**Account lockout:**\nAfter **10 consecutive failed attempts**, the account is temporarily locked for **15 minutes**.\nThe locked response includes ` + "`" + `meta.locked_until` + "`" + ` (RFC 3339 timestamp) indicating when the\nlock expires. Attempting to log in during a lockout will continue returning HTTP 423.\n\nThe email must be verified before login is permitted.",
+                "description": "Authenticates a registered and verified member account.\nReturns a short-lived ` + "`" + `access_token` + "`" + ` (JWT) and a long-lived ` + "`" + `refresh_token` + "`" + `.\n\n**Account lockout:**\nAfter **10 consecutive failed attempts**, the account is temporarily locked for **15 minutes**.\nThe locked response includes ` + "`" + `meta.locked_until` + "`" + ` (RFC 3339 timestamp) indicating when the\nlock expires. Attempting to log in during a lockout will continue returning HTTP 423.\n\nThe email must be verified before login is permitted.\n\n**cf_turnstile_response** — required. The token returned by the Cloudflare Turnstile\nwidget after the user completes the challenge.",
                 "consumes": [
                     "application/json"
                 ],
@@ -511,7 +511,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "VALIDATION_ERROR — email or password field is missing",
+                        "description": "VALIDATION_ERROR | TURNSTILE_VERIFICATION_FAILED — email/password missing, or bot verification failed",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -709,7 +709,7 @@ const docTemplate = `{
         },
         "/v1/auth/register": {
             "post": {
-                "description": "Creates a new member account. If a valid ` + "`" + `session_id` + "`" + ` cookie from ` + "`" + `/v1/guest-session` + "`" + `\nis present, the guest session data (display name, age, status, locale) is automatically\nlinked to the new account — you do NOT need to re-submit that data here.\n\nAfter successful registration, a 6-digit OTP is sent to the provided email address.\nThe account is not fully active until the OTP is verified via ` + "`" + `/v1/auth/verify-email-otp` + "`" + `.\n\n**preferred_locale** — accepted values:\n- ` + "`" + `en` + "`" + ` — English\n- ` + "`" + `id` + "`" + ` — Indonesian (Bahasa Indonesia)\n\n**referral_code** — completely optional.\nIf you do not have a referral code, omit the field, set it to ` + "`" + `null` + "`" + `, or send ` + "`" + `\"\"` + "`" + ` — all three are treated identically.",
+                "description": "Creates a new member account. If a valid ` + "`" + `session_id` + "`" + ` cookie from ` + "`" + `/v1/guest-session` + "`" + `\nis present, the guest session data (display name, age, status, locale) is automatically\nlinked to the new account — you do NOT need to re-submit that data here.\n\nAfter successful registration, a 6-digit OTP is sent to the provided email address.\nThe account is not fully active until the OTP is verified via ` + "`" + `/v1/auth/verify-email-otp` + "`" + `.\n\n**preferred_locale** — accepted values:\n- ` + "`" + `en` + "`" + ` — English\n- ` + "`" + `id` + "`" + ` — Indonesian (Bahasa Indonesia)\n\n**referral_code** — completely optional.\nIf you do not have a referral code, omit the field, set it to ` + "`" + `null` + "`" + `, or send ` + "`" + `\"\"` + "`" + ` — all three are treated identically.\n\n**cf_turnstile_response** — required. The token returned by the Cloudflare Turnstile\nwidget after the user completes the challenge.",
                 "consumes": [
                     "application/json"
                 ],
@@ -751,7 +751,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "VALIDATION_ERROR | EMAIL_ALREADY_REGISTERED | PASSWORD_TOO_SHORT | INVALID_REFERRAL_CODE",
+                        "description": "VALIDATION_ERROR | EMAIL_ALREADY_REGISTERED | PASSWORD_TOO_SHORT | TURNSTILE_VERIFICATION_FAILED",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -1825,9 +1825,13 @@ const docTemplate = `{
         "dto.ForgotPasswordRequestDTO": {
             "type": "object",
             "required": [
+                "cf_turnstile_response",
                 "email"
             ],
             "properties": {
+                "cf_turnstile_response": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 }
@@ -1864,10 +1868,14 @@ const docTemplate = `{
         "dto.LoginRequestDTO": {
             "type": "object",
             "required": [
+                "cf_turnstile_response",
                 "email",
                 "password"
             ],
             "properties": {
+                "cf_turnstile_response": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -1901,11 +1909,15 @@ const docTemplate = `{
         "dto.RegisterRequestDTO": {
             "type": "object",
             "required": [
+                "cf_turnstile_response",
                 "email",
                 "password",
                 "preferred_locale"
             ],
             "properties": {
+                "cf_turnstile_response": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
