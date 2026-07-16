@@ -20,6 +20,7 @@ const hibpRangeURL = "https://api.pwnedpasswords.com/range/"
 // HIBPBreachChecker implements auth.PasswordBreachChecker
 type HIBPBreachChecker struct {
 	httpClient *http.Client
+	rangeURL   string
 	log        logger.Logger
 }
 
@@ -27,6 +28,7 @@ type HIBPBreachChecker struct {
 func NewHIBPBreachChecker(log logger.Logger) auth.PasswordBreachChecker {
 	return &HIBPBreachChecker{
 		httpClient: &http.Client{Timeout: 5 * time.Second},
+		rangeURL:   hibpRangeURL,
 		log:        log.With("service", "hibp"),
 	}
 }
@@ -40,7 +42,7 @@ func (c *HIBPBreachChecker) IsBreached(ctx context.Context, password string) (bo
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, hibpRangeURL+prefix, nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, c.rangeURL+prefix, nil)
 	if err != nil {
 		return false, fmt.Errorf("hibp: build request: %w", err)
 	}

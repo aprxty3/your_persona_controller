@@ -23,6 +23,7 @@ type SMTPMailer struct {
 	password string
 	from     string
 	catalog  *i18n.Catalog
+	sendFunc func(addr string, a smtp.Auth, from string, to []string, msg []byte) error
 }
 
 // NewSMTPMailer creates a new configured SMTPMailer. catalog supplies the
@@ -37,6 +38,7 @@ func NewSMTPMailer(host string, port int, username, password, from string, catal
 		password: password,
 		from:     from,
 		catalog:  catalog,
+		sendFunc: smtp.SendMail,
 	}
 }
 
@@ -57,7 +59,7 @@ func (m *SMTPMailer) SendEmail(ctx context.Context, to, subject, body string) er
 
 	errChan := make(chan error, 1)
 	go func() {
-		errChan <- smtp.SendMail(addr, auth, m.from, []string{to}, []byte(msg))
+		errChan <- m.sendFunc(addr, auth, m.from, []string{to}, []byte(msg))
 	}()
 
 	select {
