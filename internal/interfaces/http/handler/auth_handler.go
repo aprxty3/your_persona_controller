@@ -52,7 +52,8 @@ func NewAuthHandler(
 // for an explicit Cloudflare rejection).
 func (h *AuthHandler) verifyTurnstile(c echo.Context, token string) error {
 	if token == "" {
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "cf_turnstile_response is required")
+		httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "cf_turnstile_response is required")
+		return errResponseWritten
 	}
 
 	ok, err := h.turnstileVerifier.Verify(c.Request().Context(), token, c.RealIP())
@@ -61,7 +62,8 @@ func (h *AuthHandler) verifyTurnstile(c echo.Context, token string) error {
 		return nil
 	}
 	if !ok {
-		return httpcallErrorCustom(c, http.StatusBadRequest, "TURNSTILE_VERIFICATION_FAILED", "Bot verification failed. Please retry the challenge and try again")
+		httpcallErrorCustom(c, http.StatusBadRequest, "TURNSTILE_VERIFICATION_FAILED", "Bot verification failed. Please retry the challenge and try again")
+		return errResponseWritten
 	}
 	return nil
 }
@@ -86,23 +88,26 @@ func otpVerifyError(c echo.Context, err error, attemptsRemaining int, resendPath
 	meta := map[string]interface{}{"attempts_remaining": attemptsRemaining}
 	switch {
 	case errors.Is(err, application.ErrInvalidOTP):
-		return c.JSON(http.StatusBadRequest, httpresponse.Response{
+		c.JSON(http.StatusBadRequest, httpresponse.Response{
 			Success: false,
 			Error:   &httpresponse.ErrorDetail{Code: "INVALID_OTP", Message: "The OTP code is incorrect"},
 			Meta:    meta,
 		})
+		return errResponseWritten
 	case errors.Is(err, application.ErrOTPExpired):
-		return c.JSON(http.StatusBadRequest, httpresponse.Response{
+		c.JSON(http.StatusBadRequest, httpresponse.Response{
 			Success: false,
 			Error:   &httpresponse.ErrorDetail{Code: "OTP_EXPIRED", Message: "The OTP code has expired. Please request a new one via " + resendPath},
 			Meta:    meta,
 		})
+		return errResponseWritten
 	case errors.Is(err, application.ErrOTPMaxAttempts):
-		return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
+		c.JSON(http.StatusTooManyRequests, httpresponse.Response{
 			Success: false,
 			Error:   &httpresponse.ErrorDetail{Code: "OTP_MAX_ATTEMPTS", Message: "Maximum verification attempts exceeded. Please request a new OTP via " + resendPath},
 			Meta:    meta,
 		})
+		return errResponseWritten
 	default:
 		return nil
 	}

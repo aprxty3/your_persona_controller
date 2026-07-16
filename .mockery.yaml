@@ -38,3 +38,6 @@ packages:
   github.com/aprxty3/your_persona_controller.git/pkg/taskqueue:
     config:
       all: true
+  github.com/aprxty3/your_persona_controller.git/internal/infrastructure/mailer:
+    config:
+      all: true
