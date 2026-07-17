@@ -12,15 +12,21 @@ import (
 type IPScope string
 
 const (
-	ScopeLoginIP    IPScope = "login"
-	ScopeRegisterIP IPScope = "register"
+	ScopeLoginIP        IPScope = "login"
+	ScopeRegisterIP     IPScope = "register"
+	ScopeGuestSessionIP IPScope = "guest-session"
+	ScopeSubmitIP       IPScope = "submit"
 )
 
 const (
-	loginIPLimit     = 20
-	loginIPWindow    = 15 * time.Minute
-	registerIPLimit  = 10
-	registerIPWindow = 15 * time.Minute
+	loginIPLimit         = 20
+	loginIPWindow        = 15 * time.Minute
+	registerIPLimit      = 10
+	registerIPWindow     = 15 * time.Minute
+	guestSessionIPLimit  = 10
+	guestSessionIPWindow = time.Hour
+	submitIPLimit        = 10
+	submitIPWindow       = time.Hour
 )
 
 // IPRateLimitService enforces a fixed-window request cap per (scope, IP).
@@ -68,6 +74,10 @@ func limitFor(scope IPScope) (int, time.Duration) {
 		return loginIPLimit, loginIPWindow
 	case ScopeRegisterIP:
 		return registerIPLimit, registerIPWindow
+	case ScopeGuestSessionIP:
+		return guestSessionIPLimit, guestSessionIPWindow
+	case ScopeSubmitIP:
+		return submitIPLimit, submitIPWindow
 	default:
 		return registerIPLimit, registerIPWindow
 	}

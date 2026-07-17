@@ -4,7 +4,10 @@
 package main
 
 import (
+	"context"
+
 	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
+	assessmentdto "github.com/aprxty3/your_persona_controller.git/internal/application/assessment/dto"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/user_dashboard"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
@@ -71,6 +74,19 @@ func provideIsProduction(v IsProduction) bool {
 
 func provideAllowedOrigins(v AllowedOrigins) []string {
 	return http.ParseAllowedOrigins(string(v))
+}
+
+// assessmentIPRateLimiterAdapter bridges *redis.IPRateLimitService to assessment.IPRateLimiter.
+type assessmentIPRateLimiterAdapter struct {
+	svc *redis.IPRateLimitService
+}
+
+func (a *assessmentIPRateLimiterAdapter) Allow(ctx context.Context, scope assessmentdto.IPRateLimitScope, ip string) (bool, int, error) {
+	return a.svc.Allow(ctx, redis.IPScope(scope), ip)
+}
+
+func provideAssessmentIPRateLimiter(svc *redis.IPRateLimitService) assessment.IPRateLimiter {
+	return &assessmentIPRateLimiterAdapter{svc: svc}
 }
 
 // InitializeAPI wires up the entire application and returns the Echo router.
@@ -141,6 +157,7 @@ func InitializeAPI(
 		wire.Bind(new(auth.OTPRateLimiter), new(*redis.OTPRateLimitService)),
 		redis.NewIPRateLimitService,
 		wire.Bind(new(auth.IPRateLimiter), new(*redis.IPRateLimitService)),
+		provideAssessmentIPRateLimiter,
 		redis.NewTokenStore,
 		wire.Bind(new(auth.SessionTokenStore), new(*redis.TokenStore)),
 		redis.NewDistributedLockService,

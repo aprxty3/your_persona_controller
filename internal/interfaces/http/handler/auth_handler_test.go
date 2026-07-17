@@ -18,6 +18,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// allowingAuthIPLimiter returns an IPRateLimiter mock that always allows —
+// the default for every test not specifically exercising the TICKET-22
+// rate-limit gate itself.
+func allowingAuthIPLimiter(t *testing.T) *authmocks.MockIPRateLimiter {
+	limiter := authmocks.NewMockIPRateLimiter(t)
+	limiter.EXPECT().Allow(mock.Anything, mock.Anything, mock.Anything).Return(true, 0, nil).Maybe()
+	return limiter
+}
+
 func newAuthCtx(method, path, body string) (echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -42,7 +51,7 @@ func TestCreateGuestSession_Success_201SetsCookie(t *testing.T) {
 	guestRepo := accountmocks.NewMockGuestSessionRepository(t)
 	guestRepo.EXPECT().Create(mock.Anything, mock.Anything).Return(nil).Once()
 
-	uc := auth.NewCreateGuestSessionUseCase(guestRepo, testLog())
+	uc := auth.NewCreateGuestSessionUseCase(guestRepo, allowingAuthIPLimiter(t), testLog())
 	h := newTestAuthHandler(uc, nil, nil, nil, nil)
 	c, rec := newAuthCtx(http.MethodPost, "/v1/guest-session", `{"display_name":"Alice","age":20,"status":"student","locale":"en"}`)
 
@@ -64,7 +73,7 @@ func TestCreateGuestSession_Success_201SetsCookie(t *testing.T) {
 }
 
 func TestCreateGuestSession_ValidationError_400(t *testing.T) {
-	uc := auth.NewCreateGuestSessionUseCase(accountmocks.NewMockGuestSessionRepository(t), testLog())
+	uc := auth.NewCreateGuestSessionUseCase(accountmocks.NewMockGuestSessionRepository(t), allowingAuthIPLimiter(t), testLog())
 	h := newTestAuthHandler(uc, nil, nil, nil, nil)
 	c, rec := newAuthCtx(http.MethodPost, "/v1/guest-session", `{"display_name":"","age":20,"status":"student","locale":"en"}`)
 
@@ -77,6 +86,28 @@ func TestCreateGuestSession_ValidationError_400(t *testing.T) {
 	body := decodeResponse(t, rec)
 	if body.Error == nil || body.Error.Code != "VALIDATION_ERROR" {
 		t.Errorf("expected VALIDATION_ERROR, got %+v", body.Error)
+	}
+}
+
+func TestCreateGuestSession_RateLimited_429(t *testing.T) {
+	limiter := authmocks.NewMockIPRateLimiter(t)
+	limiter.EXPECT().Allow(mock.Anything, mock.Anything, mock.Anything).Return(false, 3600, nil).Once()
+	uc := auth.NewCreateGuestSessionUseCase(accountmocks.NewMockGuestSessionRepository(t), limiter, testLog()) // repo mock has no EXPECT(): Create must never be called
+	h := newTestAuthHandler(uc, nil, nil, nil, nil)
+	c, rec := newAuthCtx(http.MethodPost, "/v1/guest-session", `{"display_name":"Alice","age":20,"status":"student","locale":"en"}`)
+
+	if err := h.CreateGuestSession(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decodeResponse(t, rec)
+	if body.Error == nil || body.Error.Code != "RATE_LIMITED" {
+		t.Errorf("expected RATE_LIMITED, got %+v", body.Error)
+	}
+	if body.Meta == nil {
+		t.Error("expected meta.retry_after_seconds to be present")
 	}
 }
 

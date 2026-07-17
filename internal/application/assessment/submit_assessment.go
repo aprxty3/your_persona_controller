@@ -42,6 +42,7 @@ type SubmitRequest struct {
 	IsMember       bool
 	Locale         string
 	Answers        []AnswerInput
+	IPAddress      string // raw client IP, used for per-IP rate limiting only (not persisted)
 }
 
 type TestResultRepository interface {
@@ -72,6 +73,12 @@ type PDFQueueService interface {
 	EnqueueGeneratePDF(ctx context.Context, testResultID string) error
 }
 
+// IPRateLimiter is the narrow slice of Redis-backed per-IP throttling
+// SubmitAssessmentUseCase needs.
+type IPRateLimiter interface {
+	Allow(ctx context.Context, scope dto.IPRateLimitScope, ip string) (allowed bool, retryAfterSeconds int, err error)
+}
+
 type SubmitAssessmentUseCase struct {
 	db             *gorm.DB
 	testResultRepo TestResultRepository
@@ -81,6 +88,7 @@ type SubmitAssessmentUseCase struct {
 	lockSvc        DistributedLockService
 	idempotencySvc IdempotencyService
 	pdfQueue       PDFQueueService
+	ipRateLimiter  IPRateLimiter
 	log            logger.Logger
 }
 
@@ -94,6 +102,7 @@ func NewSubmitAssessmentUseCase(
 	lockSvc DistributedLockService,
 	idemSvc IdempotencyService,
 	pdfQueue PDFQueueService,
+	ipRateLimiter IPRateLimiter,
 	log logger.Logger,
 ) *SubmitAssessmentUseCase {
 	return &SubmitAssessmentUseCase{
@@ -105,6 +114,7 @@ func NewSubmitAssessmentUseCase(
 		lockSvc:        lockSvc,
 		idempotencySvc: idemSvc,
 		pdfQueue:       pdfQueue,
+		ipRateLimiter:  ipRateLimiter,
 		log:            log.With("usecase", "submit_assessment"),
 	}
 }
@@ -113,6 +123,13 @@ func NewSubmitAssessmentUseCase(
 func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitRequest) (*dto.SubmitResponse, error) {
 	if len(req.Answers) == 0 {
 		return nil, fmt.Errorf("%w: answers is required", application.ErrInvalidInput)
+	}
+
+	if allowed, retryAfter, err := uc.ipRateLimiter.Allow(ctx, application.ScopeSubmitIP, req.IPAddress); err != nil {
+		uc.log.Warn("submit ip rate limit check skipped", "reason", "redis_error", "error", err)
+	} else if !allowed {
+		uc.log.Warn("submit rejected", "reason", "rate_limited", "retry_after_seconds", retryAfter)
+		return &dto.SubmitResponse{RetryAfterSeconds: retryAfter}, application.ErrRateLimited
 	}
 
 	payloadHash := hashAnswers(req.Answers)
@@ -172,10 +189,14 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 		return nil, err
 	}
 
+	// Wellbeing/crisis-language scanning runs on ALL essays, before garbage
+	// filtering — a distressed-but-repetitive answer must never be exempted
+	// from the safety check just because it also happens to look garbage.
 	isWellbeingFlagged := scanForCrisisLanguage(essayTexts, req.Locale)
 	resultID := uuid.New().String()
+	aiEssayTexts := filterGarbageEssays(essayTexts, resultID, uc.log)
 	aiCtx := context.WithoutCancel(ctx)
-	outcome := uc.runAIPhase(aiCtx, resultID, essayTexts, req.Locale)
+	outcome := uc.runAIPhase(aiCtx, resultID, aiEssayTexts, req.Locale)
 
 	// Scores are pure math over the answers — computed for every outcome,
 	// including fallback_static, since they don't depend on Gemini.
@@ -327,6 +348,23 @@ func extractAndValidateEssays(answers []AnswerInput, questionByID map[string]con
 		essays = append(essays, a.Value)
 	}
 	return essays, nil
+}
+
+// filterGarbageEssays drops essays that fail aivalidator.IsGarbage —
+// soft by design: the caller still stores every answer as submitted, this
+// only decides what gets sent to the paid Gemini call. Skipped essays are
+// logged (index only, never content) so the thresholds in
+// pkg/aivalidator/garbage.go can be recalibrated from real data later.
+func filterGarbageEssays(essays []string, resultID string, log logger.Logger) []string {
+	kept := make([]string, 0, len(essays))
+	for i, essay := range essays {
+		if aivalidator.IsGarbage(essay) {
+			log.Info("essay skipped as garbage", "result_id", resultID, "essay_index", i)
+			continue
+		}
+		kept = append(kept, essay)
+	}
+	return kept
 }
 
 // checkReferralEligibility returns the code the user registered with and whether this submission qualifies

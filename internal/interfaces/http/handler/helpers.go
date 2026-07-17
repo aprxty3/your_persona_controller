@@ -21,24 +21,16 @@ func httpcallSuccess(c echo.Context, code int, data interface{}, meta interface{
 	return httpresponse.Success(c, code, data, meta)
 }
 
-// errResponseWritten signals that a helper already wrote a rejection
-// response to c and the caller must stop processing immediately. It exists
-// because httpresponse.Error/Success return c.JSON()'s own result — nil on
-// any successfully-written response, success or error alike — which is an
-// I/O-failure signal, NOT a "did this succeed?" signal. A helper that writes
-// an error response and then hands that nil back to its caller would let
-// the caller wrongly conclude nothing went wrong and fall through to
-// business logic after the response has already been sent (and, since Echo
-// does not guard body writes past the first commit, corrupt it with a
-// second one). Every helper below that can reject a request mid-handler
-// (bindJSON, verifyTurnstile, otpVerifyError) returns this instead.
+func rateLimitedResponse(c echo.Context, retryAfterSeconds int, message string) error {
+	return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
+		Success: false,
+		Error:   &httpresponse.ErrorDetail{Code: "RATE_LIMITED", Message: message},
+		Meta:    map[string]interface{}{"retry_after_seconds": retryAfterSeconds},
+	})
+}
+
 var errResponseWritten = errors.New("handler: response already written")
 
-// bindJSON parses the request body into payload, logging the rejection and
-// writing a VALIDATION_ERROR response on failure — the shared first step
-// of every handler method that accepts a JSON body. Returns errResponseWritten
-// (not nil) on failure so callers reliably stop processing instead of
-// falling through to business logic after a response has already been sent.
 func bindJSON(c echo.Context, log logger.Logger, action string, payload interface{}) error {
 	if err := c.Bind(payload); err != nil {
 		log.Warn(action+" rejected", "reason", "bind_error", "error", err)
@@ -50,9 +42,6 @@ func bindJSON(c echo.Context, log logger.Logger, action string, payload interfac
 	return nil
 }
 
-// unwrapMessage strips the leading "context: " prefix chain from a %w-wrapped
-// error, leaving just the innermost human-readable detail — used wherever an
-// application.ErrInvalidInput's message is surfaced back to the client.
 func unwrapMessage(err error) string {
 	msg := err.Error()
 	for i := 0; i < len(msg)-2; i++ {

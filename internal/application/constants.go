@@ -1,6 +1,10 @@
 package application
 
-import "time"
+import (
+	"time"
+
+	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment/dto"
+)
 
 // MemberMonthlyQuota is the number of assessments a Member may complete per
 // calendar month (Asia/Jakarta). Shared between the submit usecase (which
@@ -54,3 +58,10 @@ const DeletionGracePeriod = 14 * 24 * time.Hour
 // GritTrendPoints caps how many recent results feed the GRIT trend  —
 // a handful of points is enough for a sparkline, and keeps the query cheap.
 const GritTrendPoints = 5
+
+// ScopeSubmitIP's string value MUST match redis.ScopeSubmitIP exactly — kept
+// in sync manually since this package can't import internal/infrastructure/
+// cache/redis (that package already imports assessment for IdempotencyService/
+// DistributedLockService — importing it back would cycle). See
+// dto.IPRateLimitScope's doc comment for why the type itself lives in dto.
+const ScopeSubmitIP dto.IPRateLimitScope = "submit"

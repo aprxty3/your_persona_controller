@@ -68,17 +68,6 @@ func (h *AuthHandler) verifyTurnstile(c echo.Context, token string) error {
 	return nil
 }
 
-// rateLimitedResponse is the shared 429 shape for every rate-limited auth
-// flow (register, login, resend-otp, forgot-password) — always RATE_LIMITED
-// with a retry_after_seconds meta field; only the message text differs.
-func rateLimitedResponse(c echo.Context, retryAfterSeconds int, message string) error {
-	return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
-		Success: false,
-		Error:   &httpresponse.ErrorDetail{Code: "RATE_LIMITED", Message: message},
-		Meta:    map[string]interface{}{"retry_after_seconds": retryAfterSeconds},
-	})
-}
-
 // otpVerifyError maps the verification-error triple shared by VerifyEmailOTP
 // and VerifyResetOTP (wrong code / expired / max attempts) to its HTTP
 // response, embedding attempts_remaining and a flow-specific "request a new
@@ -135,6 +124,7 @@ func otpVerifyError(c echo.Context, err error, attemptsRemaining int, resendPath
 // @Param        request body dto.CreateGuestSessionRequestDTO true "Guest Session Onboarding Data"
 // @Success      201 {object} httpresponse.Response{data=auth.CreateGuestSessionResponse} "Guest session created. session_id cookie is set."
 // @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR — one or more fields are missing or have an invalid value (e.g., unrecognised status or locale)"
+// @Failure      429 {object} httpresponse.Response "RATE_LIMITED — too many guest sessions created from this network. Check meta.retry_after_seconds."
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
 // @Router       /v1/guest-session [post]
 func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
@@ -153,11 +143,19 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 
 	resp, err := h.createGuestSessionUseCase.Execute(c.Request().Context(), ucReq)
 	if err != nil {
-		if errors.Is(err, application.ErrInvalidInput) {
+		switch {
+		case errors.Is(err, application.ErrInvalidInput):
 			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+		case errors.Is(err, application.ErrRateLimited):
+			retryAfter := 0
+			if resp != nil {
+				retryAfter = resp.RetryAfterSeconds
+			}
+			return rateLimitedResponse(c, retryAfter, "Too many guest sessions created from this network. Please wait before trying again")
+		default:
+			h.log.Error("create guest session failed", "error", err)
+			return httpcallError(c, err)
 		}
-		h.log.Error("create guest session failed", "error", err)
-		return httpcallError(c, err)
 	}
 
 	// Set HttpOnly cookie so /auth/register can automatically claim the session.

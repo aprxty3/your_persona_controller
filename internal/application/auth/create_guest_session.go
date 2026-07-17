@@ -8,6 +8,7 @@ import (
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/account"
+	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/cache/redis"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/google/uuid"
 )
@@ -23,23 +24,33 @@ type CreateGuestSessionRequest struct {
 
 // CreateGuestSessionResponse is returned on successful session creation.
 type CreateGuestSessionResponse struct {
-	SessionID string
-	ExpiresAt time.Time
+	SessionID         string
+	ExpiresAt         time.Time
+	RetryAfterSeconds int `json:"-"` // set only when Execute itself returned application.ErrRateLimited
 }
 
 // CreateGuestSessionUseCase orchestrates guest session lifecycle creation.
 type CreateGuestSessionUseCase struct {
-	repo account.GuestSessionRepository
-	log  logger.Logger
+	repo          account.GuestSessionRepository
+	ipRateLimiter IPRateLimiter
+	log           logger.Logger
 }
 
 // NewCreateGuestSessionUseCase creates a new CreateGuestSessionUseCase.
-func NewCreateGuestSessionUseCase(repo account.GuestSessionRepository, log logger.Logger) *CreateGuestSessionUseCase {
-	return &CreateGuestSessionUseCase{repo: repo, log: log.With("usecase", "create_guest_session")}
+func NewCreateGuestSessionUseCase(repo account.GuestSessionRepository, ipRateLimiter IPRateLimiter, log logger.Logger) *CreateGuestSessionUseCase {
+	return &CreateGuestSessionUseCase{repo: repo, ipRateLimiter: ipRateLimiter, log: log.With("usecase", "create_guest_session")}
 }
 
 // Execute handles the generation of a 14-day persistent guest session.
 func (uc *CreateGuestSessionUseCase) Execute(ctx context.Context, req CreateGuestSessionRequest) (*CreateGuestSessionResponse, error) {
+
+	if allowed, retryAfter, err := uc.ipRateLimiter.Allow(ctx, redis.ScopeGuestSessionIP, req.IPAddress); err != nil {
+		uc.log.Warn("guest session ip rate limit check skipped", "reason", "redis_error", "error", err)
+	} else if !allowed {
+		uc.log.Warn("guest session creation rejected", "reason", "rate_limited", "retry_after_seconds", retryAfter)
+		return &CreateGuestSessionResponse{RetryAfterSeconds: retryAfter}, application.ErrRateLimited
+	}
+
 	if err := application.ValidateRequired("display_name", req.DisplayName); err != nil {
 		return nil, err
 	}

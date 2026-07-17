@@ -42,7 +42,7 @@ func NewAssessmentHandler(uc *assessment.SubmitAssessmentUseCase, log logger.Log
 // @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR — missing Idempotency-Key, malformed body, or neither session_id cookie nor access token present"
 // @Failure      409 {object} httpresponse.Response "IDEMPOTENCY_KEY_REUSED — same key replayed with a different payload"
 // @Failure      423 {object} httpresponse.Response "LOCK_NOT_ACQUIRED — a submission for this identity is already in flight"
-// @Failure      429 {object} httpresponse.Response "QUOTA_EXCEEDED — monthly submission quota reached"
+// @Failure      429 {object} httpresponse.Response "QUOTA_EXCEEDED — monthly submission quota reached | RATE_LIMITED — too many submissions from this IP, check meta.retry_after_seconds"
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
 // @Router       /v1/assessment/submit [post]
 func (h *AssessmentHandler) Submit(c echo.Context) error {
@@ -80,6 +80,7 @@ func (h *AssessmentHandler) Submit(c echo.Context) error {
 		SessionID:      sessionID,
 		IsMember:       isMember,
 		Locale:         reqLocale,
+		IPAddress:      c.RealIP(),
 	}
 
 	for _, ans := range payload.Answers {
@@ -100,6 +101,12 @@ func (h *AssessmentHandler) Submit(c echo.Context) error {
 			return httpresponse.Error(c, http.StatusLocked, "LOCK_NOT_ACQUIRED", "A submission for this session is already being processed")
 		case errors.Is(err, application.ErrQuotaExceeded):
 			return httpresponse.Error(c, http.StatusTooManyRequests, "QUOTA_EXCEEDED", "Monthly assessment quota reached")
+		case errors.Is(err, application.ErrRateLimited):
+			retryAfter := 0
+			if resp != nil {
+				retryAfter = resp.RetryAfterSeconds
+			}
+			return rateLimitedResponse(c, retryAfter, "Too many assessment submissions from this network. Please wait before trying again")
 		default:
 			h.log.Error("submit failed", "error", err)
 			return httpcallError(c, err)

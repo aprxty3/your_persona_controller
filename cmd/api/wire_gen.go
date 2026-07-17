@@ -7,7 +7,9 @@
 package main
 
 import (
+	"context"
 	assessment2 "github.com/aprxty3/your_persona_controller.git/internal/application/assessment"
+	"github.com/aprxty3/your_persona_controller.git/internal/application/assessment/dto"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/auth"
 	deletionrequest2 "github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/profile"
@@ -60,7 +62,9 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	}
 	dispatcher := taskqueue.NewAsynqDispatcher(asynqClient)
 	pdfQueueService := asynq.NewPDFQueueService(dispatcher)
-	submitAssessmentUseCase := assessment2.NewSubmitAssessmentUseCase(db, testResultRepository, questionRepository, userRepository, client, distributedLockService, idempotencyService, pdfQueueService, loggerInstance)
+	ipRateLimitService := redis.NewIPRateLimitService(redisClient)
+	ipRateLimiter := provideAssessmentIPRateLimiter(ipRateLimitService)
+	submitAssessmentUseCase := assessment2.NewSubmitAssessmentUseCase(db, testResultRepository, questionRepository, userRepository, client, distributedLockService, idempotencyService, pdfQueueService, ipRateLimiter, loggerInstance)
 	assessmentHandler := handler.NewAssessmentHandler(submitAssessmentUseCase, loggerInstance)
 	questionCatalogUseCase := assessment2.NewQuestionCatalogUseCase(questionRepository, loggerInstance)
 	s3Client, err := provideS3Client(s3Endpoint, s3Region, s3Bucket, s3AccessKey, s3SecretKey, s3UsePathStyle)
@@ -73,11 +77,10 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	dashboardUseCase := dashboard.NewDashboardUseCase(testResultRepository, insightTemplateRepository, loggerInstance)
 	dashboardHandler := handler.NewDashboardHandler(dashboardUseCase, loggerInstance)
 	guestSessionRepository := account.NewGuestSessionRepository(db, loggerInstance)
-	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(guestSessionRepository, loggerInstance)
+	createGuestSessionUseCase := auth.NewCreateGuestSessionUseCase(guestSessionRepository, ipRateLimitService, loggerInstance)
 	verificationTokenRepository := account.NewVerificationTokenRepository(db, loggerInstance)
 	referralRepository := account.NewReferralRepository(db, loggerInstance)
 	passwordBreachChecker := security.NewHIBPBreachChecker(loggerInstance)
-	ipRateLimitService := redis.NewIPRateLimitService(redisClient)
 	registerUseCase := auth.NewRegisterUseCase(db, userRepository, guestSessionRepository, verificationTokenRepository, referralRepository, testResultRepository, passwordBreachChecker, dispatcher, ipRateLimitService, loggerInstance)
 	otpRateLimitService := redis.NewOTPRateLimitService(redisClient)
 	accountUseCase := auth.NewAccountUseCase(userRepository, verificationTokenRepository, dispatcher, otpRateLimitService, loggerInstance)
@@ -139,4 +142,22 @@ func provideIsProduction(v IsProduction) bool {
 
 func provideAllowedOrigins(v AllowedOrigins) []string {
 	return http.ParseAllowedOrigins(string(v))
+}
+
+// assessmentIPRateLimiterAdapter bridges *redis.IPRateLimitService to
+// assessment.IPRateLimiter. assessment can't import the redis package
+// directly (redis already imports assessment for IdempotencyService/
+// DistributedLockService — importing back would cycle), so this thin
+// adapter does the redis.IPScope conversion here in cmd/api instead, the one
+// place both packages are already visible together.
+type assessmentIPRateLimiterAdapter struct {
+	svc *redis.IPRateLimitService
+}
+
+func (a *assessmentIPRateLimiterAdapter) Allow(ctx context.Context, scope dto.IPRateLimitScope, ip string) (bool, int, error) {
+	return a.svc.Allow(ctx, redis.IPScope(scope), ip)
+}
+
+func provideAssessmentIPRateLimiter(svc *redis.IPRateLimitService) assessment2.IPRateLimiter {
+	return &assessmentIPRateLimiterAdapter{svc: svc}
 }

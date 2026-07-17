@@ -5,6 +5,29 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-07-17
+
+### General per-IP rate limiting & garbage input detection (TICKET-22, TICKET-23)
+
+#### [A] `POST /v1/guest-session` and `POST /v1/assessment/submit` now rate-limited per-IP (TICKET-22)
+- `IPRateLimitService` (`internal/infrastructure/cache/redis/ip_rate_limit.go`) gains two scopes: `guest-session` (10x/hour/IP) and `submit` (10x/hour/IP) — budgeted separately from `login`/`register`, closing the cheapest Denial-of-Wallet loop (mint a fresh guest session to bypass the per-session quota lock, then submit, repeat).
+- Checked at the very top of `CreateGuestSessionUseCase.Execute` (before validation/DB) and `SubmitAssessmentUseCase.Execute` (before idempotency/lock/DB — reject cheap before expensive work), same placement convention as `RegisterUseCase.Register`/`SessionUseCase.Login`. Fail-open on a Redis error (`Warn` log, request proceeds) — same graceful-degradation rule as the existing login/register limiters.
+- **Architectural note**: `SubmitAssessmentUseCase` can't reuse `auth.IPRateLimiter` or `redis.IPScope` directly — `internal/infrastructure/cache/redis` already imports `internal/application/assessment` (for `IdempotencyService`/`DistributedLockService`), so `assessment` importing `redis` back would cycle. Fixed with: a package-local `assessment.IPRateLimiter` interface parameterized on `dto.IPRateLimitScope` (lives in the same leaf `dto` subpackage as `SubmitResponse`, for the identical import-cycle reason documented there) instead of `redis.IPScope`; and a thin `assessmentIPRateLimiterAdapter` in `cmd/api/wire.go` — the one place both packages are already visible together — that converts to `redis.IPScope` and satisfies `assessment.IPRateLimiter` via `*redis.IPRateLimitService`.
+- `rateLimitedResponse` moved from `auth_handler.go` to `helpers.go` now that `assessment_handler.go` needs the same 429 shape.
+- Deliberately NOT rate-limited (KISS, per ticket): light read endpoints (`GET /v1/questions`, `GET /v1/results/:id`, dashboard) — no abuse evidence yet, BodyLimit + auth guard already sufficient.
+
+#### [A] Garbage input detection skips the Gemini call, never blocks submit (TICKET-23, FR-B5)
+- New `pkg/aivalidator.IsGarbage(text string) bool` — length floor (30 chars), unique-rune ratio, non-letter ratio, and longest-unbroken-word heuristics, all named constants for easy recalibration. No NLP dependency (KISS), consistent with `ValidateOutput`'s existing pure-function style in the same package.
+- `SubmitAssessmentUseCase.Execute` filters each essay through `IsGarbage` right before the AI phase — essays that fail are logged (index only, no content) and excluded from the Gemini call; essays that pass go through unchanged. All-garbage reuses the existing no-essay `fallback_static` path (zero new status/branch). Every essay, garbage or not, is still stored verbatim in `ANSWER` and still scanned for wellbeing/crisis language BEFORE garbage filtering — a distressed-but-repetitive answer must never skip the safety net just because it also reads as garbage.
+- PRD FR-B5 → `[~]` (backend done; FE indicator still pending, that's FR-B5's own remaining scope).
+
+#### Test coverage
+- `pkg/aivalidator/garbage_test.go`: table-driven, including the ticket-mandated false-positive guards (EN/ID short-but-legit essays ~50 chars, emoji-laden normal text) alongside repeated-character/symbol-mash/keyboard-mash/empty-string positives.
+- `submit_assessment_test.go`: `filterGarbageEssays` pure-selection tests (all-garbage, all-legit, mixed, empty); rate-limit-gate tests (rejects before idempotency check, Redis error fails open).
+- `create_guest_session_test.go`: rate-limit-gate tests (rejects before validation/repo call, Redis error fails open).
+- Handler-level: `TestSubmit_RateLimited_429`, `TestCreateGuestSession_RateLimited_429` — status code, `RATE_LIMITED` code, `meta.retry_after_seconds` presence.
+- `go build`/`go vet`/`go test` clean across every package except `cmd/api` (its `wire_gen.go` needs `make wire` regenerated for the 2 new constructor params — left for the user per standing convention; `wire.go`, the injector source, already updated).
+
 ## [UNRELEASED] — 2026-07-16
 
 ### Full `internal/application` test coverage, migrated to mockery (post-TICKET-21 follow-up)

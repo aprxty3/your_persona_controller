@@ -10,10 +10,11 @@ package dto
 
 // SubmitResponse is the result of a completed (or fallback_static) assessment submission.
 type SubmitResponse struct {
-	ResultID      string
-	MBTIType      string
-	GritScore     int
-	AISummaryText string
-	WellbeingFlag bool
-	Status        string
+	ResultID          string
+	MBTIType          string
+	GritScore         int
+	AISummaryText     string
+	WellbeingFlag     bool
+	Status            string
+	RetryAfterSeconds int `json:"-"` // set only when the submit call itself returned application.ErrRateLimited
 }
