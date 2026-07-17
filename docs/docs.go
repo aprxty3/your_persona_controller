@@ -263,6 +263,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/v1/account/referral-stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns aggregate counts only — how many people signed up and completed a test using\nthe caller's referral code. Never exposes invitee identity (no email/name/user_id),\nper data-privacy requirements (UU PDP) — this is deliberate, not a gap.\nIf the caller has never generated a referral code yet, returns zero counts and an\nempty ` + "`" + `code` + "`" + ` (200, not 404) — use ` + "`" + `/account/referral-code` + "`" + ` to generate one first.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Account"
+                ],
+                "summary": "Get my referral conversion stats",
+                "responses": {
+                    "200": {
+                        "description": "Referral stats",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/httpresponse.Response"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/profile.ReferralStatsResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR — unexpected server error",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/v1/assessment/submit": {
             "post": {
                 "description": "Guest-or-Member endpoint (Auth: Optional). Member identity is taken from the Bearer\naccess token if present (set by AuthMiddleware.OptionalAuth); otherwise falls back to\nthe ` + "`" + `session_id` + "`" + ` Guest cookie. Runs the AI analysis synchronously — expect 3-8s latency.",
@@ -332,7 +381,7 @@ const docTemplate = `{
                         }
                     },
                     "429": {
-                        "description": "QUOTA_EXCEEDED — monthly submission quota reached",
+                        "description": "QUOTA_EXCEEDED — monthly submission quota reached | RATE_LIMITED — too many submissions from this IP, check meta.retry_after_seconds",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -1066,6 +1115,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "VALIDATION_ERROR — one or more fields are missing or have an invalid value (e.g., unrecognised status or locale)",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "429": {
+                        "description": "RATE_LIMITED — too many guest sessions created from this network. Check meta.retry_after_seconds.",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -2114,6 +2169,20 @@ const docTemplate = `{
             "properties": {
                 "code": {
                     "type": "string"
+                }
+            }
+        },
+        "profile.ReferralStatsResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "completed_count": {
+                    "type": "integer"
+                },
+                "signup_count": {
+                    "type": "integer"
                 }
             }
         }

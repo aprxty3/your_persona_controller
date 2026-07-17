@@ -144,12 +144,7 @@ func provideAllowedOrigins(v AllowedOrigins) []string {
 	return http.ParseAllowedOrigins(string(v))
 }
 
-// assessmentIPRateLimiterAdapter bridges *redis.IPRateLimitService to
-// assessment.IPRateLimiter. assessment can't import the redis package
-// directly (redis already imports assessment for IdempotencyService/
-// DistributedLockService — importing back would cycle), so this thin
-// adapter does the redis.IPScope conversion here in cmd/api instead, the one
-// place both packages are already visible together.
+// assessmentIPRateLimiterAdapter bridges *redis.IPRateLimitService to assessment.IPRateLimiter.
 type assessmentIPRateLimiterAdapter struct {
 	svc *redis.IPRateLimitService
 }
