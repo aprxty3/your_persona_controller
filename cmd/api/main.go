@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aprxty3/your_persona_controller.git/internal/config"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	echo "github.com/labstack/echo/v4"
 )
@@ -31,6 +32,7 @@ type S3UsePathStyle bool
 type TurnstileSecretKey string
 type IsProduction bool
 type AllowedOrigins string
+type TrustedProxies string
 
 // @title Your Persona API
 // @version 1.0
@@ -144,6 +146,21 @@ func main() {
 	isProduction := appEnv == "production"
 	turnstileSecretKey := os.Getenv("TURNSTILE_SECRET_KEY")
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	trustedProxies := os.Getenv("TRUSTED_PROXIES")
+
+	// refuse to boot in production with insecure/missing config
+	if isProduction {
+		config.RequireProduction(logInstance,
+			config.Check{Name: "JWT_SECRET", Value: jwtSecret, InsecureDefault: "your-persona-super-secret-key-change-in-production-123456"},
+			config.Check{Name: "GEMINI_API_KEY", Value: geminiAPIKey},
+			config.Check{Name: "GEMINI_MODEL", Value: geminiModel},
+			config.Check{Name: "DB_PASSWORD", Value: os.Getenv("DB_PASSWORD"), InsecureDefault: "changeme"},
+			config.Check{Name: "S3_ACCESS_KEY", Value: s3AccessKey, InsecureDefault: "minioadmin"},
+			config.Check{Name: "S3_SECRET_KEY", Value: s3SecretKey, InsecureDefault: "minioadmin"},
+			config.Check{Name: "TURNSTILE_SECRET_KEY", Value: turnstileSecretKey},
+			config.Check{Name: "ALLOWED_ORIGINS", Value: allowedOrigins},
+		)
+	}
 
 	// ---------------------------------------------------------
 	// DEPENDENCY INJECTION (Wire)
@@ -167,6 +184,7 @@ func main() {
 		TurnstileSecretKey(turnstileSecretKey),
 		IsProduction(isProduction),
 		AllowedOrigins(allowedOrigins),
+		TrustedProxies(trustedProxies),
 		logInstance,
 	)
 	if err != nil {

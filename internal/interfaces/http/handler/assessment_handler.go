@@ -33,13 +33,19 @@ func NewAssessmentHandler(uc *assessment.SubmitAssessmentUseCase, log logger.Log
 // @Description  Guest-or-Member endpoint (Auth: Optional). Member identity is taken from the Bearer
 // @Description  access token if present (set by AuthMiddleware.OptionalAuth); otherwise falls back to
 // @Description  the `session_id` Guest cookie. Runs the AI analysis synchronously — expect 3-8s latency.
+// @Description
+// @Description  **CSRF-protected**: requires header `X-CSRF-Token` set to the value of cookie `csrf_token`
+// @Description  (double-submit pattern — the cookie is primed by the response of ANY prior request, e.g.
+// @Description  `GET /v1/questions`). Missing/invalid token → `403 Forbidden`.
 // @Tags         Assessment
 // @Accept       json
 // @Produce      json
 // @Param        Idempotency-Key header string true "Client-generated UUIDv4, replayed to dedupe retries"
+// @Param        X-CSRF-Token header string true "From cookie csrf_token — see CSRF note above"
 // @Param        request body dto.SubmitRequestDTO true "Locale + answer set"
 // @Success      200 {object} httpresponse.Response{data=dto.SubmitResponse} "Assessment result"
 // @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR — missing Idempotency-Key, malformed body, or neither session_id cookie nor access token present"
+// @Failure      403 {object} httpresponse.Response "Missing/invalid X-CSRF-Token"
 // @Failure      409 {object} httpresponse.Response "IDEMPOTENCY_KEY_REUSED — same key replayed with a different payload"
 // @Failure      423 {object} httpresponse.Response "LOCK_NOT_ACQUIRED — a submission for this identity is already in flight"
 // @Failure      429 {object} httpresponse.Response "QUOTA_EXCEEDED — monthly submission quota reached | RATE_LIMITED — too many submissions from this IP, check meta.retry_after_seconds"

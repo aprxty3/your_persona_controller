@@ -38,7 +38,6 @@ type ResultResponse struct {
 	WellbeingFlag bool                   `json:"wellbeing_flag"`
 	MascotStyle   string                 `json:"mascot_style"`
 	Locale        string                 `json:"locale"`
-	ShareToken    string                 `json:"share_token"`
 	PDFStatus     string                 `json:"pdf_status"`
 	IsOwner       bool                   `json:"is_owner"`
 	CreatedAt     time.Time              `json:"created_at"`
@@ -187,7 +186,6 @@ func toResultResponse(result *testresult.TestResult, isOwner bool) *ResultRespon
 		WellbeingFlag: result.WellbeingFlag,
 		MascotStyle:   result.MascotStyle,
 		Locale:        result.Locale,
-		ShareToken:    result.ShareToken,
 		PDFStatus:     string(result.PDFStatus),
 		IsOwner:       isOwner,
 		CreatedAt:     result.CreatedAt,

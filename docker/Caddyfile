@@ -1,0 +1,14 @@
+# Reverse proxy for api.yourpersonas.com — Caddy provisions and renews the
+# TLS certificate automatically (ACME/Let's Encrypt) as long as DNS for this
+# domain points at the VM and ports 80/443 are reachable from the internet.
+# No other config needed: this IS the whole production TLS setup.
+#
+# TRUSTED_PROXIES in .env must include this container's address on the
+# compose network (see docker-compose.prod.yml) so the Go app's
+# ParseTrustedProxies (TICKET-26) trusts the X-Forwarded-For header Caddy
+# sets below — otherwise c.RealIP() sees Caddy's IP for every request,
+# breaking per-IP rate limiting (TICKET-22) and Turnstile's remoteip
+# (TICKET-11). See docs/deploy_runbook.md for the exact value.
+api.yourpersonas.com {
+	reverse_proxy api:8080
+}

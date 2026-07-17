@@ -8,7 +8,6 @@ import (
 type TestResultRepository interface {
 	Create(ctx context.Context, result *TestResult) error
 	FindByID(ctx context.Context, id string) (*TestResult, error)
-	FindByShareToken(ctx context.Context, shareToken string) (*TestResult, error)
 	Update(ctx context.Context, result *TestResult) error
 	CountMonthlyUsage(ctx context.Context, userID string) (int64, error)
 	CountMonthlyUsageByGuestSession(ctx context.Context, guestSessionID string) (int64, error)

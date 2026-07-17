@@ -1,6 +1,8 @@
 package http
 
 import (
+	"fmt"
+	"net"
 	"net/http"
 	"strings"
 
@@ -47,6 +49,37 @@ func ParseAllowedOrigins(raw string) []string {
 	return origins
 }
 
+// ParseTrustedProxies turns a comma-separated TRUSTED_PROXIES env value
+// (CIDRs or bare IPs — a bare IP is treated as a /32 or /128) into an
+// echo.IPExtractor for c.RealIP().
+func ParseTrustedProxies(raw string) (echo.IPExtractor, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return echo.ExtractIPDirect(), nil
+	}
+
+	var opts []echo.TrustOption
+	for _, entry := range strings.Split(raw, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if !strings.Contains(entry, "/") {
+			if strings.Contains(entry, ":") {
+				entry += "/128"
+			} else {
+				entry += "/32"
+			}
+		}
+		_, ipNet, err := net.ParseCIDR(entry)
+		if err != nil {
+			return nil, fmt.Errorf("invalid TRUSTED_PROXIES entry %q: %w", entry, err)
+		}
+		opts = append(opts, echo.TrustIPRange(ipNet))
+	}
+	return echo.ExtractIPFromXFFHeader(opts...), nil
+}
+
 // SetupRouter initializes the Echo instance, applies global middlewares,
 func SetupRouter(
 	assessmentHandler *handler.AssessmentHandler,
@@ -59,8 +92,10 @@ func SetupRouter(
 	localeMiddleware *appmiddleware.LocaleMiddleware,
 	allowedOrigins []string,
 	isProduction bool,
+	ipExtractor echo.IPExtractor,
 ) *echo.Echo {
 	e := echo.New()
+	e.IPExtractor = ipExtractor
 
 	// ---------------------------------------------------------
 	// GLOBAL MIDDLEWARE

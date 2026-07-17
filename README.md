@@ -100,9 +100,20 @@ mockery
 
 Every package's mocks live in the same place: a plain `pkgname/mocks` subpackage (`with-expecter: true`, `mocks.NewMockX(t)` + `.EXPECT()...Return()`). `internal/application/assessment` and `internal/application/pdf` used to be exceptions — their `IdempotencyService`/`PDFRenderer` interfaces referenced a type defined in their own package (`SubmitResponse`, `PDFData`), which would force a subpackage mock to import back into the package under test and hit Go's "import cycle not allowed in test". Fixed at the source instead of working around it in the mock config: those two response/data types now live in their own leaf `dto` subpackage (`internal/application/assessment/dto`, `internal/application/pdf/dto`) that nothing imports back — so every package, including these two, uses the identical `pkgname/mocks` layout.
 
+## API Contract (Swagger/OpenAPI)
+
+`docs/swagger.json` (and the equivalent `swagger.yaml`) is the machine-readable API contract — generated from the `@Summary`/`@Param`/`@Success`/`@Failure` annotations on every handler in `internal/interfaces/http/handler/`, committed to git (same convention as `wire_gen.go`: reviewable, no local codegen step required to consume it). The frontend (`your_persona_ui`) is expected to build against this file directly — e.g. via [`openapi-typescript`](https://github.com/openapi-ts/openapi-typescript) for generated types/client — rather than hand-transcribing endpoint shapes from reading Go source. Browse it interactively at `/swagger/index.html` on a running instance.
+
+**Regenerate after touching any handler annotation:**
+```bash
+make swag
+```
+
+**This file is a contract, not a draft**: since BE MVP feature-complete gate, a breaking change to any endpoint already in `docs/swagger.json` — removing/renaming a field, changing a status code's meaning, tightening a previously-optional field to required — is a breaking-contract change and must go through `/v2`, not a silent edit to `/v1`. Additive changes (a new optional field, a new endpoint) are fine on `/v1`.
+
 ## Documentation
 
-Architecture rules & conventions (including for AI coding agents) are documented in [`AGENTS.md`](./AGENTS.md). API specifications, background jobs, and testing strategies are detailed in [`TECHNICAL_DOCUMENTATION.md`](./TECHNICAL_DOCUMENTATION.md). Full product requirements are managed in a separate repository — contact the maintainer if you need access.
+Architecture rules & conventions (including for AI coding agents) are documented in [`AGENTS.md`](./AGENTS.md). API specifications, background jobs, and testing strategies are detailed in [`TECHNICAL_DOCUMENTATION.md`](./TECHNICAL_DOCUMENTATION.md). Production deployment steps are in [`docs/deploy_runbook.md`](./docs/deploy_runbook.md). Full product requirements are managed in a separate repository — contact the maintainer if you need access.
 
 ## License
 

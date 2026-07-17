@@ -14,6 +14,7 @@ import (
 	appdeletion "github.com/aprxty3/your_persona_controller.git/internal/application/deletionrequest"
 	"github.com/aprxty3/your_persona_controller.git/internal/application/guestpurge"
 	apppdf "github.com/aprxty3/your_persona_controller.git/internal/application/pdf"
+	"github.com/aprxty3/your_persona_controller.git/internal/config"
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/testresult"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/i18n"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/mailer"
@@ -53,12 +54,32 @@ func main() {
 
 	appEnv := envOr("APP_ENV", "development")
 	logInstance := logger.NewLogger(appEnv)
+	isProduction := appEnv == "production"
+
+	dbPassword := envOr("DB_PASSWORD", "changeme")
+	s3AccessKey := envOr("S3_ACCESS_KEY", "minioadmin")
+	s3SecretKey := envOr("S3_SECRET_KEY", "minioadmin")
+	smtpUser := os.Getenv("SMTP_USER")
+	smtpPassword := os.Getenv("SMTP_PASSWORD")
+
+	// same production gate as cmd/api — a worker silently anonymizing
+	// users or emailing OTPs through dev fallback credentials is exactly the
+	// kind of incident this is meant to catch before it ships.
+	if isProduction {
+		config.RequireProduction(logInstance,
+			config.Check{Name: "DB_PASSWORD", Value: dbPassword, InsecureDefault: "changeme"},
+			config.Check{Name: "S3_ACCESS_KEY", Value: s3AccessKey, InsecureDefault: "minioadmin"},
+			config.Check{Name: "S3_SECRET_KEY", Value: s3SecretKey, InsecureDefault: "minioadmin"},
+			config.Check{Name: "SMTP_USER", Value: smtpUser},
+			config.Check{Name: "SMTP_PASSWORD", Value: smtpPassword},
+		)
+	}
 
 	// Postgres — the anonymize worker mutates users/test_results/guest_sessions.
 	dbDSN := os.Getenv("DB_DSN")
 	if dbDSN == "" {
 		dbDSN = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Jakarta",
-			envOr("DB_HOST", "localhost"), envOr("DB_USER", "postgres"), envOr("DB_PASSWORD", "changeme"),
+			envOr("DB_HOST", "localhost"), envOr("DB_USER", "postgres"), dbPassword,
 			envOr("DB_NAME", "psyche_assessment"), envOr("DB_PORT", "5432"), envOr("DB_SSLMODE", "disable"))
 	}
 	db, err := postgres.NewPostgresDB(dbDSN)
@@ -72,8 +93,8 @@ func main() {
 		envOr("S3_ENDPOINT", "http://localhost:9000"),
 		envOr("S3_REGION", "auto"),
 		envOr("S3_BUCKET", "your-personas-reports"),
-		envOr("S3_ACCESS_KEY", "minioadmin"),
-		envOr("S3_SECRET_KEY", "minioadmin"),
+		s3AccessKey,
+		s3SecretKey,
 		usePathStyle,
 	)
 	if err != nil {
@@ -92,7 +113,7 @@ func main() {
 
 	smtpMailer := mailer.NewSMTPMailer(
 		envOr("SMTP_HOST", "localhost"), smtpPort,
-		os.Getenv("SMTP_USER"), os.Getenv("SMTP_PASSWORD"),
+		smtpUser, smtpPassword,
 		envOr("SMTP_FROM", "noreply@yourpersonas.com"),
 		i18nCatalog,
 	)

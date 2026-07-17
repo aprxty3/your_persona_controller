@@ -45,19 +45,6 @@ func (r *TestResultRepository) FindByID(ctx context.Context, id string) (*testre
 	return toEntity(&m)
 }
 
-// FindByShareToken retrieves a test result by its share token. Returns nil, nil if not found.
-func (r *TestResultRepository) FindByShareToken(ctx context.Context, shareToken string) (*testresult.TestResult, error) {
-	var m postgres.TestResultModel
-	err := r.db.WithContext(ctx).First(&m, "share_token = ?", shareToken).Error
-	if postgres.IsNotFound(err) {
-		return nil, nil
-	}
-	if err := postgres.LogQueryError(r.log, "FindByShareToken", err); err != nil {
-		return nil, err
-	}
-	return toEntity(&m)
-}
-
 // Update saves all mutable fields of the test result.
 func (r *TestResultRepository) Update(ctx context.Context, res *testresult.TestResult) error {
 	m, err := toModel(res)

@@ -40,14 +40,20 @@ func NewAccountHandler(
 // @Description  Updates `display_name`/`age`/`status`/`preferred_locale` — send only the fields you want to change.
 // @Description  Used both to change locale from settings and to complete a profile for members who
 // @Description  registered without ever having a `GUEST_SESSION`.
+// @Description
+// @Description  **CSRF-protected**: requires header `X-CSRF-Token` set to the value of cookie `csrf_token`
+// @Description  (double-submit pattern — the cookie is primed by the response of ANY prior request).
+// @Description  Missing/invalid token → `403 Forbidden`.
 // @Tags         Account
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
+// @Param        X-CSRF-Token header string true "From cookie csrf_token — see CSRF note above"
 // @Param        request body dto.UpdateProfileRequestDTO true "Fields to update (all optional)"
 // @Success      200 {object} httpresponse.Response{data=profile.ProfileResponse} "Profile updated"
 // @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR — an included field has an invalid value"
 // @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | TOKEN_VERSION_MISMATCH"
+// @Failure      403 {object} httpresponse.Response "Missing/invalid X-CSRF-Token"
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
 // @Router       /v1/account/profile [patch]
 func (h *AccountHandler) UpdateProfile(c echo.Context) error {
@@ -127,11 +133,17 @@ func (h *AccountHandler) GetReferralStats(c echo.Context) error {
 // @Description  Once the grace period elapses, a background worker anonymizes personal data
 // @Description  (email, display name, essay answers, AI summary) and deletes stored PDFs.
 // @Description  Aggregate data (mbti_type, grit_score) is retained.
+// @Description
+// @Description  **CSRF-protected**: requires header `X-CSRF-Token` set to the value of cookie `csrf_token`
+// @Description  (double-submit pattern — the cookie is primed by the response of ANY prior request).
+// @Description  Missing/invalid token → `403 Forbidden`.
 // @Tags         Account
 // @Produce      json
 // @Security     BearerAuth
+// @Param        X-CSRF-Token header string true "From cookie csrf_token — see CSRF note above"
 // @Success      200 {object} httpresponse.Response{data=deletionrequest.RequestDeletionResponse} "Grace period started"
 // @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | TOKEN_VERSION_MISMATCH"
+// @Failure      403 {object} httpresponse.Response "Missing/invalid X-CSRF-Token"
 // @Failure      409 {object} httpresponse.Response "DELETION_ALREADY_REQUESTED — an active request already exists"
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
 // @Router       /v1/account/delete-request [post]
@@ -152,11 +164,17 @@ func (h *AccountHandler) RequestDeletion(c echo.Context) error {
 // @Summary      Cancel a pending account deletion request
 // @Description  Aborts an in-progress grace period — only works while the request is still
 // @Description  `pending_grace`. Once the anonymization worker has started, it's too late to cancel.
+// @Description
+// @Description  **CSRF-protected**: requires header `X-CSRF-Token` set to the value of cookie `csrf_token`
+// @Description  (double-submit pattern — the cookie is primed by the response of ANY prior request).
+// @Description  Missing/invalid token → `403 Forbidden`.
 // @Tags         Account
 // @Produce      json
 // @Security     BearerAuth
+// @Param        X-CSRF-Token header string true "From cookie csrf_token — see CSRF note above"
 // @Success      200 {object} httpresponse.Response "Deletion request cancelled"
 // @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | TOKEN_VERSION_MISMATCH"
+// @Failure      403 {object} httpresponse.Response "Missing/invalid X-CSRF-Token"
 // @Failure      404 {object} httpresponse.Response "NO_ACTIVE_DELETION_REQUEST — nothing to cancel"
 // @Failure      409 {object} httpresponse.Response "DELETION_ALREADY_PROCESSING — grace period already elapsed"
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"

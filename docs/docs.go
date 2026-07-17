@@ -48,7 +48,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Starts a 14-day grace period. The account remains fully usable during this window —\nuse ` + "`" + `/account/delete-request/cancel` + "`" + ` any time before the grace period ends to abort.\n\nOnce the grace period elapses, a background worker anonymizes personal data\n(email, display name, essay answers, AI summary) and deletes stored PDFs.\nAggregate data (mbti_type, grit_score) is retained.",
+                "description": "Starts a 14-day grace period. The account remains fully usable during this window —\nuse ` + "`" + `/account/delete-request/cancel` + "`" + ` any time before the grace period ends to abort.\n\nOnce the grace period elapses, a background worker anonymizes personal data\n(email, display name, essay answers, AI summary) and deletes stored PDFs.\nAggregate data (mbti_type, grit_score) is retained.\n\n**CSRF-protected**: requires header ` + "`" + `X-CSRF-Token` + "`" + ` set to the value of cookie ` + "`" + `csrf_token` + "`" + `\n(double-submit pattern — the cookie is primed by the response of ANY prior request).\nMissing/invalid token → ` + "`" + `403 Forbidden` + "`" + `.",
                 "produces": [
                     "application/json"
                 ],
@@ -56,6 +56,15 @@ const docTemplate = `{
                     "Account"
                 ],
                 "summary": "Request account deletion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "From cookie csrf_token — see CSRF note above",
+                        "name": "X-CSRF-Token",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Grace period started",
@@ -77,6 +86,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Missing/invalid X-CSRF-Token",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -103,7 +118,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Aborts an in-progress grace period — only works while the request is still\n` + "`" + `pending_grace` + "`" + `. Once the anonymization worker has started, it's too late to cancel.",
+                "description": "Aborts an in-progress grace period — only works while the request is still\n` + "`" + `pending_grace` + "`" + `. Once the anonymization worker has started, it's too late to cancel.\n\n**CSRF-protected**: requires header ` + "`" + `X-CSRF-Token` + "`" + ` set to the value of cookie ` + "`" + `csrf_token` + "`" + `\n(double-submit pattern — the cookie is primed by the response of ANY prior request).\nMissing/invalid token → ` + "`" + `403 Forbidden` + "`" + `.",
                 "produces": [
                     "application/json"
                 ],
@@ -111,6 +126,15 @@ const docTemplate = `{
                     "Account"
                 ],
                 "summary": "Cancel a pending account deletion request",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "From cookie csrf_token — see CSRF note above",
+                        "name": "X-CSRF-Token",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Deletion request cancelled",
@@ -120,6 +144,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Missing/invalid X-CSRF-Token",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -152,7 +182,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Updates ` + "`" + `display_name` + "`" + `/` + "`" + `age` + "`" + `/` + "`" + `status` + "`" + `/` + "`" + `preferred_locale` + "`" + ` — send only the fields you want to change.\nUsed both to change locale from settings and to complete a profile for members who\nregistered without ever having a ` + "`" + `GUEST_SESSION` + "`" + `.",
+                "description": "Updates ` + "`" + `display_name` + "`" + `/` + "`" + `age` + "`" + `/` + "`" + `status` + "`" + `/` + "`" + `preferred_locale` + "`" + ` — send only the fields you want to change.\nUsed both to change locale from settings and to complete a profile for members who\nregistered without ever having a ` + "`" + `GUEST_SESSION` + "`" + `.\n\n**CSRF-protected**: requires header ` + "`" + `X-CSRF-Token` + "`" + ` set to the value of cookie ` + "`" + `csrf_token` + "`" + `\n(double-submit pattern — the cookie is primed by the response of ANY prior request).\nMissing/invalid token → ` + "`" + `403 Forbidden` + "`" + `.",
                 "consumes": [
                     "application/json"
                 ],
@@ -164,6 +194,13 @@ const docTemplate = `{
                 ],
                 "summary": "Update account profile (partial update)",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "From cookie csrf_token — see CSRF note above",
+                        "name": "X-CSRF-Token",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "description": "Fields to update (all optional)",
                         "name": "request",
@@ -201,6 +238,12 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "UNAUTHORIZED | TOKEN_VERSION_MISMATCH",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Missing/invalid X-CSRF-Token",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -314,7 +357,7 @@ const docTemplate = `{
         },
         "/v1/assessment/submit": {
             "post": {
-                "description": "Guest-or-Member endpoint (Auth: Optional). Member identity is taken from the Bearer\naccess token if present (set by AuthMiddleware.OptionalAuth); otherwise falls back to\nthe ` + "`" + `session_id` + "`" + ` Guest cookie. Runs the AI analysis synchronously — expect 3-8s latency.",
+                "description": "Guest-or-Member endpoint (Auth: Optional). Member identity is taken from the Bearer\naccess token if present (set by AuthMiddleware.OptionalAuth); otherwise falls back to\nthe ` + "`" + `session_id` + "`" + ` Guest cookie. Runs the AI analysis synchronously — expect 3-8s latency.\n\n**CSRF-protected**: requires header ` + "`" + `X-CSRF-Token` + "`" + ` set to the value of cookie ` + "`" + `csrf_token` + "`" + `\n(double-submit pattern — the cookie is primed by the response of ANY prior request, e.g.\n` + "`" + `GET /v1/questions` + "`" + `). Missing/invalid token → ` + "`" + `403 Forbidden` + "`" + `.",
                 "consumes": [
                     "application/json"
                 ],
@@ -330,6 +373,13 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Client-generated UUIDv4, replayed to dedupe retries",
                         "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "From cookie csrf_token — see CSRF note above",
+                        "name": "X-CSRF-Token",
                         "in": "header",
                         "required": true
                     },
@@ -364,6 +414,12 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "VALIDATION_ERROR — missing Idempotency-Key, malformed body, or neither session_id cookie nor access token present",
+                        "schema": {
+                            "$ref": "#/definitions/httpresponse.Response"
+                        }
+                    },
+                    "403": {
+                        "description": "Missing/invalid X-CSRF-Token",
                         "schema": {
                             "$ref": "#/definitions/httpresponse.Response"
                         }
@@ -1601,9 +1657,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "result_id": {
-                    "type": "string"
-                },
-                "share_token": {
                     "type": "string"
                 },
                 "status": {

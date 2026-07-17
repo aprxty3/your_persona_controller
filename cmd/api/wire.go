@@ -76,6 +76,10 @@ func provideAllowedOrigins(v AllowedOrigins) []string {
 	return http.ParseAllowedOrigins(string(v))
 }
 
+func provideIPExtractor(v TrustedProxies) (echo.IPExtractor, error) {
+	return http.ParseTrustedProxies(string(v))
+}
+
 // assessmentIPRateLimiterAdapter bridges *redis.IPRateLimitService to assessment.IPRateLimiter.
 type assessmentIPRateLimiterAdapter struct {
 	svc *redis.IPRateLimitService
@@ -108,6 +112,7 @@ func InitializeAPI(
 	turnstileSecretKey TurnstileSecretKey,
 	isProduction IsProduction,
 	allowedOrigins AllowedOrigins,
+	trustedProxies TrustedProxies,
 	loggerInstance logger.Logger,
 ) (*echo.Echo, error) {
 	wire.Build(
@@ -126,6 +131,7 @@ func InitializeAPI(
 		provideTurnstileVerifier,
 		provideIsProduction,
 		provideAllowedOrigins,
+		provideIPExtractor,
 
 		provideS3Client,
 		wire.Bind(new(assessment.PDFSignerService), new(*s3.Client)),

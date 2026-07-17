@@ -40,8 +40,6 @@ definitions:
         type: string
       result_id:
         type: string
-      share_token:
-        type: string
       status:
         type: string
       trait_scores:
@@ -458,6 +456,16 @@ paths:
         Once the grace period elapses, a background worker anonymizes personal data
         (email, display name, essay answers, AI summary) and deletes stored PDFs.
         Aggregate data (mbti_type, grit_score) is retained.
+
+        **CSRF-protected**: requires header `X-CSRF-Token` set to the value of cookie `csrf_token`
+        (double-submit pattern — the cookie is primed by the response of ANY prior request).
+        Missing/invalid token → `403 Forbidden`.
+      parameters:
+      - description: From cookie csrf_token — see CSRF note above
+        in: header
+        name: X-CSRF-Token
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -472,6 +480,10 @@ paths:
               type: object
         "401":
           description: UNAUTHORIZED | TOKEN_VERSION_MISMATCH
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "403":
+          description: Missing/invalid X-CSRF-Token
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "409":
@@ -492,6 +504,16 @@ paths:
       description: |-
         Aborts an in-progress grace period — only works while the request is still
         `pending_grace`. Once the anonymization worker has started, it's too late to cancel.
+
+        **CSRF-protected**: requires header `X-CSRF-Token` set to the value of cookie `csrf_token`
+        (double-submit pattern — the cookie is primed by the response of ANY prior request).
+        Missing/invalid token → `403 Forbidden`.
+      parameters:
+      - description: From cookie csrf_token — see CSRF note above
+        in: header
+        name: X-CSRF-Token
+        required: true
+        type: string
       produces:
       - application/json
       responses:
@@ -501,6 +523,10 @@ paths:
             $ref: '#/definitions/httpresponse.Response'
         "401":
           description: UNAUTHORIZED | TOKEN_VERSION_MISMATCH
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "403":
+          description: Missing/invalid X-CSRF-Token
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "404":
@@ -528,7 +554,16 @@ paths:
         Updates `display_name`/`age`/`status`/`preferred_locale` — send only the fields you want to change.
         Used both to change locale from settings and to complete a profile for members who
         registered without ever having a `GUEST_SESSION`.
+
+        **CSRF-protected**: requires header `X-CSRF-Token` set to the value of cookie `csrf_token`
+        (double-submit pattern — the cookie is primed by the response of ANY prior request).
+        Missing/invalid token → `403 Forbidden`.
       parameters:
+      - description: From cookie csrf_token — see CSRF note above
+        in: header
+        name: X-CSRF-Token
+        required: true
+        type: string
       - description: Fields to update (all optional)
         in: body
         name: request
@@ -553,6 +588,10 @@ paths:
             $ref: '#/definitions/httpresponse.Response'
         "401":
           description: UNAUTHORIZED | TOKEN_VERSION_MISMATCH
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "403":
+          description: Missing/invalid X-CSRF-Token
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "500":
@@ -635,10 +674,19 @@ paths:
         Guest-or-Member endpoint (Auth: Optional). Member identity is taken from the Bearer
         access token if present (set by AuthMiddleware.OptionalAuth); otherwise falls back to
         the `session_id` Guest cookie. Runs the AI analysis synchronously — expect 3-8s latency.
+
+        **CSRF-protected**: requires header `X-CSRF-Token` set to the value of cookie `csrf_token`
+        (double-submit pattern — the cookie is primed by the response of ANY prior request, e.g.
+        `GET /v1/questions`). Missing/invalid token → `403 Forbidden`.
       parameters:
       - description: Client-generated UUIDv4, replayed to dedupe retries
         in: header
         name: Idempotency-Key
+        required: true
+        type: string
+      - description: From cookie csrf_token — see CSRF note above
+        in: header
+        name: X-CSRF-Token
         required: true
         type: string
       - description: Locale + answer set
@@ -662,6 +710,10 @@ paths:
         "400":
           description: VALIDATION_ERROR — missing Idempotency-Key, malformed body,
             or neither session_id cookie nor access token present
+          schema:
+            $ref: '#/definitions/httpresponse.Response'
+        "403":
+          description: Missing/invalid X-CSRF-Token
           schema:
             $ref: '#/definitions/httpresponse.Response'
         "409":

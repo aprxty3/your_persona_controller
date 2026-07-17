@@ -38,7 +38,7 @@ import (
 // Injectors from wire.go:
 
 // InitializeAPI wires up the entire application and returns the Echo router.
-func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, s3Endpoint S3Endpoint, s3Region S3Region, s3Bucket S3Bucket, s3AccessKey S3AccessKey, s3SecretKey S3SecretKey, s3UsePathStyle S3UsePathStyle, turnstileSecretKey TurnstileSecretKey, isProduction IsProduction, allowedOrigins AllowedOrigins, loggerInstance logger.Logger) (*echo.Echo, error) {
+func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, s3Endpoint S3Endpoint, s3Region S3Region, s3Bucket S3Bucket, s3AccessKey S3AccessKey, s3SecretKey S3SecretKey, s3UsePathStyle S3UsePathStyle, turnstileSecretKey TurnstileSecretKey, isProduction IsProduction, allowedOrigins AllowedOrigins, trustedProxies TrustedProxies, loggerInstance logger.Logger) (*echo.Echo, error) {
 	db, err := providePostgresDB(dbDSN)
 	if err != nil {
 		return nil, err
@@ -98,7 +98,11 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	authMiddleware := middleware.NewAuthMiddleware(jwtService, userRepository, loggerInstance)
 	localeMiddleware := middleware.NewLocaleMiddleware(jwtService, userRepository, loggerInstance)
 	v := provideAllowedOrigins(allowedOrigins)
-	echoEcho := http.SetupRouter(assessmentHandler, resultHandler, dashboardHandler, authHandler, accountHandler, healthHandler, authMiddleware, localeMiddleware, v, bool2)
+	ipExtractor, err := provideIPExtractor(trustedProxies)
+	if err != nil {
+		return nil, err
+	}
+	echoEcho := http.SetupRouter(assessmentHandler, resultHandler, dashboardHandler, authHandler, accountHandler, healthHandler, authMiddleware, localeMiddleware, v, bool2, ipExtractor)
 	return echoEcho, nil
 }
 
@@ -142,6 +146,10 @@ func provideIsProduction(v IsProduction) bool {
 
 func provideAllowedOrigins(v AllowedOrigins) []string {
 	return http.ParseAllowedOrigins(string(v))
+}
+
+func provideIPExtractor(v TrustedProxies) (echo.IPExtractor, error) {
+	return http.ParseTrustedProxies(string(v))
 }
 
 // assessmentIPRateLimiterAdapter bridges *redis.IPRateLimitService to assessment.IPRateLimiter.
