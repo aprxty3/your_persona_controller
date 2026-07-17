@@ -21,7 +21,7 @@ func testLogger() logger.Logger { return logger.NewLogger("test") }
 // gate itself gets, since Execute now checks it unconditionally up front.
 func allowingIPLimiter(t *testing.T) *mocks.MockIPRateLimiter {
 	limiter := mocks.NewMockIPRateLimiter(t)
-	limiter.EXPECT().Allow(mock.Anything, ScopeSubmitIP, mock.Anything).Return(true, 0, nil).Maybe()
+	limiter.EXPECT().Allow(mock.Anything, application.ScopeSubmitIP, mock.Anything).Return(true, 0, nil).Maybe()
 	return limiter
 }
 
@@ -158,7 +158,7 @@ func TestExecute_MemberUnderQuota_StillReachesLoadQuestions(t *testing.T) {
 
 func TestExecute_RateLimited_RejectsBeforeIdempotencyCheck(t *testing.T) {
 	limiter := mocks.NewMockIPRateLimiter(t)
-	limiter.EXPECT().Allow(mock.Anything, ScopeSubmitIP, "1.2.3.4").Return(false, 1800, nil).Once()
+	limiter.EXPECT().Allow(mock.Anything, application.ScopeSubmitIP, "1.2.3.4").Return(false, 1800, nil).Once()
 	uc := &SubmitAssessmentUseCase{ipRateLimiter: limiter, log: testLogger()} // idempotencySvc nil: must never be reached
 
 	resp, err := uc.Execute(context.Background(), SubmitRequest{IdempotencyKey: "key-1", SessionID: "sess-1", Answers: validAnswers(), IPAddress: "1.2.3.4"})
@@ -172,7 +172,7 @@ func TestExecute_RateLimited_RejectsBeforeIdempotencyCheck(t *testing.T) {
 
 func TestExecute_RateLimiterRedisError_FailsOpenAndProceeds(t *testing.T) {
 	limiter := mocks.NewMockIPRateLimiter(t)
-	limiter.EXPECT().Allow(mock.Anything, ScopeSubmitIP, mock.Anything).Return(false, 0, errors.New("redis down")).Once()
+	limiter.EXPECT().Allow(mock.Anything, application.ScopeSubmitIP, mock.Anything).Return(false, 0, errors.New("redis down")).Once()
 	idemSvc := mocks.NewMockIdempotencyService(t)
 	idemSvc.EXPECT().Check(mock.Anything, mock.Anything, mock.Anything).Return(nil, application.ErrIdempotencyKeyReused).Once()
 	uc := &SubmitAssessmentUseCase{ipRateLimiter: limiter, idempotencySvc: idemSvc, log: testLogger()}

@@ -132,6 +132,7 @@ func SetupRouter(
 	accountGroup := v1.Group("/account")
 	accountGroup.PATCH("/profile", accountHandler.UpdateProfile, authMiddleware.RequireAuth)
 	accountGroup.GET("/referral-code", accountHandler.GetReferralCode, authMiddleware.RequireAuth)
+	accountGroup.GET("/referral-stats", accountHandler.GetReferralStats, authMiddleware.RequireAuth)
 	accountGroup.POST("/delete-request", accountHandler.RequestDeletion, authMiddleware.RequireAuth)
 	accountGroup.POST("/delete-request/cancel", accountHandler.CancelDeletion, authMiddleware.RequireAuth)
 

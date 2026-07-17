@@ -44,6 +44,14 @@ type ReferralCodeResponse struct {
 	Code string `json:"code"`
 }
 
+// ReferralStatsResponse is aggregate-only by design (UU PDP) — counts, never
+// invitee identity (email/name/user_id). See GetReferralStats.
+type ReferralStatsResponse struct {
+	Code           string `json:"code"`
+	SignupCount    int64  `json:"signup_count"`
+	CompletedCount int64  `json:"completed_count"`
+}
+
 // ProfileUseCase manages Member self-service profile and referral code retrieval.
 type ProfileUseCase struct {
 	userRepo     account.UserRepository
@@ -163,6 +171,36 @@ func (uc *ProfileUseCase) GetReferralCode(ctx context.Context, userID string) (*
 
 	uc.log.Error("get referral code failed", "reason", "exhausted_attempts", "user_id", userID)
 	return nil, fmt.Errorf("get_referral_code: exhausted %d attempts generating a unique code", maxCodeGenAttempts)
+}
+
+// GetReferralStats returns aggregate conversion counts for the caller's own
+// referral code — never invitee identity (email/name/user_id), per UU PDP.
+func (uc *ProfileUseCase) GetReferralStats(ctx context.Context, userID string) (*ReferralStatsResponse, error) {
+	code, err := uc.referralRepo.FindCodeByUserID(ctx, userID)
+	if err != nil {
+		uc.log.Error("get referral stats failed", "step", "lookup_code", "user_id", userID, "error", err)
+		return nil, fmt.Errorf("get_referral_stats: lookup code: %w", err)
+	}
+	if code == nil {
+		return &ReferralStatsResponse{}, nil
+	}
+
+	signupCount, err := uc.referralRepo.CountEventsByCodeID(ctx, code.ID, account.EventTypeSignup)
+	if err != nil {
+		uc.log.Error("get referral stats failed", "step", "count_signup", "user_id", userID, "error", err)
+		return nil, fmt.Errorf("get_referral_stats: count signup events: %w", err)
+	}
+	completedCount, err := uc.referralRepo.CountEventsByCodeID(ctx, code.ID, account.EventTypeTestCompleted)
+	if err != nil {
+		uc.log.Error("get referral stats failed", "step", "count_completed", "user_id", userID, "error", err)
+		return nil, fmt.Errorf("get_referral_stats: count completed events: %w", err)
+	}
+
+	return &ReferralStatsResponse{
+		Code:           code.Code,
+		SignupCount:    signupCount,
+		CompletedCount: completedCount,
+	}, nil
 }
 
 // generateReferralCode produces a cryptographically secure code from referralCodeCharset.

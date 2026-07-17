@@ -156,3 +156,68 @@ func TestGetReferralCode_LookupError_Propagates(t *testing.T) {
 		t.Fatal("expected the repository error to propagate")
 	}
 }
+
+// --- GetReferralStats (TICKET-25) ---
+
+func TestGetReferralStats_NoCodeYet_ReturnsZeroCountsNotError(t *testing.T) {
+	referralRepo := accountmocks.NewMockReferralRepository(t) // no CountEventsByCodeID EXPECT(): must never be called
+	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(nil, nil).Once()
+	uc := NewProfileUseCase(nil, referralRepo, testLogger())
+
+	resp, err := uc.GetReferralStats(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Code != "" || resp.SignupCount != 0 || resp.CompletedCount != 0 {
+		t.Fatalf("expected zero-value stats for a user with no code, got %+v", resp)
+	}
+}
+
+func TestGetReferralStats_ExistingCode_ReturnsBothCounts(t *testing.T) {
+	referralRepo := accountmocks.NewMockReferralRepository(t)
+	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(&account.ReferralCode{ID: "code-1", Code: "ABCD1234"}, nil).Once()
+	referralRepo.EXPECT().CountEventsByCodeID(mock.Anything, "code-1", account.EventTypeSignup).Return(int64(3), nil).Once()
+	referralRepo.EXPECT().CountEventsByCodeID(mock.Anything, "code-1", account.EventTypeTestCompleted).Return(int64(1), nil).Once()
+	uc := NewProfileUseCase(nil, referralRepo, testLogger())
+
+	resp, err := uc.GetReferralStats(context.Background(), "user-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Code != "ABCD1234" || resp.SignupCount != 3 || resp.CompletedCount != 1 {
+		t.Fatalf("expected code=ABCD1234 signup=3 completed=1, got %+v", resp)
+	}
+}
+
+func TestGetReferralStats_CodeLookupError_Propagates(t *testing.T) {
+	referralRepo := accountmocks.NewMockReferralRepository(t)
+	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(nil, errors.New("db down")).Once()
+	uc := NewProfileUseCase(nil, referralRepo, testLogger())
+
+	if _, err := uc.GetReferralStats(context.Background(), "user-1"); err == nil {
+		t.Fatal("expected the code lookup error to propagate")
+	}
+}
+
+func TestGetReferralStats_SignupCountError_Propagates(t *testing.T) {
+	referralRepo := accountmocks.NewMockReferralRepository(t)
+	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(&account.ReferralCode{ID: "code-1", Code: "ABCD1234"}, nil).Once()
+	referralRepo.EXPECT().CountEventsByCodeID(mock.Anything, "code-1", account.EventTypeSignup).Return(int64(0), errors.New("db down")).Once()
+	uc := NewProfileUseCase(nil, referralRepo, testLogger())
+
+	if _, err := uc.GetReferralStats(context.Background(), "user-1"); err == nil {
+		t.Fatal("expected the signup count error to propagate")
+	}
+}
+
+func TestGetReferralStats_CompletedCountError_Propagates(t *testing.T) {
+	referralRepo := accountmocks.NewMockReferralRepository(t)
+	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(&account.ReferralCode{ID: "code-1", Code: "ABCD1234"}, nil).Once()
+	referralRepo.EXPECT().CountEventsByCodeID(mock.Anything, "code-1", account.EventTypeSignup).Return(int64(3), nil).Once()
+	referralRepo.EXPECT().CountEventsByCodeID(mock.Anything, "code-1", account.EventTypeTestCompleted).Return(int64(0), errors.New("db down")).Once()
+	uc := NewProfileUseCase(nil, referralRepo, testLogger())
+
+	if _, err := uc.GetReferralStats(context.Background(), "user-1"); err == nil {
+		t.Fatal("expected the completed count error to propagate")
+	}
+}

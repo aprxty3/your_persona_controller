@@ -95,6 +95,30 @@ func (h *AccountHandler) GetReferralCode(c echo.Context) error {
 	return httpcallSuccess(c, http.StatusOK, resp, nil)
 }
 
+// GetReferralStats handles GET /v1/account/referral-stats
+// @Summary      Get my referral conversion stats
+// @Description  Returns aggregate counts only — how many people signed up and completed a test using
+// @Description  the caller's referral code. Never exposes invitee identity (no email/name/user_id),
+// @Description  per data-privacy requirements (UU PDP) — this is deliberate, not a gap.
+// @Description  If the caller has never generated a referral code yet, returns zero counts and an
+// @Description  empty `code` (200, not 404) — use `/account/referral-code` to generate one first.
+// @Tags         Account
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} httpresponse.Response{data=profile.ReferralStatsResponse} "Referral stats"
+// @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | TOKEN_VERSION_MISMATCH"
+// @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
+// @Router       /v1/account/referral-stats [get]
+func (h *AccountHandler) GetReferralStats(c echo.Context) error {
+	resp, err := h.profileUseCase.GetReferralStats(c.Request().Context(), middleware.UserIDFromContext(c))
+	if err != nil {
+		h.log.Error("get referral stats failed", "error", err)
+		return httpcallError(c, err)
+	}
+
+	return httpcallSuccess(c, http.StatusOK, resp, nil)
+}
+
 // RequestDeletion handles POST /v1/account/delete-request
 // @Summary      Request account deletion
 // @Description  Starts a 14-day grace period. The account remains fully usable during this window —

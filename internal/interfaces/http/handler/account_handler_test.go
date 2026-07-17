@@ -128,6 +128,73 @@ func TestGetReferralCode_RepoError_500(t *testing.T) {
 	}
 }
 
+func TestGetReferralStats_NoCodeYet_ReturnsZeroCounts200(t *testing.T) {
+	referralRepo := accountmocks.NewMockReferralRepository(t) // no CountEventsByCodeID EXPECT(): must never be called
+	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(nil, nil).Once()
+
+	h := NewAccountHandler(profile.NewProfileUseCase(accountmocks.NewMockUserRepository(t), referralRepo, testLog()), nil, testLog())
+	c, rec := newAuthedCtx(http.MethodGet, "", "user-1")
+
+	if err := h.GetReferralStats(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 (not 404/auto-generate), got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"signup_count":0`) || !strings.Contains(rec.Body.String(), `"completed_count":0`) {
+		t.Errorf("expected zero counts, got: %s", rec.Body.String())
+	}
+}
+
+func TestGetReferralStats_ExistingCode_ReturnsCountsNoInviteePII(t *testing.T) {
+	referralRepo := accountmocks.NewMockReferralRepository(t)
+	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(&account.ReferralCode{ID: "code-1", Code: "ABC12345"}, nil).Once()
+	referralRepo.EXPECT().CountEventsByCodeID(mock.Anything, "code-1", account.EventTypeSignup).Return(int64(3), nil).Once()
+	referralRepo.EXPECT().CountEventsByCodeID(mock.Anything, "code-1", account.EventTypeTestCompleted).Return(int64(1), nil).Once()
+
+	h := NewAccountHandler(profile.NewProfileUseCase(accountmocks.NewMockUserRepository(t), referralRepo, testLog()), nil, testLog())
+	c, rec := newAuthedCtx(http.MethodGet, "", "user-1")
+
+	if err := h.GetReferralStats(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	body := decodeResponse(t, rec)
+	data, ok := body.Data.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected data to be a JSON object, got %T", body.Data)
+	}
+	// Privacy contract (UU PDP): only code + aggregate counts, nothing else —
+	// explicitly enumerate the allowed key set rather than spot-checking,
+	// so an accidental future field (email/user_id/name) fails this test.
+	allowedKeys := map[string]bool{"code": true, "signup_count": true, "completed_count": true}
+	for k := range data {
+		if !allowedKeys[k] {
+			t.Errorf("response contains unexpected field %q — possible PII leak, response must be aggregate-only", k)
+		}
+	}
+	if data["code"] != "ABC12345" || data["signup_count"] != float64(3) || data["completed_count"] != float64(1) {
+		t.Errorf("expected code=ABC12345 signup_count=3 completed_count=1, got %+v", data)
+	}
+}
+
+func TestGetReferralStats_RepoError_500(t *testing.T) {
+	referralRepo := accountmocks.NewMockReferralRepository(t)
+	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(nil, assertErrHandler).Once()
+
+	h := NewAccountHandler(profile.NewProfileUseCase(accountmocks.NewMockUserRepository(t), referralRepo, testLog()), nil, testLog())
+	c, rec := newAuthedCtx(http.MethodGet, "", "user-1")
+
+	if err := h.GetReferralStats(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
 var assertErrHandler = &handlerTestErr{}
 
 type handlerTestErr struct{}

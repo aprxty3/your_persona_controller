@@ -5,6 +5,21 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-07-17 (2)
+
+### Referral stats endpoint & insight template content expansion (TICKET-25, TICKET-24)
+
+#### [A] `GET /v1/account/referral-stats` — aggregate-only referral conversion counts (TICKET-25)
+- New `ProfileUseCase.GetReferralStats(ctx, userID)` — reuses the existing `ProfileUseCase` (no new package, serumpun `GetReferralCode`) and the already-implemented (previously zero-caller) `ReferralRepository.CountEventsByCodeID`. No wiring/constructor changes.
+- Response is `{ code, signup_count, completed_count }` — **aggregate only, by design (UU PDP)**: never invitee email/name/user_id. A user who hasn't generated a code yet gets `200` with zero counts and an empty code, not `404` or an auto-generated code — code generation stays `GetReferralCode`'s exclusive responsibility.
+- Test coverage explicitly enumerates the response's allowed key set (`code`/`signup_count`/`completed_count`) rather than spot-checking fields, so an accidental future PII field fails the test immediately.
+- Swagger annotations added; `make swag` still needs to be run by the user per standing convention (not run here).
+
+#### [A] Insight template content — GRIT decrease + first-pole MBTI strengths/blind-spots (TICKET-24, FR-E2)
+- Seeder (`cmd/seed/main.go`) grows from 2 templates (GRIT only) to 18 (9 `insight_key` × EN/ID): `grit_decrease` (mirrors `grit_increase`, dashboard-only), plus 1 strength + 1 blind-spot template per **first pole** of each MBTI dimension (E/S/T/J at trait score ≥ 60).
+- **Scope deliberately narrower than the ticket's original ask, per user decision after a flagged gap**: `condition_type=threshold` in both consumers (`GeneratePDFUseCase.collectInsights`, `user_dashboard`'s micro-insight) only evaluates `value >= ThresholdValue` — there's no "below threshold" path. The ticket's second-pole templates (I/N/F/P, low score) and `grit_low_threshold` need that semantic and can't be safely seeded with current logic — a naive low `ThresholdValue` would fire on almost every score, showing the wrong pole's text to most users. Deferred to a follow-up ticket that adds a deliberate schema decision (e.g. a `direction` field) rather than smuggled into this content-only ticket. See `ticket-24-insight-template-content.md`'s "Catatan implementasi" for the full breakdown.
+- PRD FR-E2 note added documenting the scoped delivery and the deferred second-pole gap.
+
 ## [UNRELEASED] — 2026-07-17
 
 ### General per-IP rate limiting & garbage input detection (TICKET-22, TICKET-23)
