@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/aprxty3/your_persona_controller.git/pkg/httpresponse"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
@@ -44,10 +45,8 @@ func bindJSON(c echo.Context, log logger.Logger, action string, payload interfac
 
 func unwrapMessage(err error) string {
 	msg := err.Error()
-	for i := 0; i < len(msg)-2; i++ {
-		if msg[i] == ':' && msg[i+1] == ' ' {
-			return msg[i+2:]
-		}
+	if i := strings.Index(msg, ": "); i >= 0 {
+		return msg[i+2:]
 	}
 	return msg
 }

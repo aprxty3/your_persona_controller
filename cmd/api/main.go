@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -48,100 +47,30 @@ func main() {
 	// ENVIRONMENT VARIABLES
 	// ---------------------------------------------------------
 	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
-	geminiModel := os.Getenv("GEMINI_MODEL")
-	if geminiModel == "" {
-		geminiModel = "gemini-2.5-pro-001"
-	}
+	geminiModel := config.EnvOr("GEMINI_MODEL", "gemini-2.5-pro-001")
 
-	maxConcurrentStr := os.Getenv("GEMINI_MAX_CONCURRENT")
-	maxConcurrent, err := strconv.ParseInt(maxConcurrentStr, 10, 64)
+	maxConcurrent, err := strconv.ParseInt(os.Getenv("GEMINI_MAX_CONCURRENT"), 10, 64)
 	if err != nil || maxConcurrent <= 0 {
 		maxConcurrent = 10
 	}
 
-	dbDSN := os.Getenv("DB_DSN")
-	if dbDSN == "" {
-		dbHost := os.Getenv("DB_HOST")
-		if dbHost == "" {
-			dbHost = "localhost"
-		}
-		dbPort := os.Getenv("DB_PORT")
-		if dbPort == "" {
-			dbPort = "5432"
-		}
-		dbUser := os.Getenv("DB_USER")
-		if dbUser == "" {
-			dbUser = "postgres"
-		}
-		dbPassword := os.Getenv("DB_PASSWORD")
-		if dbPassword == "" {
-			dbPassword = "changeme"
-		}
-		dbName := os.Getenv("DB_NAME")
-		if dbName == "" {
-			dbName = "psyche_assessment"
-		}
-		dbSSLMode := os.Getenv("DB_SSLMODE")
-		if dbSSLMode == "" {
-			dbSSLMode = "disable"
-		}
-		dbDSN = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Jakarta",
-			dbHost, dbUser, dbPassword, dbName, dbPort, dbSSLMode)
-	}
+	dbDSN := config.PostgresDSN()
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisHost := os.Getenv("REDIS_HOST")
-		if redisHost == "" {
-			redisHost = "localhost"
-		}
-		redisPort := os.Getenv("REDIS_PORT")
-		if redisPort == "" {
-			redisPort = "6379"
-		}
-		redisAddr = fmt.Sprintf("%s:%s", redisHost, redisPort)
-	}
+	redisAddr := config.RedisAddr()
 	redisPassword := os.Getenv("REDIS_PASSWORD")
+	redisDB, _ := strconv.Atoi(os.Getenv("REDIS_DB")) // default 0
 
-	redisDBStr := os.Getenv("REDIS_DB")
-	redisDB, _ := strconv.Atoi(redisDBStr) // default 0
-
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		jwtSecret = "your-persona-super-secret-key-change-in-production-123456"
-	}
+	jwtSecret := config.EnvOr("JWT_SECRET", "your-persona-super-secret-key-change-in-production-123456")
 
 	// Object storage (MinIO dev / R2 prod) — result PDF signed-URL downloads.
-	s3Endpoint := os.Getenv("S3_ENDPOINT")
-	if s3Endpoint == "" {
-		s3Endpoint = "http://localhost:9000"
-	}
-	s3Region := os.Getenv("S3_REGION")
-	if s3Region == "" {
-		s3Region = "auto"
-	}
-	s3Bucket := os.Getenv("S3_BUCKET")
-	if s3Bucket == "" {
-		s3Bucket = "your-personas-reports"
-	}
-	s3AccessKey := os.Getenv("S3_ACCESS_KEY")
-	if s3AccessKey == "" {
-		s3AccessKey = "minioadmin"
-	}
-	s3SecretKey := os.Getenv("S3_SECRET_KEY")
-	if s3SecretKey == "" {
-		s3SecretKey = "minioadmin"
-	}
-	s3UsePathStyleStr := os.Getenv("S3_USE_PATH_STYLE")
-	if s3UsePathStyleStr == "" {
-		s3UsePathStyleStr = "true"
-	}
-	s3UsePathStyle, _ := strconv.ParseBool(s3UsePathStyleStr)
+	s3Endpoint := config.EnvOr("S3_ENDPOINT", "http://localhost:9000")
+	s3Region := config.EnvOr("S3_REGION", "auto")
+	s3Bucket := config.EnvOr("S3_BUCKET", "your-personas-reports")
+	s3AccessKey := config.EnvOr("S3_ACCESS_KEY", "minioadmin")
+	s3SecretKey := config.EnvOr("S3_SECRET_KEY", "minioadmin")
+	s3UsePathStyle, _ := strconv.ParseBool(config.EnvOr("S3_USE_PATH_STYLE", "true"))
 
-	appEnv := os.Getenv("APP_ENV")
-	if appEnv == "" {
-		appEnv = "development"
-	}
+	appEnv := config.EnvOr("APP_ENV", "development")
 	logInstance := logger.NewLogger(appEnv)
 	isProduction := appEnv == "production"
 	turnstileSecretKey := os.Getenv("TURNSTILE_SECRET_KEY")
@@ -192,10 +121,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	port := os.Getenv("APP_PORT")
-	if port == "" {
-		port = "8080"
-	}
+	port := config.EnvOr("APP_PORT", "8080")
 
 	// ---------------------------------------------------------
 	// SERVER START & GRACEFUL SHUTDOWN

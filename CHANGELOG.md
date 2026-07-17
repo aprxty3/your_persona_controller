@@ -5,6 +5,18 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-07-17 (5)
+
+### KISS/DRY audit pass — env-config consolidation & dead-code removal
+
+#### [C] One Postgres DSN / env-fallback implementation for all four binaries
+- The identical `DB_DSN`-or-build-from-parts block (with `TimeZone=Asia/Jakarta`) was duplicated verbatim in `cmd/api`, `cmd/worker`, `cmd/migrate`, and `cmd/seed` — four copies of the same defaults that could silently drift. Now one implementation: `internal/config/env.go` (`EnvOr`, `PostgresDSN`, `RedisAddr`), used by all four. `cmd/api`'s ~15 hand-rolled `if v == "" { v = default }` blocks and `cmd/worker`'s private `envOr` collapse into the same helpers. Zero behavior change — same env names, same defaults, same DSN string.
+
+#### [R] `pkg/repository` (generic `BaseRepository[T]`) deleted
+- Zero importers across the entire codebase after the full MVP was built — the "available but optional" status from 2026-07-10 never gained a single adopter, and its `FindByID` hardcodes a `WHERE id = ?` that is simply wrong for PKs like `GuestSession.SessionID`. Dead code with a footgun; removed (git history keeps it). `AGENTS.md`/`README.md`/`TECHNICAL_DOCUMENTATION.md` references updated.
+
+#### [C] `unwrapMessage` simplified to `strings.Index` (identical behavior, existing tests unchanged); stale `APP_TIMEZONE` env reference in `AGENTS.md` corrected to the actual DSN-hardcode implementation.
+
 ## [UNRELEASED] — 2026-07-17 (4)
 
 ### FE handoff pack — contract cleanup & Swagger audit (TICKET-27)

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -30,20 +29,9 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-func envOr(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
 func main() {
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = fmt.Sprintf("%s:%s", envOr("REDIS_HOST", "localhost"), envOr("REDIS_PORT", "6379"))
-	}
 	redisOpt := asynq.RedisClientOpt{
-		Addr:     redisAddr,
+		Addr:     config.RedisAddr(),
 		Password: os.Getenv("REDIS_PASSWORD"),
 	}
 
@@ -52,13 +40,13 @@ func main() {
 		smtpPort = 1025
 	}
 
-	appEnv := envOr("APP_ENV", "development")
+	appEnv := config.EnvOr("APP_ENV", "development")
 	logInstance := logger.NewLogger(appEnv)
 	isProduction := appEnv == "production"
 
-	dbPassword := envOr("DB_PASSWORD", "changeme")
-	s3AccessKey := envOr("S3_ACCESS_KEY", "minioadmin")
-	s3SecretKey := envOr("S3_SECRET_KEY", "minioadmin")
+	dbPassword := config.EnvOr("DB_PASSWORD", "changeme")
+	s3AccessKey := config.EnvOr("S3_ACCESS_KEY", "minioadmin")
+	s3SecretKey := config.EnvOr("S3_SECRET_KEY", "minioadmin")
 	smtpUser := os.Getenv("SMTP_USER")
 	smtpPassword := os.Getenv("SMTP_PASSWORD")
 
@@ -76,23 +64,17 @@ func main() {
 	}
 
 	// Postgres — the anonymize worker mutates users/test_results/guest_sessions.
-	dbDSN := os.Getenv("DB_DSN")
-	if dbDSN == "" {
-		dbDSN = fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Jakarta",
-			envOr("DB_HOST", "localhost"), envOr("DB_USER", "postgres"), dbPassword,
-			envOr("DB_NAME", "psyche_assessment"), envOr("DB_PORT", "5432"), envOr("DB_SSLMODE", "disable"))
-	}
-	db, err := postgres.NewPostgresDB(dbDSN)
+	db, err := postgres.NewPostgresDB(config.PostgresDSN())
 	if err != nil {
 		log.Fatalf("Worker failed to connect to database: %v", err)
 	}
 
 	// Object storage (MinIO dev / R2 prod) — anonymization must delete PDFs
-	usePathStyle, _ := strconv.ParseBool(envOr("S3_USE_PATH_STYLE", "true"))
+	usePathStyle, _ := strconv.ParseBool(config.EnvOr("S3_USE_PATH_STYLE", "true"))
 	s3Client, err := s3.NewClient(
-		envOr("S3_ENDPOINT", "http://localhost:9000"),
-		envOr("S3_REGION", "auto"),
-		envOr("S3_BUCKET", "your-personas-reports"),
+		config.EnvOr("S3_ENDPOINT", "http://localhost:9000"),
+		config.EnvOr("S3_REGION", "auto"),
+		config.EnvOr("S3_BUCKET", "your-personas-reports"),
 		s3AccessKey,
 		s3SecretKey,
 		usePathStyle,
@@ -112,9 +94,9 @@ func main() {
 	}
 
 	smtpMailer := mailer.NewSMTPMailer(
-		envOr("SMTP_HOST", "localhost"), smtpPort,
+		config.EnvOr("SMTP_HOST", "localhost"), smtpPort,
 		smtpUser, smtpPassword,
-		envOr("SMTP_FROM", "noreply@yourpersonas.com"),
+		config.EnvOr("SMTP_FROM", "noreply@yourpersonas.com"),
 		i18nCatalog,
 	)
 	emailHandler := workerhandler.NewEmailHandler(smtpMailer, logInstance)
