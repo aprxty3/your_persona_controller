@@ -204,8 +204,9 @@ func (uc *GeneratePDFUseCase) collectEssayQuotes(ctx context.Context, testResult
 
 // collectInsights matches TraitScores against the InsightTemplate registry
 // for the "Strengths & Blind Spots" section. Only templates whose condition
-// actually holds for this result are included: threshold templates require
-// the trait value to reach ThresholdValue; increase/decrease templates need a
+// actually holds for this result are included: threshold-family templates
+// (threshold / threshold_below, evaluated by content.InsightTemplate.MatchesScore)
+// fire on this result's own scores; increase/decrease templates need a
 // previous result to diff against, which this single-result job doesn't have,
 // so they're skipped (they belong to the dashboard trend surface).
 func (uc *GeneratePDFUseCase) collectInsights(ctx context.Context, result *testresult.TestResult) ([]string, error) {
@@ -222,7 +223,7 @@ func (uc *GeneratePDFUseCase) collectInsights(ctx context.Context, result *testr
 			return nil, fmt.Errorf("find matching templates for trait %q: %w", trait, err)
 		}
 		for _, t := range templates {
-			if t.ConditionType != content.ConditionThreshold || t.ThresholdValue == nil || value < *t.ThresholdValue {
+			if !t.MatchesScore(value) {
 				continue
 			}
 			texts = append(texts, strings.ReplaceAll(t.TemplateText, "{value}", strconv.Itoa(int(value))))

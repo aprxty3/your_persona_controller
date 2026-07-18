@@ -133,14 +133,16 @@ func NewSubmitAssessmentUseCase(
 
 // Execute orchestrates the entire assessment submission flow.
 func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitRequest) (*dto.SubmitResponse, error) {
+	log := logger.WithRequestID(ctx, uc.log)
+
 	if len(req.Answers) == 0 {
 		return nil, fmt.Errorf("%w: answers is required", application.ErrInvalidInput)
 	}
 
 	if allowed, retryAfter, err := uc.ipRateLimiter.Allow(ctx, application.ScopeSubmitIP, req.IPAddress); err != nil {
-		uc.log.Warn("submit ip rate limit check skipped", "reason", "redis_error", "error", err)
+		log.Warn("submit ip rate limit check skipped", "reason", "redis_error", "error", err)
 	} else if !allowed {
-		uc.log.Warn("submit rejected", "reason", "rate_limited", "retry_after_seconds", retryAfter)
+		log.Warn("submit rejected", "reason", "rate_limited", "retry_after_seconds", retryAfter)
 		return &dto.SubmitResponse{RetryAfterSeconds: retryAfter}, application.ErrRateLimited
 	}
 
@@ -151,7 +153,7 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 		if errors.Is(err, application.ErrIdempotencyKeyReused) {
 			return nil, err
 		}
-		uc.log.Warn("idempotency check failed, proceeding without cache", "error", err)
+		log.Warn("idempotency check failed, proceeding without cache", "error", err)
 	} else if cached != nil {
 		return cached, nil
 	}
@@ -166,7 +168,7 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 	}
 	defer func() {
 		if releaseErr := uc.lockSvc.ReleaseLock(ctx, lockKey); releaseErr != nil {
-			uc.log.Warn("release lock failed", "key", lockKey, "error", releaseErr)
+			log.Warn("release lock failed", "key", lockKey, "error", releaseErr)
 		}
 	}()
 
@@ -206,15 +208,15 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 	// from the safety check just because it also happens to look garbage.
 	isWellbeingFlagged := scanForCrisisLanguage(essayTexts, req.Locale)
 	resultID := uuid.New().String()
-	aiEssayTexts := filterGarbageEssays(essayTexts, resultID, uc.log)
-	aiCtx := context.WithoutCancel(ctx)
+	aiEssayTexts := filterGarbageEssays(essayTexts, resultID, log)
+	aiCtx := context.WithoutCancel(ctx) // preserves context VALUES (incl. request ID) — only cancellation is detached
 	outcome := uc.runAIPhase(aiCtx, resultID, aiEssayTexts, req.Locale)
 
 	// Scores are pure math over the answers — computed for every outcome,
 	// including fallback_static, since they don't depend on Gemini.
 	scores := ComputeScores(req.Answers, questionByID)
 	for _, dim := range scores.NeutralFallbackDimensions {
-		uc.log.Warn("scoring: no valid answer for dimension, defaulted to neutral 50", "dimension", dim, "result_id", resultID)
+		log.Warn("scoring: no valid answer for dimension, defaulted to neutral 50", "dimension", dim, "result_id", resultID)
 	}
 
 	referredByCode, referralEligible := uc.checkReferralEligibility(ctx, req)
@@ -253,10 +255,10 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 	}
 
 	txErr := uc.db.Transaction(func(tx *gorm.DB) error {
-		if err := pgassessment.NewTestResultRepository(tx, uc.log).Create(ctx, result); err != nil {
+		if err := pgassessment.NewTestResultRepository(tx, log).Create(ctx, result); err != nil {
 			return fmt.Errorf("tx: create test result: %w", err)
 		}
-		if err := pgassessment.NewAnswerRepository(tx, uc.log).UpsertAnswers(ctx, resultID, answers); err != nil {
+		if err := pgassessment.NewAnswerRepository(tx, log).UpsertAnswers(ctx, resultID, answers); err != nil {
 			return fmt.Errorf("tx: upsert answers: %w", err)
 		}
 
@@ -270,19 +272,19 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 				CreatedAt:      time.Now(),
 				ExpiresAt:      time.Now().Add(promptAuditRetention),
 			}
-			if err := pgassessment.NewPromptAuditLogRepository(tx, uc.log).Create(ctx, auditLog); err != nil {
+			if err := pgassessment.NewPromptAuditLogRepository(tx, log).Create(ctx, auditLog); err != nil {
 				return fmt.Errorf("tx: create audit log: %w", err)
 			}
 		}
 
 		if referralEligible {
-			referralRepo := pgaccount.NewReferralRepository(tx, uc.log)
+			referralRepo := pgaccount.NewReferralRepository(tx, log)
 			code, err := referralRepo.FindCodeByCode(ctx, *referredByCode)
 			if err != nil {
 				return fmt.Errorf("tx: find referral code: %w", err)
 			}
 			if code == nil {
-				uc.log.Warn("referral code not found, skipping event", "code", *referredByCode)
+				log.Warn("referral code not found, skipping event", "code", *referredByCode)
 			} else {
 				event := &account.ReferralEvent{
 					ID:             uuid.New().String(),
@@ -300,12 +302,12 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 		return nil
 	})
 	if txErr != nil {
-		uc.log.Error("submit failed", "step", "transaction", "result_id", resultID, "error", txErr)
+		log.Error("submit failed", "step", "transaction", "result_id", resultID, "error", txErr)
 		return nil, fmt.Errorf("submit: %w", txErr)
 	}
 
 	if err := uc.pdfQueue.EnqueueGeneratePDF(ctx, resultID); err != nil {
-		uc.log.Warn("enqueue pdf generation failed", "result_id", resultID, "error", err)
+		log.Warn("enqueue pdf generation failed", "result_id", resultID, "error", err)
 	}
 
 	resp := &dto.SubmitResponse{
@@ -318,7 +320,7 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 	}
 
 	if err := uc.idempotencySvc.Save(ctx, idemKey, payloadHash, resp, idempotencyTTL); err != nil {
-		uc.log.Warn("save idempotency cache failed", "key", idemKey, "error", err)
+		log.Warn("save idempotency cache failed", "key", idemKey, "error", err)
 	}
 
 	return resp, nil
@@ -384,10 +386,11 @@ func (uc *SubmitAssessmentUseCase) checkReferralEligibility(ctx context.Context,
 	if !req.IsMember {
 		return nil, false
 	}
+	log := logger.WithRequestID(ctx, uc.log)
 
 	user, err := uc.userRepo.FindByID(ctx, req.SessionID)
 	if err != nil {
-		uc.log.Warn("referral eligibility check failed, skipping", "error", err)
+		log.Warn("referral eligibility check failed, skipping", "error", err)
 		return nil, false
 	}
 	if user == nil || user.ReferredByCode == nil {
@@ -396,7 +399,7 @@ func (uc *SubmitAssessmentUseCase) checkReferralEligibility(ctx context.Context,
 
 	priorCount, err := uc.testResultRepo.CountCompletedByUser(ctx, req.SessionID)
 	if err != nil {
-		uc.log.Warn("referral eligibility check failed, skipping", "error", err)
+		log.Warn("referral eligibility check failed, skipping", "error", err)
 		return nil, false
 	}
 	if priorCount > 0 {
@@ -425,13 +428,14 @@ func (uc *SubmitAssessmentUseCase) runAIPhase(ctx context.Context, resultID stri
 	if len(essayTexts) == 0 {
 		return aiOutcome{status: testresult.StatusFallbackStatic, summary: fallbackText(locale)}
 	}
+	log := logger.WithRequestID(ctx, uc.log)
 
 	// Aggregate daily budget cap: exhausted budget = the same
 	// graceful fallback_static path as "no essays", NOT an error
 	if exceeded, err := uc.geminiBudget.Exceeded(ctx); err != nil {
-		uc.log.Warn("gemini budget check skipped", "reason", "redis_error", "error", err)
+		log.Warn("gemini budget check skipped", "reason", "redis_error", "error", err)
 	} else if exceeded {
-		uc.log.Warn("gemini call skipped", "reason", "daily_budget_exhausted", "result_id", resultID)
+		log.Warn("gemini call skipped", "reason", "daily_budget_exhausted", "result_id", resultID)
 		return aiOutcome{status: testresult.StatusFallbackStatic, summary: fallbackText(locale)}
 	}
 
@@ -442,7 +446,7 @@ func (uc *SubmitAssessmentUseCase) runAIPhase(ctx context.Context, resultID stri
 	// accepts the output — record them for any call that reported usage.
 	if tokens > 0 {
 		if consumeErr := uc.geminiBudget.Consume(ctx, tokens); consumeErr != nil {
-			uc.log.Warn("gemini budget consume failed", "reason", "redis_error", "error", consumeErr)
+			log.Warn("gemini budget consume failed", "reason", "redis_error", "error", consumeErr)
 		}
 	}
 
@@ -450,14 +454,14 @@ func (uc *SubmitAssessmentUseCase) runAIPhase(ctx context.Context, resultID stri
 
 	switch {
 	case err != nil:
-		uc.log.Warn("gemini call failed, falling back to static result", "result_id", resultID, "error", err)
+		log.Warn("gemini call failed, falling back to static result", "result_id", resultID, "error", err)
 		outcome.status = testresult.StatusFallbackStatic
 		outcome.summary = fallbackText(locale)
 		outcome.flaggedAnomaly = true
 		outcome.rawResponse = "ERROR: " + err.Error()
 	default:
 		if valErr := aivalidator.ValidateOutput(summary, locale); valErr != nil {
-			uc.log.Warn("gemini output failed validation, falling back to static result", "result_id", resultID, "error", valErr)
+			log.Warn("gemini output failed validation, falling back to static result", "result_id", resultID, "error", valErr)
 			outcome.status = testresult.StatusFallbackStatic
 			outcome.summary = fallbackText(locale)
 			outcome.flaggedAnomaly = true

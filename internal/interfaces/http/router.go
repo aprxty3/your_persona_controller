@@ -9,6 +9,7 @@ import (
 	_ "github.com/aprxty3/your_persona_controller.git/docs"
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
 	appmiddleware "github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/middleware"
+	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	echoSwagger "github.com/swaggo/echo-swagger"
@@ -93,15 +94,55 @@ func SetupRouter(
 	allowedOrigins []string,
 	isProduction bool,
 	ipExtractor echo.IPExtractor,
+	log logger.Logger,
 ) *echo.Echo {
 	e := echo.New()
 	e.IPExtractor = ipExtractor
+	accessLog := log.With("component", "http_access")
 
 	// ---------------------------------------------------------
 	// GLOBAL MIDDLEWARE
 	// ---------------------------------------------------------
 	e.Use(middleware.Recover())
-	e.Use(middleware.Logger())
+
+	e.Use(middleware.RequestIDWithConfig(middleware.RequestIDConfig{
+		RequestIDHandler: func(c echo.Context, id string) {
+			req := c.Request()
+			c.SetRequest(req.WithContext(logger.ContextWithRequestID(req.Context(), id)))
+		},
+	}))
+
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogRequestID: true,
+		LogMethod:    true,
+		LogURIPath:   true,
+		LogStatus:    true,
+		LogLatency:   true,
+		LogRemoteIP:  true,
+		LogError:     true,
+		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			fields := []interface{}{
+				"request_id", v.RequestID,
+				"method", v.Method,
+				"path", v.URIPath,
+				"status", v.Status,
+				"latency_ms", v.Latency.Milliseconds(),
+				"remote_ip", v.RemoteIP,
+			}
+			if v.Error != nil {
+				fields = append(fields, "error", v.Error)
+			}
+			switch {
+			case v.Status >= 500:
+				accessLog.Error("request", fields...)
+			case v.Status >= 400:
+				accessLog.Warn("request", fields...)
+			default:
+				accessLog.Info("request", fields...)
+			}
+			return nil
+		},
+	}))
 
 	// CORS — no wildcard (see ParseAllowedOrigins), credentials allowed so
 	// the browser sends session_id/csrf_token cookies cross-origin to the

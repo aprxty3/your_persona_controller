@@ -169,8 +169,8 @@ func (uc *DashboardUseCase) computeMicroInsights(ctx context.Context, recent []t
 				continue
 			}
 			insights = append(insights, strings.ReplaceAll(t.TemplateText, "{delta}", strconv.Itoa(-delta)))
-		case content.ConditionThreshold:
-			if latest.GritScore == 0 || t.ThresholdValue == nil || float64(latest.GritScore) < *t.ThresholdValue {
+		case content.ConditionThreshold, content.ConditionThresholdBelow:
+			if latest.GritScore == 0 || !t.MatchesScore(float64(latest.GritScore)) {
 				continue
 			}
 			insights = append(insights, strings.ReplaceAll(t.TemplateText, "{value}", strconv.Itoa(latest.GritScore)))

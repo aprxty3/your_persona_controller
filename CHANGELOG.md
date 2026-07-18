@@ -5,6 +5,19 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-07-18 (2)
+
+### Request-ID correlation & second-pole insight templates (TICKET-30, TICKET-31) — Fase 9 complete
+
+#### [A] X-Request-ID on every response + one log format for the whole process (TICKET-30)
+- `middleware.RequestID` now runs globally: the ID is echoed back (or generated) in the `X-Request-ID` response header — users/FE can quote it in bug reports — and pushed into the request `context.Context`. Echo's stock `middleware.Logger()` is replaced by `RequestLoggerWithConfig` writing through `pkg/logger` (tiered: 5xx=Error, 4xx=Warn, else Info; deliberately no URI query and no body — essays and credentials travel there).
+- New `pkg/logger/context.go` (`ContextWithRequestID`/`RequestIDFromContext`/`WithRequestID`) — placed in `pkg/logger`, NOT the HTTP middleware package, because application-layer use cases consume it and must not import the delivery layer. The whole submit path (Execute, runAIPhase, referral check, tx-scoped repos) now logs with `request_id`; other use cases adopt incrementally via the same 1-line pattern (documented scope, not a promise of full coverage).
+- `SetupRouter` gains a `log` param → `cmd/api` needs `make wire` (user runs it; same run covers TICKET-28's pending param).
+
+#### [A] `condition_type=threshold_below` + 16 second-pole MBTI templates (TICKET-31 — closes the TICKET-24 deferred gap)
+- New `content.ConditionThresholdBelow` and a single shared matcher `content.InsightTemplate.MatchesScore` (domain method) used by BOTH consumers — PDF `collectInsights` and the dashboard evaluator — so threshold semantics and the score-0 guard can never drift between them. Found & fixed latent gap in the process: PDF `collectInsights` had no score-0 guard (harmless with `>=`-only conditions, wrong the moment `threshold_below` exists).
+- Seeder grows 18 → 34 templates: I/N/F/P × (strength + blind spot) × (EN + ID), `threshold_value=40` mirroring the first pole's 60 — the 40-60 band stays deliberately neutral. **Engineer draft copy — all 34 templates await professional assessor review** (PRD Open Questions: insight_templates are assessor-owned). Run `make seed` to load them.
+
 ## [UNRELEASED] — 2026-07-18
 
 ### Gemini daily budget cap & prompt structural framing (TICKET-28, TICKET-29)
