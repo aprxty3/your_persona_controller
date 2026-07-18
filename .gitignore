@@ -1,6 +1,7 @@
 # Secrets — NEVER commit these (see AGENTS.md Security Rules)
 .env
 .env.local
+.env.prod
 .env.*.local
 *.pem
 *.key
