@@ -103,7 +103,7 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	if err != nil {
 		return nil, err
 	}
-	echoEcho := http.SetupRouter(assessmentHandler, resultHandler, dashboardHandler, authHandler, accountHandler, healthHandler, authMiddleware, localeMiddleware, v, bool2, ipExtractor)
+	echoEcho := http.SetupRouter(assessmentHandler, resultHandler, dashboardHandler, authHandler, accountHandler, healthHandler, authMiddleware, localeMiddleware, v, bool2, ipExtractor, loggerInstance)
 	return echoEcho, nil
 }
 
