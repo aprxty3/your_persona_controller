@@ -16,12 +16,12 @@ import (
 
 // Session token TTLs shared by every flow that issues a session
 const (
-	AccessTokenTTL  = 15 * time.Minute
+	AccessTokenTTL  = 6 * time.Hour
 	RefreshTokenTTL = 14 * 24 * time.Hour
 )
 
 const (
-	defaultLoginMaxAttempts = 10
+	defaultLoginMaxAttempts = 5
 	defaultLockDuration     = 15 * time.Minute
 )
 

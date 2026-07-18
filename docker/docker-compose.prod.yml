@@ -1,5 +1,17 @@
 name: your-persona-prod
 
+# Fixed subnet (instead of Docker's auto-assigned default bridge range) so
+# TRUSTED_PROXIES in .env.prod can be set once, in advance, without needing to
+# `docker network inspect` after the VPS is actually provisioned. Caddy is the
+# only container-to-container hop in front of `api`, so this /16 covering the
+# whole compose network is deliberately generous rather than pinning Caddy's
+# exact IP — that IP isn't guaranteed stable across container recreation.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
 services:
   api:
     build:
