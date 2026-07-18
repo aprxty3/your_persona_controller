@@ -13,13 +13,17 @@ import (
 
 // Client represents the Gemini API infrastructure implementation using the new SDK.
 type Client struct {
-	client    *genai.Client
-	modelName string
-	sem       *semaphore.Weighted
+	client      *genai.Client
+	modelName   string
+	temperature float32
+	sem         *semaphore.Weighted
 }
 
-// NewClient initializes the Gemini client with strict model pinning and concurrency limits.
-func NewClient(apiKey string, modelName string, maxConcurrent int64) (*Client, error) {
+// NewClient initializes the Gemini client with strict model pinning, concurrency
+// limits, and a fixed sampling temperature. Lower temperature keeps the output
+// inside the pinned 2-4-paragraph format more reliably — fewer anomalous
+// responses thrown away by the validator after their tokens were already spent.
+func NewClient(apiKey string, modelName string, maxConcurrent int64, temperature float32) (*Client, error) {
 	ctx := context.Background()
 
 	var client *genai.Client
@@ -41,9 +45,10 @@ func NewClient(apiKey string, modelName string, maxConcurrent int64) (*Client, e
 	sem := semaphore.NewWeighted(maxConcurrent)
 
 	return &Client{
-		client:    client,
-		modelName: modelName,
-		sem:       sem,
+		client:      client,
+		modelName:   modelName,
+		temperature: temperature,
+		sem:         sem,
 	}, nil
 }
 
@@ -84,6 +89,7 @@ func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale s
 	defer cancel()
 
 	genConfig := &genai.GenerateContentConfig{
+		Temperature: genai.Ptr(c.temperature),
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{
 				{Text: sysInstruction},
@@ -130,7 +136,4 @@ func (c *Client) GenerateSummary(ctx context.Context, essayText string, locale s
 
 // Close gracefully shuts down the Gemini client if needed (SDK baru menangani resource secara efisien).
 func (c *Client) Close() {
-	// Pada SDK baru genai.Client tidak memiliki metode Close() eksplisit,
-	// karena koneksi dikelola via HTTP transport. Method ini bisa dibiarkan kosong
-	// atau digunakan untuk menutup antrean internal jika ada di masa depan.
 }

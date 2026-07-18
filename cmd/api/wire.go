@@ -37,8 +37,8 @@ import (
 )
 
 // Wrapper providers to resolve concrete types using the typed aliases.
-func provideGeminiClient(key GeminiAPIKey, model GeminiModel, maxConcurrent int64) (*gemini.Client, error) {
-	return gemini.NewClient(string(key), string(model), maxConcurrent)
+func provideGeminiClient(key GeminiAPIKey, model GeminiModel, maxConcurrent int64, temperature GeminiTemperature) (*gemini.Client, error) {
+	return gemini.NewClient(string(key), string(model), maxConcurrent, float32(temperature))
 }
 
 func providePostgresDB(dsn DBDSN) (*gorm.DB, error) {
@@ -102,6 +102,7 @@ func InitializeAPI(
 	geminiAPIKey GeminiAPIKey,
 	geminiModel GeminiModel,
 	maxConcurrent int64,
+	geminiTemperature GeminiTemperature,
 	dbDSN DBDSN,
 	redisAddr RedisAddr,
 	redisPassword RedisPassword,

@@ -38,7 +38,7 @@ import (
 // Injectors from wire.go:
 
 // InitializeAPI wires up the entire application and returns the Echo router.
-func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, s3Endpoint S3Endpoint, s3Region S3Region, s3Bucket S3Bucket, s3AccessKey S3AccessKey, s3SecretKey S3SecretKey, s3UsePathStyle S3UsePathStyle, turnstileSecretKey TurnstileSecretKey, isProduction IsProduction, allowedOrigins AllowedOrigins, trustedProxies TrustedProxies, geminiDailyBudget GeminiDailyTokenBudget, loggerInstance logger.Logger) (*echo.Echo, error) {
+func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, geminiTemperature GeminiTemperature, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, s3Endpoint S3Endpoint, s3Region S3Region, s3Bucket S3Bucket, s3AccessKey S3AccessKey, s3SecretKey S3SecretKey, s3UsePathStyle S3UsePathStyle, turnstileSecretKey TurnstileSecretKey, isProduction IsProduction, allowedOrigins AllowedOrigins, trustedProxies TrustedProxies, geminiDailyBudget GeminiDailyTokenBudget, loggerInstance logger.Logger) (*echo.Echo, error) {
 	db, err := providePostgresDB(dbDSN)
 	if err != nil {
 		return nil, err
@@ -46,7 +46,7 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	testResultRepository := assessment.NewTestResultRepository(db, loggerInstance)
 	questionRepository := assessment.NewQuestionRepository(db, loggerInstance)
 	userRepository := account.NewUserRepository(db, loggerInstance)
-	client, err := provideGeminiClient(geminiAPIKey, geminiModel, maxConcurrent)
+	client, err := provideGeminiClient(geminiAPIKey, geminiModel, maxConcurrent, geminiTemperature)
 	if err != nil {
 		return nil, err
 	}
@@ -110,8 +110,8 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 // wire.go:
 
 // Wrapper providers to resolve concrete types using the typed aliases.
-func provideGeminiClient(key GeminiAPIKey, model GeminiModel, maxConcurrent int64) (*gemini.Client, error) {
-	return gemini.NewClient(string(key), string(model), maxConcurrent)
+func provideGeminiClient(key GeminiAPIKey, model GeminiModel, maxConcurrent int64, temperature GeminiTemperature) (*gemini.Client, error) {
+	return gemini.NewClient(string(key), string(model), maxConcurrent, float32(temperature))
 }
 
 func providePostgresDB(dsn DBDSN) (*gorm.DB, error) {

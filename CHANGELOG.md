@@ -5,6 +5,13 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-07-18 (4)
+
+### Gemini sampling temperature pinned
+
+#### [A] `GEMINI_TEMPERATURE` (default 0.6)
+- `GenerateContentConfig` previously sent no temperature at all → Gemini's default (1.0) applied, producing higher-variance output that more often broke the pinned 2-4-paragraph format and fell to `fallback_static` after the tokens were already spent. Now env-tunable (`GEMINI_TEMPERATURE`, valid 0-2, invalid/unset → 0.6) alongside `GEMINI_MODEL` — recalibrate in staging whenever the pinned model changes. Threaded via typed alias `GeminiTemperature` → `cmd/api` needs `make wire`.
+
 ## [UNRELEASED] — 2026-07-18 (3)
 
 ### Worker & config hardening (TICKET-32 — response to external "6 Juli" audit triage)

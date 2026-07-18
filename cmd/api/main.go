@@ -33,6 +33,7 @@ type IsProduction bool
 type AllowedOrigins string
 type TrustedProxies string
 type GeminiDailyTokenBudget int64
+type GeminiTemperature float32
 
 // @title Your Persona API
 // @version 1.0
@@ -53,6 +54,14 @@ func main() {
 	maxConcurrent, err := strconv.ParseInt(os.Getenv("GEMINI_MAX_CONCURRENT"), 10, 64)
 	if err != nil || maxConcurrent <= 0 {
 		maxConcurrent = 10
+	}
+
+	// Sampling temperature — 0.6 keeps output reliably inside the pinned
+	// 2-4-paragraph format (fewer validator rejections = fewer wasted tokens)
+	// while staying warm enough to feel personal. Valid range 0-2.
+	geminiTemperature, err := strconv.ParseFloat(os.Getenv("GEMINI_TEMPERATURE"), 32)
+	if err != nil || geminiTemperature < 0 || geminiTemperature > 2 {
+		geminiTemperature = 0.6
 	}
 
 	// 0/unset disables the aggregate daily cap (dev default) — deliberately
@@ -109,6 +118,7 @@ func main() {
 		GeminiAPIKey(geminiAPIKey),
 		GeminiModel(geminiModel),
 		maxConcurrent,
+		GeminiTemperature(geminiTemperature),
 		DBDSN(dbDSN),
 		RedisAddr(redisAddr),
 		RedisPassword(redisPassword),

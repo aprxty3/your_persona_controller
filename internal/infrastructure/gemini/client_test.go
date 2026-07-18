@@ -10,7 +10,7 @@ import (
 // construction) — GenerateSummary must reject that state up front instead
 // of dereferencing a nil SDK client.
 func TestNewClient_EmptyAPIKey_LeavesClientUnconfigured(t *testing.T) {
-	c, err := NewClient("", "gemini-2.0-flash", 1)
+	c, err := NewClient("", "gemini-2.0-flash", 1, 0.6)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestNewClient_EmptyAPIKey_LeavesClientUnconfigured(t *testing.T) {
 }
 
 func TestGenerateSummary_UnconfiguredClient_ReturnsError(t *testing.T) {
-	c, err := NewClient("", "gemini-2.0-flash", 1)
+	c, err := NewClient("", "gemini-2.0-flash", 1, 0.6)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -47,7 +47,7 @@ func TestGenerateSummary_UnconfiguredClient_ReturnsError(t *testing.T) {
 // so its shape (locale-aware system instruction + framed essay body) must be
 // exercised directly.
 func TestGenerateSummary_RawPromptIncludesLocaleAndEssay(t *testing.T) {
-	c, err := NewClient("", "gemini-2.0-flash", 1)
+	c, err := NewClient("", "gemini-2.0-flash", 1, 0.6)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestBuildPrompt_StructuralFraming(t *testing.T) {
 }
 
 func TestClose_UnconfiguredClient_DoesNotPanic(t *testing.T) {
-	c, err := NewClient("", "gemini-2.0-flash", 1)
+	c, err := NewClient("", "gemini-2.0-flash", 1, 0.6)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
