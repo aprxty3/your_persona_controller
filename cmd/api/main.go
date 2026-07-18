@@ -32,6 +32,7 @@ type TurnstileSecretKey string
 type IsProduction bool
 type AllowedOrigins string
 type TrustedProxies string
+type GeminiDailyTokenBudget int64
 
 // @title Your Persona API
 // @version 1.0
@@ -53,6 +54,11 @@ func main() {
 	if err != nil || maxConcurrent <= 0 {
 		maxConcurrent = 10
 	}
+
+	// 0/unset disables the aggregate daily cap (dev default) — deliberately
+	// NOT part of RequireProduction (running uncapped is a legitimate choice),
+	// but production gets a boot-time warning below.
+	geminiDailyBudget, _ := strconv.ParseInt(os.Getenv("GEMINI_DAILY_TOKEN_BUDGET"), 10, 64)
 
 	dbDSN := config.PostgresDSN()
 
@@ -76,6 +82,10 @@ func main() {
 	turnstileSecretKey := os.Getenv("TURNSTILE_SECRET_KEY")
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
 	trustedProxies := os.Getenv("TRUSTED_PROXIES")
+
+	if isProduction && geminiDailyBudget <= 0 {
+		logInstance.Warn("GEMINI_DAILY_TOKEN_BUDGET is unset — running production WITHOUT an aggregate daily Gemini cost cap (TICKET-28)")
+	}
 
 	// refuse to boot in production with insecure/missing config
 	if isProduction {
@@ -114,6 +124,7 @@ func main() {
 		IsProduction(isProduction),
 		AllowedOrigins(allowedOrigins),
 		TrustedProxies(trustedProxies),
+		GeminiDailyTokenBudget(geminiDailyBudget),
 		logInstance,
 	)
 	if err != nil {

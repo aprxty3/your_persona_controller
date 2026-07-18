@@ -78,7 +78,7 @@ func TestSubmit_IdempotencyCacheHit_200(t *testing.T) {
 	idemSvc.EXPECT().Check(mock.Anything, mock.Anything, mock.Anything).
 		Return(&dto.SubmitResponse{ResultID: "cached-1", Status: "completed"}, nil).Once()
 
-	uc := assessment.NewSubmitAssessmentUseCase(nil, nil, nil, nil, nil, nil, idemSvc, nil, allowingIPLimiter(t), testLog())
+	uc := assessment.NewSubmitAssessmentUseCase(nil, nil, nil, nil, nil, nil, idemSvc, nil, allowingIPLimiter(t), nil, testLog())
 	h := NewAssessmentHandler(uc, testLog())
 	c, rec := newSubmitCtx(t, validSubmitBody, "key-1", "sess-1")
 
@@ -98,7 +98,7 @@ func TestSubmit_IdempotencyKeyReused_409(t *testing.T) {
 	idemSvc.EXPECT().Check(mock.Anything, mock.Anything, mock.Anything).
 		Return(nil, application.ErrIdempotencyKeyReused).Once()
 
-	uc := assessment.NewSubmitAssessmentUseCase(nil, nil, nil, nil, nil, nil, idemSvc, nil, allowingIPLimiter(t), testLog())
+	uc := assessment.NewSubmitAssessmentUseCase(nil, nil, nil, nil, nil, nil, idemSvc, nil, allowingIPLimiter(t), nil, testLog())
 	h := NewAssessmentHandler(uc, testLog())
 	c, rec := newSubmitCtx(t, validSubmitBody, "key-1", "sess-1")
 
@@ -120,7 +120,7 @@ func TestSubmit_LockNotAcquired_423(t *testing.T) {
 	lockSvc := mocks.NewMockDistributedLockService(t)
 	lockSvc.EXPECT().AcquireLock(mock.Anything, mock.Anything, mock.Anything).Return(false, nil).Once()
 
-	uc := assessment.NewSubmitAssessmentUseCase(nil, nil, nil, nil, nil, lockSvc, idemSvc, nil, allowingIPLimiter(t), testLog())
+	uc := assessment.NewSubmitAssessmentUseCase(nil, nil, nil, nil, nil, lockSvc, idemSvc, nil, allowingIPLimiter(t), nil, testLog())
 	h := NewAssessmentHandler(uc, testLog())
 	c, rec := newSubmitCtx(t, validSubmitBody, "key-1", "sess-1")
 
@@ -145,7 +145,7 @@ func TestSubmit_QuotaExceeded_429(t *testing.T) {
 	trRepo := mocks.NewMockTestResultRepository(t)
 	trRepo.EXPECT().CountMonthlyUsageByGuestSession(mock.Anything, "sess-1").Return(int64(999999), nil).Once()
 
-	uc := assessment.NewSubmitAssessmentUseCase(nil, trRepo, nil, nil, nil, lockSvc, idemSvc, nil, allowingIPLimiter(t), testLog())
+	uc := assessment.NewSubmitAssessmentUseCase(nil, trRepo, nil, nil, nil, lockSvc, idemSvc, nil, allowingIPLimiter(t), nil, testLog())
 	h := NewAssessmentHandler(uc, testLog())
 	c, rec := newSubmitCtx(t, validSubmitBody, "key-1", "sess-1")
 
@@ -165,7 +165,7 @@ func TestSubmit_RateLimited_429(t *testing.T) {
 	limiter := mocks.NewMockIPRateLimiter(t)
 	limiter.EXPECT().Allow(mock.Anything, mock.Anything, mock.Anything).Return(false, 900, nil).Once()
 
-	uc := assessment.NewSubmitAssessmentUseCase(nil, nil, nil, nil, nil, nil, nil, nil, limiter, testLog())
+	uc := assessment.NewSubmitAssessmentUseCase(nil, nil, nil, nil, nil, nil, nil, nil, limiter, nil, testLog())
 	h := NewAssessmentHandler(uc, testLog())
 	c, rec := newSubmitCtx(t, validSubmitBody, "key-1", "sess-1")
 
@@ -186,7 +186,7 @@ func TestSubmit_RateLimited_429(t *testing.T) {
 
 func TestSubmit_EmptyAnswers_400(t *testing.T) {
 	idemSvc := mocks.NewMockIdempotencyService(t)
-	uc := assessment.NewSubmitAssessmentUseCase(nil, nil, nil, nil, nil, nil, idemSvc, nil, allowingIPLimiter(t), testLog())
+	uc := assessment.NewSubmitAssessmentUseCase(nil, nil, nil, nil, nil, nil, idemSvc, nil, allowingIPLimiter(t), nil, testLog())
 	h := NewAssessmentHandler(uc, testLog())
 	c, rec := newSubmitCtx(t, `{"locale":"en","answers":[]}`, "key-1", "sess-1")
 

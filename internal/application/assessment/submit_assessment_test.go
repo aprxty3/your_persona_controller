@@ -25,11 +25,21 @@ func allowingIPLimiter(t *testing.T) *mocks.MockIPRateLimiter {
 	return limiter
 }
 
+// unlimitedBudget returns a GeminiBudgetService mock that never blocks and
+// accepts any consumption — the default for every test not exercising the
+// budget gate itself.
+func unlimitedBudget(t *testing.T) *mocks.MockGeminiBudgetService {
+	budget := mocks.NewMockGeminiBudgetService(t)
+	budget.EXPECT().Exceeded(mock.Anything).Return(false, nil).Maybe()
+	budget.EXPECT().Consume(mock.Anything, mock.Anything).Return(nil).Maybe()
+	return budget
+}
+
 // newTestSubmitUseCase wires only the collaborators a given test actually
 // exercises — mockery mocks panic on any unexpected call, so leaving a
 // dependency nil is itself an assertion that the code path never touches it.
-// The IP rate limiter always allows here; tests for the rate-limit gate
-// itself construct SubmitAssessmentUseCase directly instead.
+// The IP rate limiter always allows and the Gemini budget is unlimited here;
+// tests for those gates themselves construct SubmitAssessmentUseCase directly instead.
 func newTestSubmitUseCase(t *testing.T, idemSvc IdempotencyService, lockSvc DistributedLockService, trRepo TestResultRepository, aiSvc AIGeneratorService) *SubmitAssessmentUseCase {
 	return &SubmitAssessmentUseCase{
 		testResultRepo: trRepo,
@@ -37,6 +47,7 @@ func newTestSubmitUseCase(t *testing.T, idemSvc IdempotencyService, lockSvc Dist
 		lockSvc:        lockSvc,
 		idempotencySvc: idemSvc,
 		ipRateLimiter:  allowingIPLimiter(t),
+		geminiBudget:   unlimitedBudget(t),
 		log:            testLogger(),
 	}
 }
@@ -285,5 +296,61 @@ func TestRunAIPhase_ValidOutput_Completes(t *testing.T) {
 	}
 	if outcome.totalTokens == nil || *outcome.totalTokens != 123 {
 		t.Fatalf("expected totalTokens=123, got %v", outcome.totalTokens)
+	}
+}
+
+// newBudgetGateUseCase builds the minimal harness for tests exercising the
+// budget gate itself (aiSvc as given, everything unrelated nil).
+func newBudgetGateUseCase(budget GeminiBudgetService, aiSvc AIGeneratorService) *SubmitAssessmentUseCase {
+	return &SubmitAssessmentUseCase{aiSvc: aiSvc, geminiBudget: budget, log: testLogger()}
+}
+
+// Exhausted budget = the graceful fallback_static path, identical to "no
+// essays": no Gemini call (aiSvc nil panics if touched), no audit-log entry,
+// no error surfaced to the submitter.
+func TestRunAIPhase_BudgetExhausted_FallsBackWithoutAICall(t *testing.T) {
+	budget := mocks.NewMockGeminiBudgetService(t)
+	budget.EXPECT().Exceeded(mock.Anything).Return(true, nil).Once()
+	uc := newBudgetGateUseCase(budget, nil)
+
+	outcome := uc.runAIPhase(context.Background(), "result-1", []string{"my essay answer"}, "en")
+	if outcome.status != testresult.StatusFallbackStatic {
+		t.Fatalf("expected fallback_static status, got %s", outcome.status)
+	}
+	if outcome.called {
+		t.Fatal("expected called=false — Gemini must not be invoked when the budget is exhausted")
+	}
+}
+
+// Redis failure on the budget check must fail OPEN (graceful-degradation
+// matrix): the Gemini call still happens.
+func TestRunAIPhase_BudgetCheckRedisError_FailsOpenAndCallsAI(t *testing.T) {
+	budget := mocks.NewMockGeminiBudgetService(t)
+	budget.EXPECT().Exceeded(mock.Anything).Return(false, errors.New("redis: connection refused")).Once()
+	budget.EXPECT().Consume(mock.Anything, 42).Return(errors.New("redis: connection refused")).Once() // consume failure is also non-fatal
+	longSummary := "This is a perfectly valid, sufficiently long AI-generated summary of the essay answers provided by the user."
+	aiSvc := mocks.NewMockAIGeneratorService(t)
+	aiSvc.EXPECT().GenerateSummary(mock.Anything, mock.Anything, "en").Return(longSummary, "prompt", 42, nil).Once()
+	uc := newBudgetGateUseCase(budget, aiSvc)
+
+	outcome := uc.runAIPhase(context.Background(), "result-1", []string{"my essay answer"}, "en")
+	if outcome.status != testresult.StatusCompleted {
+		t.Fatalf("expected completed status despite Redis being down, got %s", outcome.status)
+	}
+}
+
+// Tokens burn on Google's side even when our validation rejects the output —
+// Consume must still record them on the validation-failure path.
+func TestRunAIPhase_InvalidOutput_StillConsumesBudget(t *testing.T) {
+	budget := mocks.NewMockGeminiBudgetService(t)
+	budget.EXPECT().Exceeded(mock.Anything).Return(false, nil).Once()
+	budget.EXPECT().Consume(mock.Anything, 10).Return(nil).Once()
+	aiSvc := mocks.NewMockAIGeneratorService(t)
+	aiSvc.EXPECT().GenerateSummary(mock.Anything, mock.Anything, "en").Return("too short", "prompt", 10, nil).Once()
+	uc := newBudgetGateUseCase(budget, aiSvc)
+
+	outcome := uc.runAIPhase(context.Background(), "result-1", []string{"my essay answer"}, "en")
+	if outcome.status != testresult.StatusFallbackStatic {
+		t.Fatalf("expected fallback_static for invalid output, got %s", outcome.status)
 	}
 }

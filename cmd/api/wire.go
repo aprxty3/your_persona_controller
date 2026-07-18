@@ -93,6 +93,10 @@ func provideAssessmentIPRateLimiter(svc *redis.IPRateLimitService) assessment.IP
 	return &assessmentIPRateLimiterAdapter{svc: svc}
 }
 
+func provideGeminiBudgetService(client *goredis.Client, budget GeminiDailyTokenBudget, log logger.Logger) assessment.GeminiBudgetService {
+	return redis.NewGeminiBudgetService(client, int64(budget), log)
+}
+
 // InitializeAPI wires up the entire application and returns the Echo router.
 func InitializeAPI(
 	geminiAPIKey GeminiAPIKey,
@@ -113,6 +117,7 @@ func InitializeAPI(
 	isProduction IsProduction,
 	allowedOrigins AllowedOrigins,
 	trustedProxies TrustedProxies,
+	geminiDailyBudget GeminiDailyTokenBudget,
 	loggerInstance logger.Logger,
 ) (*echo.Echo, error) {
 	wire.Build(
@@ -164,6 +169,7 @@ func InitializeAPI(
 		redis.NewIPRateLimitService,
 		wire.Bind(new(auth.IPRateLimiter), new(*redis.IPRateLimitService)),
 		provideAssessmentIPRateLimiter,
+		provideGeminiBudgetService,
 		redis.NewTokenStore,
 		wire.Bind(new(auth.SessionTokenStore), new(*redis.TokenStore)),
 		redis.NewDistributedLockService,

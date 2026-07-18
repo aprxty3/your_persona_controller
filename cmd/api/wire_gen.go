@@ -38,7 +38,7 @@ import (
 // Injectors from wire.go:
 
 // InitializeAPI wires up the entire application and returns the Echo router.
-func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, s3Endpoint S3Endpoint, s3Region S3Region, s3Bucket S3Bucket, s3AccessKey S3AccessKey, s3SecretKey S3SecretKey, s3UsePathStyle S3UsePathStyle, turnstileSecretKey TurnstileSecretKey, isProduction IsProduction, allowedOrigins AllowedOrigins, trustedProxies TrustedProxies, loggerInstance logger.Logger) (*echo.Echo, error) {
+func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcurrent int64, dbDSN DBDSN, redisAddr RedisAddr, redisPassword RedisPassword, redisDB int, jwtSecret JWTSecret, s3Endpoint S3Endpoint, s3Region S3Region, s3Bucket S3Bucket, s3AccessKey S3AccessKey, s3SecretKey S3SecretKey, s3UsePathStyle S3UsePathStyle, turnstileSecretKey TurnstileSecretKey, isProduction IsProduction, allowedOrigins AllowedOrigins, trustedProxies TrustedProxies, geminiDailyBudget GeminiDailyTokenBudget, loggerInstance logger.Logger) (*echo.Echo, error) {
 	db, err := providePostgresDB(dbDSN)
 	if err != nil {
 		return nil, err
@@ -64,7 +64,8 @@ func InitializeAPI(geminiAPIKey GeminiAPIKey, geminiModel GeminiModel, maxConcur
 	pdfQueueService := asynq.NewPDFQueueService(dispatcher)
 	ipRateLimitService := redis.NewIPRateLimitService(redisClient)
 	ipRateLimiter := provideAssessmentIPRateLimiter(ipRateLimitService)
-	submitAssessmentUseCase := assessment2.NewSubmitAssessmentUseCase(db, testResultRepository, questionRepository, userRepository, client, distributedLockService, idempotencyService, pdfQueueService, ipRateLimiter, loggerInstance)
+	geminiBudgetService := provideGeminiBudgetService(redisClient, geminiDailyBudget, loggerInstance)
+	submitAssessmentUseCase := assessment2.NewSubmitAssessmentUseCase(db, testResultRepository, questionRepository, userRepository, client, distributedLockService, idempotencyService, pdfQueueService, ipRateLimiter, geminiBudgetService, loggerInstance)
 	assessmentHandler := handler.NewAssessmentHandler(submitAssessmentUseCase, loggerInstance)
 	questionCatalogUseCase := assessment2.NewQuestionCatalogUseCase(questionRepository, loggerInstance)
 	s3Client, err := provideS3Client(s3Endpoint, s3Region, s3Bucket, s3AccessKey, s3SecretKey, s3UsePathStyle)
@@ -163,4 +164,8 @@ func (a *assessmentIPRateLimiterAdapter) Allow(ctx context.Context, scope dto.IP
 
 func provideAssessmentIPRateLimiter(svc *redis.IPRateLimitService) assessment2.IPRateLimiter {
 	return &assessmentIPRateLimiterAdapter{svc: svc}
+}
+
+func provideGeminiBudgetService(client *redis2.Client, budget GeminiDailyTokenBudget, log logger.Logger) assessment2.GeminiBudgetService {
+	return redis.NewGeminiBudgetService(client, int64(budget), log)
 }

@@ -79,6 +79,15 @@ type IPRateLimiter interface {
 	Allow(ctx context.Context, scope dto.IPRateLimitScope, ip string) (allowed bool, retryAfterSeconds int, err error)
 }
 
+// GeminiBudgetService is the aggregate daily token cap across ALL users
+// — the one guardrail that is per-day-total rather than per-actor. Exceeded
+// gates the Gemini call; Consume records tokens actually burned. Both fail
+// open on error.
+type GeminiBudgetService interface {
+	Exceeded(ctx context.Context) (bool, error)
+	Consume(ctx context.Context, tokens int) error
+}
+
 type SubmitAssessmentUseCase struct {
 	db             *gorm.DB
 	testResultRepo TestResultRepository
@@ -89,6 +98,7 @@ type SubmitAssessmentUseCase struct {
 	idempotencySvc IdempotencyService
 	pdfQueue       PDFQueueService
 	ipRateLimiter  IPRateLimiter
+	geminiBudget   GeminiBudgetService
 	log            logger.Logger
 }
 
@@ -103,6 +113,7 @@ func NewSubmitAssessmentUseCase(
 	idemSvc IdempotencyService,
 	pdfQueue PDFQueueService,
 	ipRateLimiter IPRateLimiter,
+	geminiBudget GeminiBudgetService,
 	log logger.Logger,
 ) *SubmitAssessmentUseCase {
 	return &SubmitAssessmentUseCase{
@@ -115,6 +126,7 @@ func NewSubmitAssessmentUseCase(
 		idempotencySvc: idemSvc,
 		pdfQueue:       pdfQueue,
 		ipRateLimiter:  ipRateLimiter,
+		geminiBudget:   geminiBudget,
 		log:            log.With("usecase", "submit_assessment"),
 	}
 }
@@ -406,15 +418,33 @@ type aiOutcome struct {
 	totalTokens    *int
 }
 
-// runAIPhase calls Gemini (if there's essay content to analyze), validates
-// the output, and degrades to a static fallback on any failure.
+// runAIPhase calls Gemini (if there's essay content to analyze and the daily
+// token budget allows it), validates the output, and degrades to a static
+// fallback on any failure.
 func (uc *SubmitAssessmentUseCase) runAIPhase(ctx context.Context, resultID string, essayTexts []string, locale string) aiOutcome {
 	if len(essayTexts) == 0 {
 		return aiOutcome{status: testresult.StatusFallbackStatic, summary: fallbackText(locale)}
 	}
 
+	// Aggregate daily budget cap: exhausted budget = the same
+	// graceful fallback_static path as "no essays", NOT an error
+	if exceeded, err := uc.geminiBudget.Exceeded(ctx); err != nil {
+		uc.log.Warn("gemini budget check skipped", "reason", "redis_error", "error", err)
+	} else if exceeded {
+		uc.log.Warn("gemini call skipped", "reason", "daily_budget_exhausted", "result_id", resultID)
+		return aiOutcome{status: testresult.StatusFallbackStatic, summary: fallbackText(locale)}
+	}
+
 	combinedEssay := strings.Join(essayTexts, "\n\n")
 	summary, rawPrompt, tokens, err := uc.aiSvc.GenerateSummary(ctx, combinedEssay, locale)
+
+	// Tokens burn on Google's side whether or not our validation below
+	// accepts the output — record them for any call that reported usage.
+	if tokens > 0 {
+		if consumeErr := uc.geminiBudget.Consume(ctx, tokens); consumeErr != nil {
+			uc.log.Warn("gemini budget consume failed", "reason", "redis_error", "error", consumeErr)
+		}
+	}
 
 	outcome := aiOutcome{called: true, rawPrompt: rawPrompt}
 
