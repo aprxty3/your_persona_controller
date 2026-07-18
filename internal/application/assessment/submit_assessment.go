@@ -25,7 +25,7 @@ import (
 
 const (
 	essayMaxLength       = 4000
-	quotaLockTTL         = 20 * time.Second
+	quotaLockTTL         = 45 * time.Second
 	idempotencyTTL       = 24 * time.Hour
 	promptAuditRetention = 30 * 24 * time.Hour
 )
@@ -167,7 +167,7 @@ func (uc *SubmitAssessmentUseCase) Execute(ctx context.Context, req SubmitReques
 		return nil, application.ErrLockNotAcquired
 	}
 	defer func() {
-		if releaseErr := uc.lockSvc.ReleaseLock(ctx, lockKey); releaseErr != nil {
+		if releaseErr := uc.lockSvc.ReleaseLock(context.WithoutCancel(ctx), lockKey); releaseErr != nil {
 			log.Warn("release lock failed", "key", lockKey, "error", releaseErr)
 		}
 	}()

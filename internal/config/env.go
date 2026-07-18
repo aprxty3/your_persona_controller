@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 // EnvOr returns the value of the environment variable key, or fallback when
@@ -12,6 +13,16 @@ func EnvOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// EnvInt returns the environment variable key parsed as int, or fallback when
+// it is unset/empty/not a positive integer.
+func EnvInt(key string, fallback int) int {
+	v, err := strconv.Atoi(os.Getenv(key))
+	if err != nil || v <= 0 {
+		return fallback
+	}
+	return v
 }
 
 // PostgresDSN resolves the database DSN every binary (api, worker, migrate,

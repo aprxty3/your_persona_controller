@@ -35,10 +35,7 @@ func main() {
 		Password: os.Getenv("REDIS_PASSWORD"),
 	}
 
-	smtpPort, err := strconv.Atoi(os.Getenv("SMTP_PORT"))
-	if err != nil || smtpPort == 0 {
-		smtpPort = 1025
-	}
+	smtpPort := config.EnvInt("SMTP_PORT", 1025)
 
 	appEnv := config.EnvOr("APP_ENV", "development")
 	logInstance := logger.NewLogger(appEnv)
@@ -137,16 +134,13 @@ func main() {
 	pdfHandler := workerhandler.NewPDFHandler(generatePDFUseCase, logInstance)
 
 	log.Println("Starting background worker...")
-	srv := asynq.NewServer(
+
+	// Two servers, split by workload class
+	pdfSrv := asynq.NewServer(
 		redisOpt,
 		asynq.Config{
-			Concurrency: 10,
-			Queues: map[string]int{
-				"critical": 6,
-				"default":  3,
-				"pdf":      2,
-				"low":      1,
-			},
+			Concurrency: config.EnvInt("WORKER_PDF_CONCURRENCY", 2),
+			Queues:      map[string]int{taskqueue.QueuePDF: 1},
 			ErrorHandler: asynq.ErrorHandlerFunc(func(ctx context.Context, task *asynq.Task, err error) {
 				if task.Type() != taskqueue.TaskGeneratePDF {
 					return
@@ -167,14 +161,26 @@ func main() {
 			}),
 		},
 	)
+	pdfMux := asynq.NewServeMux()
+	pdfMux.HandleFunc(taskqueue.TaskGeneratePDF, pdfHandler.ProcessTask)
 
-	mux := asynq.NewServeMux()
-	mux.HandleFunc(taskqueue.TaskSendEmail, emailHandler.ProcessTask)
-	mux.HandleFunc(taskqueue.TaskDeletionScan, anonymizeHandler.ProcessScan)
-	mux.HandleFunc(taskqueue.TaskAnonymize, anonymizeHandler.ProcessAnonymize)
-	mux.HandleFunc(taskqueue.TaskPurgeGuest, purgeHandler.ProcessPurge)
-	mux.HandleFunc(taskqueue.TaskPurgeAuditLog, purgeHandler.ProcessAuditPurge)
-	mux.HandleFunc(taskqueue.TaskGeneratePDF, pdfHandler.ProcessTask)
+	ioSrv := asynq.NewServer(
+		redisOpt,
+		asynq.Config{
+			Concurrency: config.EnvInt("WORKER_IO_CONCURRENCY", 8),
+			Queues: map[string]int{
+				taskqueue.QueueCritical: 6,
+				taskqueue.QueueDefault:  3,
+				taskqueue.QueueLow:      1,
+			},
+		},
+	)
+	ioMux := asynq.NewServeMux()
+	ioMux.HandleFunc(taskqueue.TaskSendEmail, emailHandler.ProcessTask)
+	ioMux.HandleFunc(taskqueue.TaskDeletionScan, anonymizeHandler.ProcessScan)
+	ioMux.HandleFunc(taskqueue.TaskAnonymize, anonymizeHandler.ProcessAnonymize)
+	ioMux.HandleFunc(taskqueue.TaskPurgeGuest, purgeHandler.ProcessPurge)
+	ioMux.HandleFunc(taskqueue.TaskPurgeAuditLog, purgeHandler.ProcessAuditPurge)
 
 	scheduler := asynq.NewScheduler(redisOpt, nil)
 	if _, err := scheduler.Register(
@@ -217,8 +223,13 @@ func main() {
 	}
 
 	go func() {
-		if err := srv.Run(mux); err != nil {
-			log.Fatalf("Worker server crash: %v", err)
+		if err := pdfSrv.Run(pdfMux); err != nil {
+			log.Fatalf("PDF worker server crash: %v", err)
+		}
+	}()
+	go func() {
+		if err := ioSrv.Run(ioMux); err != nil {
+			log.Fatalf("IO worker server crash: %v", err)
 		}
 	}()
 
@@ -228,6 +239,7 @@ func main() {
 
 	log.Println("Shutting down worker gracefully...")
 	scheduler.Shutdown()
-	srv.Shutdown()
+	pdfSrv.Shutdown()
+	ioSrv.Shutdown()
 	log.Println("Worker stopped.")
 }

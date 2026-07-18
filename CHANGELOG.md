@@ -5,6 +5,21 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-07-18 (3)
+
+### Worker & config hardening (TICKET-32 — response to external "6 Juli" audit triage)
+
+#### [F] PDF concurrency cap is now actually enforced — dual asynq server (TICKET-32)
+- `cmd/worker` now runs TWO `asynq.Server` instances in the same process: a `pdf`-only server (`WORKER_PDF_CONCURRENCY`, default 2) and an io server for `critical`/`default`/`low` (`WORKER_IO_CONCURRENCY`, default 8). asynq's `Queues` map sets priority *weights*, not per-queue caps — the previous single server (Concurrency 10) could dedicate all 10 workers to CPU/memory-heavy PDF renders whenever the other queues were idle, the exact OOM scenario PRD 9.2's "limit PDF to 2-3" was meant to prevent. The PDF final-failure `ErrorHandler` moved with its queue; graceful shutdown stops the scheduler and both servers.
+- New reusable `config.EnvInt` (pattern of `EnvOr`) — also replaces the hand-rolled `SMTP_PORT` parsing.
+
+#### [F] Quota lock released through a detached context + TTL raised 20s → 45s (TICKET-32)
+- `defer ReleaseLock` in the submit use case now uses `context.WithoutCancel(ctx)` — a client disconnect mid-AI-phase left the request ctx canceled, the release failing, and the lock pinned until TTL expiry despite the work having finished. TTL 45s now covers the worst-case AI phase held under the lock (semaphore wait ≤10s + Gemini call + one retry); at 20s an expired lock mid-flight could let a parallel same-session submit slip past the quota check.
+
+#### [R] Three dead env vars removed from `.env.example` (TICKET-32)
+- `IDEMPOTENCY_TTL_SUBMIT`, `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_RESEND_DAILY_MAX` were never read by any code — the values are compile-time constants by design (product policy ≠ per-environment config, Tech Doc §8). Replaced with a NOTE pointing at the constants; also added a clarifying comment that `S3_USE_PATH_STYLE=true` is valid for both MinIO and R2.
+- Full triage of the 14-finding external audit (1 valid, 3 minor, 10 stale/wrong-premise — including explicit rejections: reviving `share_token`, per-request access-token denylist, `GET /csrf-token`, CJK fonts in Dockerfile, Redis logical-DB split): `psyche-assessment-docs/MEMORY.md` 2026-07-18.
+
 ## [UNRELEASED] — 2026-07-18 (2)
 
 ### Request-ID correlation & second-pole insight templates (TICKET-30, TICKET-31) — Fase 9 complete
