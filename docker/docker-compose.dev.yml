@@ -13,8 +13,9 @@ services:
       dockerfile: docker/Dockerfile.dev
     command: ["air", "-c", ".air.worker.toml"]
     environment:
-      - SMTP_HOST=mailpit
-      - SMTP_PORT=1025
+      # SMTP_HOST/SMTP_PORT intentionally NOT overridden here — worker uses
+      # the real Brevo credentials from .env so OTP emails land in an actual
+      # inbox during dev instead of the local Mailpit catcher.
       - S3_ENDPOINT=http://minio:9000
     volumes:
       - ..:/app
