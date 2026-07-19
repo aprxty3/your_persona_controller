@@ -41,9 +41,20 @@ func TestMain(m *testing.M) {
 		panic("integration: get connection string: " + err.Error())
 	}
 
-	db, err := postgres.NewPostgresDB(connStr)
-	if err != nil {
-		panic("integration: connect to test postgres: " + err.Error())
+	// Retry: testcontainers reports the container ready after Postgres's FIRST
+	// startup (post-initdb), but Postgres immediately restarts once more before
+	// actually serving — a connection landing in that restart window gets
+	// "unexpected EOF"/"connection reset by peer", not a clean refused-connection.
+	var db *gorm.DB
+	for attempt := 1; attempt <= 5; attempt++ {
+		db, err = postgres.NewPostgresDB(connStr)
+		if err == nil {
+			break
+		}
+		if attempt == 5 {
+			panic("integration: connect to test postgres: " + err.Error())
+		}
+		time.Sleep(time.Duration(attempt) * time.Second)
 	}
 
 	// Same model list/order as cmd/migrate/main.go — kept manually in sync
