@@ -147,7 +147,7 @@ jobs:
       # push for real; this is also what makes `build` double as "verify the Dockerfile
       # is still valid" for every PR, same as before.
       - name: Build image (push only on branch pushes, never on PRs)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/Dockerfile
