@@ -1,5 +1,5 @@
 # --- Build stage ---
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 ENV CGO_ENABLED=0 \
     GOOS=linux
 WORKDIR /app
@@ -14,7 +14,7 @@ RUN go build -mod=readonly -ldflags="-s -w" -buildvcs=false -o /bin/migrate ./cm
 RUN go build -mod=readonly -ldflags="-s -w" -buildvcs=false -o /bin/seed ./cmd/seed
 
 # --- Runtime stage (minimal, does not include Go toolchain) ---
-FROM alpine:3.20
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /bin/api /bin/worker /bin/migrate /bin/seed ./
