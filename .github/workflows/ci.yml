@@ -93,10 +93,54 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: [test, integration, security, secrets]
+    # Needed to push to GHCR (GitHub Container Registry) using the auto-issued
+    # GITHUB_TOKEN — no separate registry PAT required for the push side.
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      # The one immutable tag `deploy` pulls — never `:latest`, so a redeploy always
+      # runs the exact image this run tested, not whatever `latest` drifted to by
+      # the time the SSH step fires.
+      image_sha_tag: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
-      - name: Build image (verify Dockerfile is valid, do not push)
-        run: docker build -t controller-api:${{ github.sha }} -f docker/Dockerfile .
+      # ghcr.io requires an all-lowercase path; github.repository preserves
+      # whatever case the owner/repo actually has, so normalize it here instead
+      # of assuming it's already lowercase.
+      - name: Compute lowercase image name
+        id: image
+        run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract image tags/labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+      # push: false on pull_request — a PR from an untrusted fork must never be able
+      # to publish an image under this repo's name. Direct branch pushes (main/develop)
+      # push for real; this is also what makes `build` double as "verify the Dockerfile
+      # is still valid" for every PR, same as before.
+      - name: Build image (push only on branch pushes, never on PRs)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     runs-on: ubuntu-latest
@@ -108,20 +152,36 @@ jobs:
     # by itself the moment the secret is added, no workflow edit required.
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && secrets.VPS_SSH_KEY != ''
     environment: production
+    # Serializes deploys if two pushes to main land close together — the second
+    # SSH session waits for the first to finish instead of both racing to
+    # recreate the same containers at once.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     steps:
-      - name: SSH deploy (mirrors docs/deploy_runbook.md §5 Redeploy)
+      # Pulls the exact image `build` just pushed (sha-tagged, immutable) instead of
+      # rebuilding from source on the production VM itself — the artifact that ran
+      # through lint/test/integration/security above is byte-for-byte what deploys,
+      # and rollback becomes "point CONTROLLER_API_IMAGE_TAG at an older sha tag"
+      # instead of `git checkout` + a fresh rebuild.
+      - name: SSH deploy — pull & recreate (mirrors docs/deploy_runbook.md §5)
         uses: appleboy/ssh-action@v1
+        env:
+          IMAGE_TAG: ${{ needs.build.outputs.image_sha_tag }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
+          envs: IMAGE_TAG
           script: |
             set -euo pipefail
             cd /opt/your-persona/controller-api
             git fetch origin main
             git reset --hard origin/main
-            docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --build
+            export CONTROLLER_API_IMAGE_TAG="$IMAGE_TAG"
+            docker compose -f docker/docker-compose.prod.yml --env-file .env pull
+            docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build --remove-orphans
             docker image prune -f
       - name: Smoke test
         run: |

@@ -14,6 +14,7 @@ networks:
 
 services:
   api:
+    image: ghcr.io/aprxty3/your_persona_controller:${CONTROLLER_API_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -31,6 +32,7 @@ services:
       - redis
 
   worker:
+    image: ghcr.io/aprxty3/your_persona_controller:${CONTROLLER_API_IMAGE_TAG:-latest}
     build:
       context: ..
       dockerfile: docker/Dockerfile

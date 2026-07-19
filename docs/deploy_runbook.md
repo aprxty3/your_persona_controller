@@ -13,6 +13,12 @@ These are external/manual — nothing here is code, and none of it can be verifi
 3. **Brevo**: create/verify the sending domain (SPF + DKIM records on your DNS provider), generate SMTP credentials under Settings → SMTP & API → SMTP.
 4. **Cloudflare Turnstile**: create a site key + secret for `api.yourpersonas.com` (or the FE domain, per Turnstile's widget setup) in the Cloudflare dashboard. This is `TURNSTILE_SECRET_KEY`.
 5. Have SSH access to a fresh VM with Docker + Docker Compose v2 installed.
+6. **GHCR pull access on the VM** — `docker/docker-compose.prod.yml`'s `api`/`worker` services pull `ghcr.io/aprxty3/your_persona_controller` (built and pushed by the `build` job in `.github/workflows/ci.yml` on every push to `main`/`develop`). That package is private by default, so the VM needs its own one-time login — this is a VM-local Docker credential, not a GitHub Actions secret:
+   ```sh
+   # On the VM, once. Use a GitHub PAT (classic or fine-grained) scoped to read:packages only.
+   echo "<PAT>" | docker login ghcr.io -u <your-github-username> --password-stdin
+   ```
+   `docker login` persists the credential in `~/.docker/config.json` on the VM — every future `docker compose pull` (manual or via the automated `deploy` job) just works after this, no further setup.
 
 ## 1. First-time deploy
 
@@ -36,7 +42,16 @@ cp .env.example .env
 # at its dev default (internal/config.RequireProduction) — that's
 # intentional, not a bug if it happens here.
 
-docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --build
+# Pulls the image CI already built & pushed from the last push to main (see
+# Prerequisites #6 for the one-time `docker login ghcr.io` this needs) — this
+# is the same artifact that passed lint/test/integration/security, not a fresh
+# rebuild from whatever happens to be in the working tree on this VM.
+docker compose -f docker/docker-compose.prod.yml --env-file .env pull
+docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build
+
+# No image reachable yet (first push to main hasn't run, or GHCR unreachable)?
+# Fall back to building locally instead:
+#   docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --build
 ```
 
 ```sh
@@ -115,7 +130,8 @@ Until these are set, `deploy` is **skipped** (not failed) — CI stays green whi
 ```sh
 cd /opt/your-persona/controller-api
 git pull
-docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --build
+docker compose -f docker/docker-compose.prod.yml --env-file .env pull
+docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build
 # If this release includes a migration:
 docker compose -f docker/docker-compose.prod.yml run --rm api ./migrate
 ```
@@ -125,6 +141,19 @@ docker compose -f docker/docker-compose.prod.yml run --rm api ./migrate
 **Migrations are never run by the automated `deploy` job** — same rule as container boot (see Prerequisites note above): run `docker compose -f docker/docker-compose.prod.yml run --rm api ./migrate` by hand, right after a release you know includes one. This is a deliberate gap, not an oversight — an auto-run migration on every deploy is how you get a schema change applied at 3am with nobody watching if a release goes out unexpectedly.
 
 ## 6. Rollback
+
+**Fast path** — every image `build` ever pushed is still sitting in GHCR under its immutable `sha-<commit>` tag (Packages tab on the repo, or `git log --oneline` to find the commit you want and take its short SHA). No rebuild needed — just point the containers at an older tag:
+
+```sh
+cd /opt/your-persona/controller-api
+export CONTROLLER_API_IMAGE_TAG=sha-<short-sha-of-last-known-good-commit>
+docker compose -f docker/docker-compose.prod.yml --env-file .env pull
+docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build
+```
+
+This is deliberately a one-off shell `export`, not something written into `.env` — the next automated `deploy` run doesn't set `CONTROLLER_API_IMAGE_TAG` itself (it exports it fresh per SSH session), so it will happily overwrite this rollback with `main`'s latest `sha-` tag on the next push. If you need the rollback to *stick* until you're ready to re-deploy, pause the `deploy` workflow (Actions tab → disable) or add `CONTROLLER_API_IMAGE_TAG=sha-<...>` to `.env` itself — remember to remove it once you're ready to resume normal deploys, or every future deploy will silently redeploy that pinned old version.
+
+**If the fast path isn't available** (rolling back further than any pushed image, or GHCR itself is down):
 
 ```sh
 cd /opt/your-persona/controller-api
