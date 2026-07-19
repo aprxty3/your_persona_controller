@@ -169,7 +169,8 @@ func SetupRouter(
 	e.Use(middleware.CSRFWithConfig(middleware.CSRFConfig{ // #nosec G101 -- "csrf_token"/"X-CSRF-Token" are cookie/header names, not credential values
 		TokenLookup:    "header:X-CSRF-Token",
 		CookieName:     "csrf_token",
-		CookieHTTPOnly: false, // frontend must read it to echo back in the header
+		CookiePath:     "/",
+		CookieHTTPOnly: false,
 		CookieSameSite: http.SameSiteLaxMode,
 		CookieSecure:   isProduction,
 		Skipper: func(c echo.Context) bool {
