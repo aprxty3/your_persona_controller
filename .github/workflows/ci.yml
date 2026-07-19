@@ -145,12 +145,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    # Auto-deploy only fires on a direct push to main (never on PRs) and only once
-    # the VPS actually exists and its SSH secret is configured in this repo's
-    # Settings → Secrets. Until then this job is skipped, not failed — the pipeline
-    # stays green while the VPS is still being provisioned, and deploy switches on
-    # by itself the moment the secret is added, no workflow edit required.
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && secrets.VPS_SSH_KEY != ''
+    # Auto-deploy only fires on a direct push to main (never on PRs). Whether the
+    # VPS secrets are actually configured is checked per-STEP below (env.VPS_SSH_KEY),
+    # not here — the `secrets` context is not readable in a job-level `if:` at all
+    # (GitHub Actions rejects the whole workflow file at parse time if you try, which
+    # is exactly what broke every run on this file until this fix).
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
     # Serializes deploys if two pushes to main land close together — the second
     # SSH session waits for the first to finish instead of both racing to
@@ -158,6 +158,13 @@ jobs:
     concurrency:
       group: production-deploy
       cancel-in-progress: false
+    # Job-level env CAN read secrets (unlike job-level `if:`) — this is what makes
+    # the step-level `if: env.VPS_SSH_KEY != ''` below possible. Until the VPS exists
+    # and this secret is set in Settings → Secrets, both steps below no-op and the
+    # job reports success trivially — the pipeline stays green, and deploy switches
+    # on by itself the moment the secret is added, no workflow edit required.
+    env:
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
     steps:
       # Pulls the exact image `build` just pushed (sha-tagged, immutable) instead of
       # rebuilding from source on the production VM itself — the artifact that ran
@@ -165,6 +172,7 @@ jobs:
       # and rollback becomes "point CONTROLLER_API_IMAGE_TAG at an older sha tag"
       # instead of `git checkout` + a fresh rebuild.
       - name: SSH deploy — pull & recreate (mirrors docs/deploy_runbook.md §5)
+        if: env.VPS_SSH_KEY != ''
         uses: appleboy/ssh-action@v1
         env:
           IMAGE_TAG: ${{ needs.build.outputs.image_sha_tag }}
@@ -184,6 +192,7 @@ jobs:
             docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build --remove-orphans
             docker image prune -f
       - name: Smoke test
+        if: env.VPS_SSH_KEY != ''
         run: |
           curl -fsS --retry 5 --retry-delay 3 --retry-connrefused \
             https://api.yourpersonas.com/healthz
