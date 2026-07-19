@@ -61,9 +61,10 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
-      # Files tagged `//go:build integration` (redis/postgres/deletionrequest repos,
-      # auth register flow) were previously never compiled or run by `go test ./...`
-      # — the build tag silently excluded them, so this whole suite was dead weight.
+      # Files tagged `//go:build integration` (redis, and postgres/{account,
+      # assessment,deletionrequest} repos) were previously never compiled or run
+      # by `go test ./...` — the build tag silently excluded them, so this whole
+      # suite was dead weight.
       # testcontainers-go spins up its own Postgres/Redis containers via the Docker
       # socket ubuntu-latest ships with — no docker-compose services block needed.
       - name: Run integration tests
