@@ -1,124 +1,191 @@
-# controller-api
+# Controller API — Your Persona's
 
-Backend API (Go) for **Your Persona's** — an AI-powered psychological assessment platform.
+The backend engine of **Your Persona's** — a Go service that powers an AI-driven psychological assessment platform (MBTI-style + GRIT), orchestrating essay analysis via Gemini API, async PDF generation, and a privacy-first data lifecycle.
 
-## Stack
+---
 
-Go · PostgreSQL (GORM) · Redis · Asynq · Gemini API · Cloudflare R2 · Clean Architecture + DDD
+## Technical Architecture
 
-## Prerequisites
+This service is structured using **Clean Architecture + Domain-Driven Design (DDD)**:
 
-- [Go 1.26+](https://go.dev/dl/)
-- [Docker](https://docs.docker.com/get-docker/) & Docker Compose
-- (Optional) [Air](https://github.com/air-verse/air) for hot-reload outside Docker
+* **Domain** (`internal/domain`): Framework-agnostic core entities (`User`, `TestResult`, `GuestSession`, `DeletionRequest`) and repository interfaces. Imports nothing from GORM/HTTP/SDKs.
+* **Application** (`internal/application`): Business workflows (assessment submission + scoring, auth/OTP flows, quota enforcement, referral events, anonymization orchestration).
+* **Interfaces** (`internal/interfaces`): Two parallel delivery layers calling the same use cases — HTTP REST handlers (Echo) and Asynq worker handlers.
+* **Infrastructure** (`internal/infrastructure`): Third-party adapters — PostgreSQL (GORM), Redis, Cloudflare R2/MinIO, Gemini API, SMTP (Brevo/Mailpit).
 
-## Quick Start
+```mermaid
+flowchart LR
+    Client[Browser / FE] -->|HTTPS| Caddy[Caddy<br/>TLS + reverse proxy]
+    Caddy --> API["cmd/api<br/>(Echo HTTP server)"]
 
+    subgraph Core["Clean Architecture core"]
+        direction TB
+        IF[internal/interfaces<br/>HTTP + Worker handlers] --> APP[internal/application<br/>use cases]
+        APP --> DOM[internal/domain<br/>entities + repo interfaces]
+    end
+
+    API --> IF
+    Worker["cmd/worker<br/>(Asynq: pdf / io servers)"] --> IF
+
+    APP --> INFRA[internal/infrastructure]
+    INFRA --> PG[(PostgreSQL)]
+    INFRA --> RD[(Redis<br/>cache · rate-limit · queue)]
+    INFRA --> R2[(R2 / MinIO<br/>PDF storage)]
+    INFRA --> GEM[Gemini API]
+    INFRA --> SMTP[Brevo / Mailpit]
+
+    API -.enqueue jobs.-> RD
+    RD -.pdf · email · anonymize · purge.-> Worker
+```
+
+---
+
+## Directory Structure
+
+```
+controller-api/
+├── cmd/
+│   ├── api/                 # HTTP server entrypoint + Wire DI config
+│   ├── worker/              # Asynq background worker entrypoint
+│   ├── migrate/             # GORM AutoMigrate (manual-only, never at boot)
+│   └── seed/                # Question bank & insight template seeder (idempotent)
+├── docs/                    # Swagger files — swagger.json = official FE contract
+├── internal/
+│   ├── domain/              # Entities and repository contracts
+│   ├── application/         # Use case orchestrators
+│   ├── infrastructure/      # Postgres, Redis, R2, Gemini, SMTP, i18n adapters
+│   └── interfaces/          # HTTP handlers (Echo) + Worker handlers (Asynq)
+├── pkg/                     # Shared utilities (httpresponse, locale, taskqueue, aivalidator)
+├── docker/                  # Dockerfile, Dockerfile.dev, compose files, Caddyfile
+├── scripts/                 # Ops scripts (DB backup to S3/R2)
+├── .github/workflows/       # CI/CD pipeline (7 jobs)
+└── Makefile                 # Build and development task runner
+```
+
+---
+
+## Setup & Running Locally
+
+### Prerequisites
+* Go 1.26+
+* Docker & Docker Compose
+* `make` tool
+
+### Step 1 — Environment Settings
+Copy `.env.example` to `.env` and fill in the necessary fields. In production mode (`APP_ENV=production`), the server enforces strict boot validation — it refuses to start if secrets are still dev defaults or required keys are empty.
+
+Key variables:
+* `JWT_SECRET` — token signing key
+* `GEMINI_API_KEY` / `GEMINI_MODEL` — model **must** be a pinned version (e.g. `-001`), never an auto-updating alias
+* `ALLOWED_ORIGINS` — comma-separated CORS whitelist; `*` is rejected at boot
+* `TURNSTILE_SECRET_KEY` — empty in dev = bot-check auto-passes
+
+### Step 2 — Run Service Stack
 ```bash
-cp .env.example .env          # configure secrets / DB credentials
-make dev                       # start all services (Postgres, Redis, MinIO, Mailpit + Air hot-reload)
-go run ./cmd/migrate           # run database migration
-go run ./cmd/seed              # seed question bank & insight templates
+make dev    # Postgres, Redis, MinIO, Mailpit + Air hot-reload
+```
+
+### Step 3 — Migrate & Seed
+```bash
+make migrate    # schema migration (never auto-runs — by design)
+make seed       # question bank + insight templates
 ```
 
 Dev tools available at:
-- **Mailpit** (email catcher): http://localhost:8025
-- **MinIO Console** (S3 storage): http://localhost:9001 (`minioadmin` / `minioadmin`)
+* **Swagger UI**: http://localhost:8080/swagger/index.html
+* **Mailpit** (email catcher): http://localhost:8025
+* **MinIO Console** (S3 storage): http://localhost:9001 (`minioadmin`/`minioadmin`)
 
-## Make Targets
+---
 
-Run `make help` (or just `make`) to see all available commands:
+## Core Operations & Features
 
-| Command | Description |
-|---|---|
-| `make dev` | Start dev environment (Air hot-reload + Postgres/Redis/MinIO/Mailpit) |
-| `make prod` | Start production environment (detached) |
-| `make stop` | Stop all Docker services |
-| `make prune` | Stop + remove all containers & volumes (**DB data lost**) |
-| `make logs` | Tail Docker logs (filter: `make logs s=api`) |
-| `make run-api` | Run API server locally (without Docker) |
-| `make run-worker` | Run Asynq worker locally |
-| `make migrate` | Run database migration (GORM AutoMigrate) |
-| `make seed` | Seed database with initial data |
-| `make build` | Compile all binaries to `./bin/` |
-| `make clean` | Remove build artifacts |
-| `make wire` | Regenerate dependency injection (google/wire) |
-| `make swag` | Regenerate Swagger API documentation |
-| `make test` | Run all tests with race detector + coverage |
-| `make lint` | Run golangci-lint |
-| `make tidy` | Tidy go.mod and go.sum |
+### 1. Synchronous AI Assessment Pipeline
+* `POST /v1/assessment/submit` calls Gemini **synchronously** (3–8s, by design — the FE "Waiting Room" UX) with role-separated prompts and structural essay framing (prompt-injection mitigations).
+* Layered cost protection ("Denial of Wallet"): 32KB payload cap, 4,000-char essay cap, garbage-input filter, per-IP rate limit, Redis distributed quota lock (`quota_lock:<id>`), in-process Gemini semaphore, and a global daily token budget — exhaustion degrades gracefully to a static fallback result, never an error.
+* Every Gemini call is audited to `PROMPT_AUDIT_LOG` (30-day TTL, auto-purged).
 
-## Entrypoints (`cmd/`)
+### 2. Background Jobs (Asynq)
+* Two Asynq servers in one worker process: `pdf` queue (CPU-bound, capped concurrency) isolated from io queues (`critical`/`default`/`low`) — a PDF burst can never starve OTP emails.
+* Job types: `generate:pdf`, `send:email`, `anonymize:user`, plus scheduled scans (`deletion:scan-expired` hourly, `purge:guest-ttl` + `purge:audit-ttl` daily). All idempotent.
 
-| Entrypoint | Purpose | When to modify |
-|---|---|---|
-| `cmd/api/` | HTTP API server (Echo) | Adding new routes/handlers |
-| `cmd/worker/` | Background job worker (Asynq) | Adding new async task types |
-| `cmd/migrate/` | Database schema migration (GORM AutoMigrate) | Adding new tables/models |
-| `cmd/seed/` | Seed data (questions, templates, insight_templates) | Adding/updating seed content |
+### 3. Auth & Account Security
+* JWT with rotation + denylist, `token_version` mass-revocation, account lockout separate from per-IP rate limits, HIBP breach-check on passwords, Cloudflare Turnstile on register/login/forgot-password (fail-open if Cloudflare itself is down), CSRF double-submit on cookie-sensitive endpoints.
 
-## Dependency Injection (Wire)
+### 4. Privacy-First Data Lifecycle
+* Account deletion = 14-day grace period → **anonymization** (not hard-delete): PII scrambled, aggregate stats retained, R2 PDFs explicitly deleted.
+* Guest results auto-expire after 14 days (R2 object deleted **before** DB row — no orphan files).
 
-This project uses **Google Wire** for *compile-time dependency injection*.
-- **`wire.go`**: Contains injection configuration (`//go:build wireinject`).
-- **`wire_gen.go`**: Auto-generated. **Do not modify manually.**
+---
 
-After adding a new repository, use case, or handler constructor:
-1. Register it in `wire.Build` within `cmd/api/wire.go` or `cmd/worker/wire.go`.
-2. Run `make wire` to regenerate.
+## CI/CD & Branching
+
+```mermaid
+flowchart LR
+    subgraph CI["CI — every push & PR (.github/workflows/ci.yml)"]
+        direction LR
+        SEC[secrets<br/>gitleaks] ~~~ L[lint]
+        L --> T[test] & I[integration] & S[security<br/>govulncheck + gosec]
+        T & I & S --> B[build<br/>Docker → GHCR]
+        SEC --> B
+    end
+    B -->|"push to main only"| D[deploy<br/>SSH pull & recreate + smoke test]
+```
+
+```mermaid
+flowchart LR
+    W["update_july_week_N<br/>(weekly feature branch)"] -->|PR + 6 checks| DEV[develop<br/>staging]
+    DEV -->|release PR| MAIN[main<br/>production]
+    MAIN -->|"tag vX.Y.Z"| REL[GitHub Release]
+    MAIN -->|CI deploy job| VPS[VPS]
+```
+
+`main` and `develop` are **branch-protected**: no direct pushes, no force-push, no deletion — every change lands via a PR passing all 6 required checks on an up-to-date branch. Releases: PR `develop` → `main`, then SemVer tag + GitHub Release. The `deploy` job no-ops safely until `VPS_SSH_KEY` is configured; **migrations never auto-run on deploy** — see [`docs/deploy_runbook.md`](./docs/deploy_runbook.md).
+
+---
 
 ## Testing
 
 ```bash
-make test                              # unit tests only — fast, no Docker required
-go test -tags=integration ./...        # + infrastructure integration tests (needs Docker running)
-make lint                              # static analysis via golangci-lint
+make test                         # unit only — fast, no Docker
+go test -tags=integration ./...   # + testcontainers (needs Docker running)
 ```
 
-- **Domain & Application layer**: unit tests, using [mockery](https://github.com/vektra/mockery)-generated mocks for every repository/service interface. Never open a real DB/Redis connection; if a test needs one, it's in the wrong layer.
-- **Infrastructure layer**: split by what the code actually talks to.
-  - `persistence/postgres/*` and `cache/redis/*` wrap GORM/redis calls whose correctness can only be verified against a real engine — mocking the DB/Redis client would only test the mock. These use **integration tests** via [testcontainers-go](https://golang.testcontainers.org/), gated behind the `integration` build tag (`//go:build integration`) so `make test`/`go test ./...` stays fast and Docker-free. Requires a local Docker daemon; each package spins up ONE shared container per `go test` run (see `TestMain` in `internal/infrastructure/persistence/postgres/assessment/integration_test.go` and `internal/infrastructure/cache/redis/integration_test.go`) rather than one per test.
-  - Everything else — HTTP-calling clients (`security/hibp.go`, `security/turnstile.go`), pure logic (`jwt`), and adapters over an already-mocked interface (`queue/asynq/pdf_queue_service.go` over `pkg/taskqueue.Dispatcher`) — has plain **unit tests** (`make test`, no build tag, no Docker). HTTP clients are tested against an `httptest.Server` rather than mocked (there's no interface to mock — see the `rangeURL`/`verifyURL` field seam in `hibp.go`/`turnstile.go`); `mailer.go` swaps `smtp.SendMail` for a `sendFunc` field seam so `SendEmail`/`SendOTP`/`SendDeletionConfirmed` can be tested without a real SMTP server, using the real `i18n.Catalog` (loaded from the embedded JSON) so locale copy stays in sync. `queue/asynq/pdf_queue_service.go` reuses the existing `pkg/taskqueue/mocks.MockDispatcher`. Vendor-SDK wrappers with no seam for injecting a fake backend (`gemini`, `storage/s3`) are tested only on their pure/pre-flight logic (prompt building, unconfigured-client guard, endpoint parsing, URL-to-key extraction) — the SDK calls themselves aren't unit-testable without introducing an interface purely for tests, which isn't worth the abstraction here. `queue/asynq.AsynqDispatcher`'s `enqueue` is skipped for the same reason as `persistence/postgres`/`cache/redis` above — nothing to unit-test that isn't a mock of the mock.
-- **Interfaces layer** (`internal/interfaces/http`, `internal/interfaces/worker`) and **`pkg/*`**: unit tests throughout, `make test`, no build tag.
-  - `pkg/aivalidator`, `pkg/httpresponse`, `pkg/locale`, `pkg/otp` are pure logic — tested directly, no mocks.
-  - `pkg/logger` is tested by redirecting `os.Stdout` through a pipe for the duration of the test and asserting on what `NewLogger` actually wrote (format, level filtering, `With()` field binding) — the only way to observe it, since it hardcodes `os.Stdout` as its sink.
-  - `internal/interfaces/http/middleware` (`AuthMiddleware`, `LocaleMiddleware`) depends on `account.UserRepository` (an interface — mocked via the existing `internal/domain/account/mocks`) and a real `*jwtservice.JWTService` (pure, no mock needed).
-  - `internal/interfaces/http/handler/*` and `internal/interfaces/worker/*` are the one layer in this codebase where the consumer (HTTP handler / asynq job handler) depends on a **concrete use-case struct**, not an interface — so mockery can't mock the use case itself the way it mocks a repository. Instead, each test wires the *real* use case (via its `New...` constructor) with its lower-level repository/service dependencies mocked — the same mocks `internal/application/*`'s own tests use. This validates a different concern than the application-layer tests: HTTP status code / error code mapping, JSON envelope shape, cookie/header handling, asynq retry-vs-drop semantics — not business logic (already covered where the use case is tested directly). Untouched use-case dependencies are left `nil`; per the same convention as `internal/application`, no test constructs a real `*gorm.DB`, so only code paths that don't reach a use case's own `db.Transaction(...)` call are exercised this way.
-- CI runs `make test` (unit only) on every push. The `integration` tag is **not** wired into CI yet (would need Docker-in-Docker on the runner) — run it locally before merging changes to `internal/infrastructure/persistence/postgres/` or `internal/infrastructure/cache/redis/`.
+* **Domain/application**: unit tests with mockery-generated mocks (checked into git; regenerate via `mockery`). A test needing a real DB in these layers is in the wrong layer.
+* **Infrastructure**: Postgres/Redis code uses integration tests (testcontainers-go, behind `//go:build integration`); HTTP clients test against `httptest.Server`; vendor-SDK wrappers are tested on pre-flight logic only.
+* **Interfaces**: real use case + mocked lower deps — validates status codes, envelope shape, cookie/header handling. Handler helpers signal an already-written response via the `errResponseWritten` sentinel (`helpers.go`).
+* CI runs the full suite **including integration** on every push/PR.
 
-### Bugs found while writing handler tests
+---
 
-Writing `internal/interfaces/http/handler` tests surfaced (and fixed) a real bug class, not just test gaps: `httpresponse.Error`/`Success` return `c.JSON(...)`'s own result, which is `nil` on any *successfully-written* response — success or error alike, since it's just an I/O-failure signal. Three helpers wrongly handed that value back to their caller as if it meant "did the request get rejected?": `bindJSON`, `AuthHandler.verifyTurnstile`, and `AuthHandler.otpVerifyError`. A caller checking `if err != nil { return err }` after one of these never actually triggered on rejection, so the handler fell through to real business logic (and, in one path, a second `c.JSON` write on top of the first — Echo doesn't guard body writes past the first commit, so the two responses would concatenate into invalid JSON on the wire). All three now return a shared `errResponseWritten` sentinel instead, so the `!= nil` check callers already had works as intended. See `internal/interfaces/http/handler/helpers.go`.
+## API Contract
 
-### Regenerating mocks
+`docs/swagger.json` (+ `swagger.yaml`) is the machine-readable contract, generated from handler annotations (`make swag`) and committed to git. The FE builds against this file — not by reading Go source. **Breaking changes to `/v1` go through `/v2`, never silent edits**; additive changes (new optional field/endpoint) are fine.
 
-Mocks are generated by [mockery](https://github.com/vektra/mockery) (`.mockery.yaml` at the repo root) and **checked into git** (same convention as `wire_gen.go`/`docs/` — reviewable, no local codegen step required to build). After adding or changing an interface under `internal/domain/*`, `internal/application/*`, `internal/infrastructure/mailer`, or `pkg/taskqueue`, regenerate:
+---
 
-```bash
-mockery
-```
+## Makefile Quick Reference
 
-Every package's mocks live in the same place: a plain `pkgname/mocks` subpackage (`with-expecter: true`, `mocks.NewMockX(t)` + `.EXPECT()...Return()`). `internal/application/assessment` and `internal/application/pdf` used to be exceptions — their `IdempotencyService`/`PDFRenderer` interfaces referenced a type defined in their own package (`SubmitResponse`, `PDFData`), which would force a subpackage mock to import back into the package under test and hit Go's "import cycle not allowed in test". Fixed at the source instead of working around it in the mock config: those two response/data types now live in their own leaf `dto` subpackage (`internal/application/assessment/dto`, `internal/application/pdf/dto`) that nothing imports back — so every package, including these two, uses the identical `pkgname/mocks` layout.
+| Command | Description |
+|---|---|
+| `make dev` | Starts dev environment with Air live-reload (Postgres/Redis/MinIO/Mailpit). |
+| `make prod` | Starts production containers (detached). |
+| `make stop` / `make prune` | Stops containers / stops + wipes volumes (**DB data lost**). |
+| `make migrate` / `make seed` | Applies schema migration / seeds initial data. |
+| `make wire` | Regenerates dependency injection (`wire_gen.go`). |
+| `make swag` | Regenerates Swagger API documentation. |
+| `make test` / `make lint` | Unit tests (race + coverage) / golangci-lint. |
+| `make run-api` / `make run-worker` | Runs binaries locally without Docker. |
 
-## API Contract (Swagger/OpenAPI)
-
-`docs/swagger.json` (and the equivalent `swagger.yaml`) is the machine-readable API contract — generated from the `@Summary`/`@Param`/`@Success`/`@Failure` annotations on every handler in `internal/interfaces/http/handler/`, committed to git (same convention as `wire_gen.go`: reviewable, no local codegen step required to consume it). The frontend (`your_persona_ui`) is expected to build against this file directly — e.g. via [`openapi-typescript`](https://github.com/openapi-ts/openapi-typescript) for generated types/client — rather than hand-transcribing endpoint shapes from reading Go source. Browse it interactively at `/swagger/index.html` on a running instance.
-
-**Regenerate after touching any handler annotation:**
-```bash
-make swag
-```
-
-**This file is a contract, not a draft**: since BE MVP feature-complete gate, a breaking change to any endpoint already in `docs/swagger.json` — removing/renaming a field, changing a status code's meaning, tightening a previously-optional field to required — is a breaking-contract change and must go through `/v2`, not a silent edit to `/v1`. Additive changes (a new optional field, a new endpoint) are fine on `/v1`.
-
-## Branching & Releases
-
-Two core branches: `main` (production — the only branch that triggers the `deploy` CI job) and `develop` (staging/integration). Weekly feature branches (e.g. `update_july_week_3`) fork from `develop`, PR back into it; releases go `develop` → `main` via PR, tagged with SemVer (`vX.Y.Z`) + a GitHub Release. Both `main` and `develop` are branch-protected: no direct pushes, no force-push, no branch deletion — every change goes through a PR that must pass all 6 required CI checks (`secrets`, `lint`, `test`, `integration`, `security`, `build`) on an up-to-date branch.
+---
 
 ## Documentation
 
-Architecture rules & conventions (including for AI coding agents) are documented in [`AGENTS.md`](./AGENTS.md). API specifications, background jobs, and testing strategies are detailed in [`TECHNICAL_DOCUMENTATION.md`](./TECHNICAL_DOCUMENTATION.md). Production deployment steps are in [`docs/deploy_runbook.md`](./docs/deploy_runbook.md). Full product requirements are managed in a separate repository — contact the maintainer if you need access.
+* [`AGENTS.md`](./AGENTS.md) — architecture, security & git-workflow rules (AI agents included)
+* [`TECHNICAL_DOCUMENTATION.md`](./TECHNICAL_DOCUMENTATION.md) — API spec, background jobs, testing strategy
+* [`docs/deploy_runbook.md`](./docs/deploy_runbook.md) — production deploy, redeploy, rollback
+* Product requirements live in a separate private repo — contact the maintainer for access.
 
 ## License
 
-All Rights Reserved — see [`LICENSE`](./LICENSE). This repository is public for portfolio/demonstration purposes, not for reuse without permission.
+All Rights Reserved — see [`LICENSE`](./LICENSE). Public for portfolio/demonstration purposes, not for reuse without permission.
