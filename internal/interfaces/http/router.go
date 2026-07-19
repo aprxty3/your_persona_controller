@@ -157,6 +157,7 @@ func SetupRouter(
 			"X-CSRF-Token", "Idempotency-Key",
 		},
 		AllowCredentials: true,
+		MaxAge:           86400, // cache preflight (OPTIONS) response for 24h, cuts redundant round-trips
 	}))
 
 	e.Use(middleware.BodyLimit("32K"))
