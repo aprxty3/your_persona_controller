@@ -26,15 +26,6 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
-      # .golangci.yml uses the v2 config schema (linters.default, formatters, etc).
-      # golangci-lint-action's goinstall/`latest` resolution only ever reaches the v1
-      # line — v2+ is a separate Go module path (.../v2/cmd/golangci-lint) per Go's
-      # semver import rules, so we install it directly instead of guessing a version
-      # string the action would accept. This also builds against the runner's own
-      # Go 1.25 toolchain (set above), matching go.mod's `go 1.25.0` directive.
-      # Version pinned (not @latest) — Dependabot (.github/dependabot.yml) opens a PR
-      # when a new release lands, so this stays current without breaking CI silently
-      # mid-sprint on an unrelated commit.
       - name: Install golangci-lint v2
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
       - name: golangci-lint
@@ -61,19 +52,6 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
-      # Files tagged `//go:build integration` (redis, and postgres/{account,
-      # assessment,deletionrequest} repos) were previously never compiled or run
-      # by `go test ./...` — the build tag silently excluded them, so this whole
-      # suite was dead weight.
-      # testcontainers-go spins up its own Postgres/Redis containers via the Docker
-      # socket ubuntu-latest ships with — no docker-compose services block needed.
-      # -p 1: run test packages one at a time. Three packages each spin up their
-      # own postgres:16-alpine testcontainer with the default (parallel) package
-      # scheduler, all three race to start on the runner's 2 vCPUs at once and the
-      # slower ones miss testcontainers' readiness window ("connection reset by
-      # peer") — confirmed by all three failing at the same wall-clock second in
-      # a real run. Serializing them costs some wall-clock time but is the only
-      # cure for a resource-contention race, not a code bug in any of the three.
       - name: Run integration tests
         run: go test ./... -race -p 1 -tags=integration -cover
 
@@ -86,11 +64,6 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
-      # Versions pinned for the same reason as golangci-lint above — Dependabot
-      # keeps them current instead of `@latest`/`@master` silently shifting under us.
-      # v1.1.3 doesn't build under Go 1.25 (its pinned x/tools@v0.23.0 predates a
-      # stricter constant-expression check the newer compiler enforces) — bumped
-      # to v1.6.0, which itself requires Go >=1.25 and builds clean.
       - name: govulncheck (dependency vulnerabilities)
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
@@ -103,21 +76,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: [test, integration, security, secrets]
-    # Needed to push to GHCR (GitHub Container Registry) using the auto-issued
-    # GITHUB_TOKEN — no separate registry PAT required for the push side.
     permissions:
       contents: read
       packages: write
     outputs:
-      # The one immutable tag `deploy` pulls — never `:latest`, so a redeploy always
-      # runs the exact image this run tested, not whatever `latest` drifted to by
-      # the time the SSH step fires.
       image_sha_tag: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
-      # ghcr.io requires an all-lowercase path; github.repository preserves
-      # whatever case the owner/repo actually has, so normalize it here instead
-      # of assuming it's already lowercase.
       - name: Compute lowercase image name
         id: image
         run: echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
@@ -137,15 +102,8 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
-      # The default `docker` buildx driver can't export to an external cache
-      # backend at all ("Cache export is not supported for the docker driver")
-      # — cache-from/cache-to below need the docker-container driver this sets up.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-      # push: false on pull_request — a PR from an untrusted fork must never be able
-      # to publish an image under this repo's name. Direct branch pushes (main/develop)
-      # push for real; this is also what makes `build` double as "verify the Dockerfile
-      # is still valid" for every PR, same as before.
       - name: Build image (push only on branch pushes, never on PRs)
         uses: docker/build-push-action@v6
         with:
@@ -160,32 +118,14 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    # Auto-deploy only fires on a direct push to main (never on PRs). Whether the
-    # VPS secrets are actually configured is checked per-STEP below (env.VPS_SSH_KEY),
-    # not here — the `secrets` context is not readable in a job-level `if:` at all
-    # (GitHub Actions rejects the whole workflow file at parse time if you try, which
-    # is exactly what broke every run on this file until this fix).
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment: production
-    # Serializes deploys if two pushes to main land close together — the second
-    # SSH session waits for the first to finish instead of both racing to
-    # recreate the same containers at once.
     concurrency:
       group: production-deploy
       cancel-in-progress: false
-    # Job-level env CAN read secrets (unlike job-level `if:`) — this is what makes
-    # the step-level `if: env.VPS_SSH_KEY != ''` below possible. Until the VPS exists
-    # and this secret is set in Settings → Secrets, both steps below no-op and the
-    # job reports success trivially — the pipeline stays green, and deploy switches
-    # on by itself the moment the secret is added, no workflow edit required.
     env:
       VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
     steps:
-      # Pulls the exact image `build` just pushed (sha-tagged, immutable) instead of
-      # rebuilding from source on the production VM itself — the artifact that ran
-      # through lint/test/integration/security above is byte-for-byte what deploys,
-      # and rollback becomes "point CONTROLLER_API_IMAGE_TAG at an older sha tag"
-      # instead of `git checkout` + a fresh rebuild.
       - name: SSH deploy — pull & recreate (mirrors docs/deploy_runbook.md §5)
         if: env.VPS_SSH_KEY != ''
         uses: appleboy/ssh-action@v1
