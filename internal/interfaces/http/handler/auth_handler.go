@@ -171,6 +171,9 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 	}
 
 	// Set HttpOnly cookie so /auth/register can automatically claim the session.
+	// #nosec G124 -- Secure is a variable (not a literal true) by design: it must be
+	// false in local dev over plain HTTP and true in production; gosec can't statically
+	// prove a non-literal bool, this is the correct env-conditional pattern, not a gap.
 	c.SetCookie(&http.Cookie{
 		Name:     "session_id",
 		Value:    resp.SessionID,

@@ -222,7 +222,7 @@ func TestIntegration_FindExpiredUnclaimed_OnlyTrueOrphansIncluded(t *testing.T) 
 
 	mustCreate(t, &postgres.TestResultModel{
 		ID: uuid.New().String(), GuestSessionID: &hasResult.SessionID, ShareToken: uuid.New().String(),
-		Locale: "en", Status: "completed",
+		Locale: "en", Status: "completed", TraitScores: "{}",
 	})
 
 	results, err := repo.FindExpiredUnclaimed(ctx)

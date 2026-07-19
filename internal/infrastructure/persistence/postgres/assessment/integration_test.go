@@ -149,11 +149,11 @@ func TestIntegration_CountMonthlyUsage_JakartaMonthBoundary(t *testing.T) {
 
 	included := &postgres.TestResultModel{
 		ID: uuid.New().String(), UserID: &userID, ShareToken: uuid.New().String(),
-		Locale: "en", Status: string(testresult.StatusCompleted), CreatedAt: boundary,
+		Locale: "en", Status: string(testresult.StatusCompleted), CreatedAt: boundary, TraitScores: "{}",
 	}
 	excluded := &postgres.TestResultModel{
 		ID: uuid.New().String(), UserID: &userID, ShareToken: uuid.New().String(),
-		Locale: "en", Status: string(testresult.StatusCompleted), CreatedAt: boundary.Add(-1 * time.Second),
+		Locale: "en", Status: string(testresult.StatusCompleted), CreatedAt: boundary.Add(-1 * time.Second), TraitScores: "{}",
 	}
 	mustCreate(t, included)
 	mustCreate(t, excluded)
@@ -190,7 +190,7 @@ func TestIntegration_ScrubEssayAnswersByUser_OnlyEssayBlanked(t *testing.T) {
 
 	result := &postgres.TestResultModel{
 		ID: uuid.New().String(), UserID: &userID, ShareToken: uuid.New().String(),
-		Locale: "en", Status: string(testresult.StatusCompleted),
+		Locale: "en", Status: string(testresult.StatusCompleted), TraitScores: "{}",
 	}
 	mustCreate(t, result)
 
@@ -227,8 +227,8 @@ func TestIntegration_PromptAuditLogDeleteByUserID_SubqueryScoped(t *testing.T) {
 	targetUser := uuid.New().String()
 	otherUser := uuid.New().String()
 
-	targetResult := &postgres.TestResultModel{ID: uuid.New().String(), UserID: &targetUser, ShareToken: uuid.New().String(), Locale: "en", Status: string(testresult.StatusCompleted)}
-	otherResult := &postgres.TestResultModel{ID: uuid.New().String(), UserID: &otherUser, ShareToken: uuid.New().String(), Locale: "en", Status: string(testresult.StatusCompleted)}
+	targetResult := &postgres.TestResultModel{ID: uuid.New().String(), UserID: &targetUser, ShareToken: uuid.New().String(), Locale: "en", Status: string(testresult.StatusCompleted), TraitScores: "{}"}
+	otherResult := &postgres.TestResultModel{ID: uuid.New().String(), UserID: &otherUser, ShareToken: uuid.New().String(), Locale: "en", Status: string(testresult.StatusCompleted), TraitScores: "{}"}
 	mustCreate(t, targetResult)
 	mustCreate(t, otherResult)
 

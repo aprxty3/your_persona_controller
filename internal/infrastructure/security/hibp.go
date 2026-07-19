@@ -4,7 +4,7 @@ package security
 import (
 	"bufio"
 	"context"
-	"crypto/sha1" //nolint:gosec // required by the HIBP range API's k-anonymity protocol, not used for storing/comparing our own credentials
+	"crypto/sha1" // #nosec G505 -- required by the HIBP range API's k-anonymity protocol, not used for storing/comparing our own credentials
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -36,7 +36,7 @@ func NewHIBPBreachChecker(log logger.Logger) auth.PasswordBreachChecker {
 
 // IsBreached reports whether password appears in the HIBP breach corpus.
 func (c *HIBPBreachChecker) IsBreached(ctx context.Context, password string) (bool, error) {
-	sum := sha1.Sum([]byte(password)) //nolint:gosec // HIBP range API mandates SHA-1 for its k-anonymity prefix/suffix split
+	sum := sha1.Sum([]byte(password)) // #nosec G401 -- HIBP range API mandates SHA-1 for its k-anonymity prefix/suffix split
 	hash := strings.ToUpper(hex.EncodeToString(sum[:]))
 	prefix, suffix := hash[:5], hash[5:]
 

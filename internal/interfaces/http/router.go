@@ -166,7 +166,7 @@ func SetupRouter(
 	// /v1/questions) before the frontend ever needs to submit a protected
 	// POST/PATCH; Skipper narrows actual *enforcement* to csrfProtectedPaths.
 	// Safe methods (GET/HEAD/OPTIONS/TRACE) are exempted by Echo itself.
-	e.Use(middleware.CSRFWithConfig(middleware.CSRFConfig{
+	e.Use(middleware.CSRFWithConfig(middleware.CSRFConfig{ // #nosec G101 -- "csrf_token"/"X-CSRF-Token" are cookie/header names, not credential values
 		TokenLookup:    "header:X-CSRF-Token",
 		CookieName:     "csrf_token",
 		CookieHTTPOnly: false, // frontend must read it to echo back in the header

@@ -9,7 +9,7 @@ type TokenType string
 
 // The two purposes a VerificationToken (OTP) can be issued for.
 const (
-	TokenTypeEmailVerification TokenType = "email_verification" //nolint:gosec // enum value, not a credential
+	TokenTypeEmailVerification TokenType = "email_verification" // #nosec G101 -- enum value, not a credential
 	TokenTypePasswordReset     TokenType = "password_reset"
 )
 

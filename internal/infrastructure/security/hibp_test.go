@@ -2,7 +2,7 @@ package security
 
 import (
 	"context"
-	"crypto/sha1" //nolint:gosec // mirrors the HIBP range API's k-anonymity protocol under test, not a real credential hash
+	"crypto/sha1" // #nosec G505 -- mirrors the HIBP range API's k-anonymity protocol under test, not a real credential hash
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -20,7 +20,7 @@ func newTestHIBPChecker(url string) *HIBPBreachChecker {
 }
 
 func hashSuffix(password string) (prefix, suffix string) {
-	sum := sha1.Sum([]byte(password)) //nolint:gosec // test fixture mirrors the HIBP API's own SHA-1 requirement
+	sum := sha1.Sum([]byte(password)) // #nosec G401 -- test fixture mirrors the HIBP API's own SHA-1 requirement
 	hash := strings.ToUpper(hex.EncodeToString(sum[:]))
 	return hash[:5], hash[5:]
 }
