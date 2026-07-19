@@ -8,7 +8,7 @@ Go · PostgreSQL (GORM) · Redis · Asynq · Gemini API · Cloudflare R2 · Clea
 
 ## Prerequisites
 
-- [Go 1.25+](https://go.dev/dl/)
+- [Go 1.26+](https://go.dev/dl/)
 - [Docker](https://docs.docker.com/get-docker/) & Docker Compose
 - (Optional) [Air](https://github.com/air-verse/air) for hot-reload outside Docker
 
@@ -110,6 +110,10 @@ make swag
 ```
 
 **This file is a contract, not a draft**: since BE MVP feature-complete gate, a breaking change to any endpoint already in `docs/swagger.json` — removing/renaming a field, changing a status code's meaning, tightening a previously-optional field to required — is a breaking-contract change and must go through `/v2`, not a silent edit to `/v1`. Additive changes (a new optional field, a new endpoint) are fine on `/v1`.
+
+## Branching & Releases
+
+Two core branches: `main` (production — the only branch that triggers the `deploy` CI job) and `develop` (staging/integration). Weekly feature branches (e.g. `update_july_week_3`) fork from `develop`, PR back into it; releases go `develop` → `main` via PR, tagged with SemVer (`vX.Y.Z`) + a GitHub Release. Both `main` and `develop` are branch-protected: no direct pushes, no force-push, no branch deletion — every change goes through a PR that must pass all 6 required CI checks (`secrets`, `lint`, `test`, `integration`, `security`, `build`) on an up-to-date branch.
 
 ## Documentation
 
