@@ -130,7 +130,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Extract image tags/labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.image.outputs.name }}
           tags: |
