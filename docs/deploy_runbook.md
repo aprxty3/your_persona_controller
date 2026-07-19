@@ -99,6 +99,19 @@ docker compose -f docker/docker-compose.prod.yml logs worker | tail -20
 
 ## 5. Redeploy (routine updates)
 
+**Automated** — `.github/workflows/ci.yml`'s `deploy` job runs this exact sequence over SSH on every push to `main` that passes lint/test/integration/security/build, once the repo secrets below are set:
+
+| Secret | Value |
+|---|---|
+| `VPS_HOST` | VM's public IP or hostname |
+| `VPS_USER` | SSH user (deploy user, not root) |
+| `VPS_SSH_KEY` | Private key for that user (add the matching public key to the VM's `~/.ssh/authorized_keys`) |
+| `VPS_PORT` | Optional, defaults to `22` |
+
+Until these are set, `deploy` is **skipped** (not failed) — CI stays green while the VM is still being provisioned. Also configure a `production` GitHub Environment (Settings → Environments) if you want a manual approval gate before the SSH step runs.
+
+**Manual** (fallback, or for a release you want to babysit):
+
 ```sh
 cd /opt/your-persona/controller-api
 git pull
@@ -108,6 +121,8 @@ docker compose -f docker/docker-compose.prod.yml run --rm api ./migrate
 ```
 
 `docker compose up -d` recreates changed containers one at a time; `api`/`worker` both handle `SIGTERM` gracefully (`SHUTDOWN_TIMEOUT` in `.env`, default 30s) — in-flight HTTP requests and Asynq jobs finish before the old container exits, not before the new one is ready to receive traffic. No separate "drain" step needed.
+
+**Migrations are never run by the automated `deploy` job** — same rule as container boot (see Prerequisites note above): run `docker compose -f docker/docker-compose.prod.yml run --rm api ./migrate` by hand, right after a release you know includes one. This is a deliberate gap, not an oversight — an auto-run migration on every deploy is how you get a schema change applied at 3am with nobody watching if a release goes out unexpectedly.
 
 ## 6. Rollback
 

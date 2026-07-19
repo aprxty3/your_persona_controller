@@ -32,8 +32,11 @@ jobs:
       # semver import rules, so we install it directly instead of guessing a version
       # string the action would accept. This also builds against the runner's own
       # Go 1.25 toolchain (set above), matching go.mod's `go 1.25.0` directive.
+      # Version pinned (not @latest) — Dependabot (.github/dependabot.yml) opens a PR
+      # when a new release lands, so this stays current without breaking CI silently
+      # mid-sprint on an unrelated commit.
       - name: Install golangci-lint v2
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
       - name: golangci-lint
         run: golangci-lint run
 
@@ -46,8 +49,25 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
-      - name: Run tests
+      - name: Run unit tests
         run: go test ./... -race -cover
+
+  integration:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      # Files tagged `//go:build integration` (redis/postgres/deletionrequest repos,
+      # auth register flow) were previously never compiled or run by `go test ./...`
+      # — the build tag silently excluded them, so this whole suite was dead weight.
+      # testcontainers-go spins up its own Postgres/Redis containers via the Docker
+      # socket ubuntu-latest ships with — no docker-compose services block needed.
+      - name: Run integration tests
+        run: go test ./... -race -tags=integration -cover
 
   security:
     runs-on: ubuntu-latest
@@ -58,19 +78,51 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
+      # Versions pinned for the same reason as golangci-lint above — Dependabot
+      # keeps them current instead of `@latest`/`@master` silently shifting under us.
       - name: govulncheck (dependency vulnerabilities)
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.3
           govulncheck ./...
       - name: gosec (static security analysis)
-        uses: securego/gosec@master
+        uses: securego/gosec@v2.22.0
         with:
           args: ./...
 
   build:
     runs-on: ubuntu-latest
-    needs: [test, security, secrets]
+    needs: [test, integration, security, secrets]
     steps:
       - uses: actions/checkout@v4
       - name: Build image (verify Dockerfile is valid, do not push)
         run: docker build -t controller-api:${{ github.sha }} -f docker/Dockerfile .
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    # Auto-deploy only fires on a direct push to main (never on PRs) and only once
+    # the VPS actually exists and its SSH secret is configured in this repo's
+    # Settings → Secrets. Until then this job is skipped, not failed — the pipeline
+    # stays green while the VPS is still being provisioned, and deploy switches on
+    # by itself the moment the secret is added, no workflow edit required.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && secrets.VPS_SSH_KEY != ''
+    environment: production
+    steps:
+      - name: SSH deploy (mirrors docs/deploy_runbook.md §5 Redeploy)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -euo pipefail
+            cd /opt/your-persona/controller-api
+            git fetch origin main
+            git reset --hard origin/main
+            docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --build
+            docker image prune -f
+      - name: Smoke test
+        run: |
+          curl -fsS --retry 5 --retry-delay 3 --retry-connrefused \
+            https://api.yourpersonas.com/healthz
