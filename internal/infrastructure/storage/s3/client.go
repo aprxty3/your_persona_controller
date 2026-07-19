@@ -1,3 +1,4 @@
+// Package s3 provides the S3-compatible object storage client (R2 in production, MinIO in dev).
 package s3
 
 import (

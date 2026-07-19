@@ -13,6 +13,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// AuthHandler handles HTTP requests for guest sessions, registration, login,
+// session/token lifecycle, and password reset.
 type AuthHandler struct {
 	createGuestSessionUseCase *auth.CreateGuestSessionUseCase
 	registerUseCase           *auth.RegisterUseCase
@@ -52,7 +54,9 @@ func NewAuthHandler(
 // for an explicit Cloudflare rejection).
 func (h *AuthHandler) verifyTurnstile(c echo.Context, token string) error {
 	if token == "" {
-		httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "cf_turnstile_response is required")
+		if writeErr := httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, "cf_turnstile_response is required"); writeErr != nil {
+			return writeErr
+		}
 		return errResponseWritten
 	}
 
@@ -62,7 +66,9 @@ func (h *AuthHandler) verifyTurnstile(c echo.Context, token string) error {
 		return nil
 	}
 	if !ok {
-		httpcallErrorCustom(c, http.StatusBadRequest, "TURNSTILE_VERIFICATION_FAILED", "Bot verification failed. Please retry the challenge and try again")
+		if writeErr := httpcallErrorCustom(c, http.StatusBadRequest, "TURNSTILE_VERIFICATION_FAILED", "Bot verification failed. Please retry the challenge and try again"); writeErr != nil {
+			return writeErr
+		}
 		return errResponseWritten
 	}
 	return nil
@@ -77,25 +83,31 @@ func otpVerifyError(c echo.Context, err error, attemptsRemaining int, resendPath
 	meta := map[string]interface{}{"attempts_remaining": attemptsRemaining}
 	switch {
 	case errors.Is(err, application.ErrInvalidOTP):
-		c.JSON(http.StatusBadRequest, httpresponse.Response{
+		if writeErr := c.JSON(http.StatusBadRequest, httpresponse.Response{
 			Success: false,
 			Error:   &httpresponse.ErrorDetail{Code: "INVALID_OTP", Message: "The OTP code is incorrect"},
 			Meta:    meta,
-		})
+		}); writeErr != nil {
+			return writeErr
+		}
 		return errResponseWritten
 	case errors.Is(err, application.ErrOTPExpired):
-		c.JSON(http.StatusBadRequest, httpresponse.Response{
+		if writeErr := c.JSON(http.StatusBadRequest, httpresponse.Response{
 			Success: false,
 			Error:   &httpresponse.ErrorDetail{Code: "OTP_EXPIRED", Message: "The OTP code has expired. Please request a new one via " + resendPath},
 			Meta:    meta,
-		})
+		}); writeErr != nil {
+			return writeErr
+		}
 		return errResponseWritten
 	case errors.Is(err, application.ErrOTPMaxAttempts):
-		c.JSON(http.StatusTooManyRequests, httpresponse.Response{
+		if writeErr := c.JSON(http.StatusTooManyRequests, httpresponse.Response{
 			Success: false,
 			Error:   &httpresponse.ErrorDetail{Code: "OTP_MAX_ATTEMPTS", Message: "Maximum verification attempts exceeded. Please request a new OTP via " + resendPath},
 			Meta:    meta,
-		})
+		}); writeErr != nil {
+			return writeErr
+		}
 		return errResponseWritten
 	default:
 		return nil
@@ -145,7 +157,7 @@ func (h *AuthHandler) CreateGuestSession(c echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInvalidInput):
-			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+			return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, unwrapMessage(err))
 		case errors.Is(err, application.ErrRateLimited):
 			retryAfter := 0
 			if resp != nil {
@@ -229,7 +241,7 @@ func (h *AuthHandler) Register(c echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInvalidInput):
-			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+			return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, unwrapMessage(err))
 		case errors.Is(err, application.ErrEmailAlreadyRegistered):
 			return httpcallErrorCustom(c, http.StatusConflict, "EMAIL_ALREADY_REGISTERED", "An account with this email address already exists")
 		case errors.Is(err, application.ErrPasswordTooShort):
@@ -282,7 +294,7 @@ func (h *AuthHandler) VerifyEmailOTP(c echo.Context) error {
 
 	if payload.Email == "" || payload.OTP == "" {
 		h.log.Warn("verify email otp rejected", "reason", "validation_error")
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Both email and otp fields are required")
+		return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, "Both email and otp fields are required")
 	}
 
 	ucReq := auth.VerifyEmailOTPRequest{
@@ -335,7 +347,7 @@ func (h *AuthHandler) ResendEmailOTP(c echo.Context) error {
 
 	if payload.Email == "" {
 		h.log.Warn("resend email otp rejected", "reason", "validation_error")
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "email field is required")
+		return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, "email field is required")
 	}
 
 	ucReq := auth.ResendEmailOTPRequest{
@@ -396,7 +408,7 @@ func (h *AuthHandler) Login(c echo.Context) error {
 
 	if payload.Email == "" || payload.Password == "" {
 		h.log.Warn("login rejected", "reason", "validation_error")
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Both email and password fields are required")
+		return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, "Both email and password fields are required")
 	}
 
 	ucReq := auth.LoginRequest{
@@ -465,7 +477,7 @@ func (h *AuthHandler) ChangePassword(c echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInvalidInput):
-			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+			return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, unwrapMessage(err))
 		case errors.Is(err, application.ErrPasswordConfirmationMismatch):
 			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_CONFIRMATION_MISMATCH", "new_password and retry_new_password do not match")
 		case errors.Is(err, application.ErrPasswordTooShort):
@@ -512,7 +524,7 @@ func (h *AuthHandler) RefreshToken(c echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInvalidInput):
-			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+			return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, unwrapMessage(err))
 		case errors.Is(err, application.ErrTokenVersionMismatch):
 			return httpcallErrorCustom(c, http.StatusUnauthorized, "TOKEN_VERSION_MISMATCH", "This session has been revoked. Please log in again")
 		case errors.Is(err, application.ErrInvalidToken):
@@ -556,7 +568,7 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInvalidInput):
-			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+			return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, unwrapMessage(err))
 		case errors.Is(err, application.ErrInvalidToken):
 			return httpcallErrorCustom(c, http.StatusUnauthorized, "UNAUTHORIZED", "The refresh token does not belong to this account")
 		default:
@@ -628,7 +640,7 @@ func (h *AuthHandler) ForgotPassword(c echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInvalidInput):
-			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+			return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, unwrapMessage(err))
 		case errors.Is(err, application.ErrRateLimited):
 			retryAfter := 0
 			if resp != nil {
@@ -673,7 +685,7 @@ func (h *AuthHandler) VerifyResetOTP(c echo.Context) error {
 	})
 	if err != nil {
 		if errors.Is(err, application.ErrInvalidInput) {
-			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+			return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, unwrapMessage(err))
 		}
 
 		attemptsRemaining := 0
@@ -723,7 +735,7 @@ func (h *AuthHandler) ResetPassword(c echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInvalidInput):
-			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+			return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, unwrapMessage(err))
 		case errors.Is(err, application.ErrPasswordTooShort):
 			return httpcallErrorCustom(c, http.StatusBadRequest, "PASSWORD_TOO_SHORT", "Password must be at least 10 characters long")
 		case errors.Is(err, application.ErrPasswordBreached):

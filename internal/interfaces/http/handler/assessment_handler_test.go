@@ -52,7 +52,7 @@ func TestSubmit_MissingIdempotencyKey_400(t *testing.T) {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := decodeResponse(t, rec)
-	if body.Error == nil || body.Error.Code != "VALIDATION_ERROR" {
+	if body.Error == nil || body.Error.Code != errCodeValidation {
 		t.Errorf("expected VALIDATION_ERROR, got %+v", body.Error)
 	}
 }
@@ -68,7 +68,7 @@ func TestSubmit_MissingSessionAndAuth_400(t *testing.T) {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := decodeResponse(t, rec)
-	if body.Error == nil || body.Error.Code != "VALIDATION_ERROR" {
+	if body.Error == nil || body.Error.Code != errCodeValidation {
 		t.Errorf("expected VALIDATION_ERROR, got %+v", body.Error)
 	}
 }
@@ -176,7 +176,7 @@ func TestSubmit_RateLimited_429(t *testing.T) {
 		t.Fatalf("expected 429, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := decodeResponse(t, rec)
-	if body.Error == nil || body.Error.Code != "RATE_LIMITED" {
+	if body.Error == nil || body.Error.Code != errCodeRateLimited {
 		t.Errorf("expected RATE_LIMITED, got %+v", body.Error)
 	}
 	if body.Meta == nil {

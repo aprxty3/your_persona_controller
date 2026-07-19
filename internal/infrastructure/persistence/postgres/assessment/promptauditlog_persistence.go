@@ -10,11 +10,13 @@ import (
 	"gorm.io/gorm"
 )
 
+// PromptAuditLogRepository is the GORM-backed testresult.PromptAuditLogRepository.
 type PromptAuditLogRepository struct {
 	db  *gorm.DB
 	log logger.Logger
 }
 
+// NewPromptAuditLogRepository constructs a PromptAuditLogRepository.
 func NewPromptAuditLogRepository(db *gorm.DB, log logger.Logger) testresult.PromptAuditLogRepository {
 	return &PromptAuditLogRepository{
 		db:  db,
@@ -34,11 +36,13 @@ func toPromptAuditLogModel(entity *testresult.PromptAuditLog) postgres.PromptAud
 	}
 }
 
+// Create persists a new prompt audit log row.
 func (r *PromptAuditLogRepository) Create(ctx context.Context, log *testresult.PromptAuditLog) error {
 	m := toPromptAuditLogModel(log)
 	return postgres.LogQueryError(r.log, "Create", r.db.WithContext(ctx).Create(&m).Error)
 }
 
+// DeleteByTestResultID hard-deletes every audit log row for a single test result.
 func (r *PromptAuditLogRepository) DeleteByTestResultID(ctx context.Context, testResultID string) error {
 	err := r.db.WithContext(ctx).
 		Where("test_result_id = ?", testResultID).
@@ -47,6 +51,7 @@ func (r *PromptAuditLogRepository) DeleteByTestResultID(ctx context.Context, tes
 	return postgres.LogQueryError(r.log, "DeleteByTestResultID", err)
 }
 
+// DeleteExpired purges every audit log row past its retention window, returning the count removed.
 func (r *PromptAuditLogRepository) DeleteExpired(ctx context.Context) (int64, error) {
 	res := r.db.WithContext(ctx).
 		Where("expires_at < ?", time.Now()).

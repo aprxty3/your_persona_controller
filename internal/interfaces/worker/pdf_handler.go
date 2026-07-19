@@ -22,6 +22,7 @@ func NewPDFHandler(uc *apppdf.GeneratePDFUseCase, log logger.Logger) *PDFHandler
 	return &PDFHandler{uc: uc, log: log.With("worker", "pdf")}
 }
 
+// ProcessTask handles the generate:pdf task.
 func (h *PDFHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	var payload taskqueue.GeneratePDFPayload
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {

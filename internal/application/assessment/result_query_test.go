@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+const testOwnerID = "owner-1"
+
 func TestGetByID_NotFound_404(t *testing.T) {
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "r1").Return(nil, nil).Once()
@@ -40,7 +42,7 @@ func TestGetByID_Expired_404(t *testing.T) {
 // Any caller holding the unguessable UUID may view a non-expired result —
 // is_owner just flags whether it's the FE's teaser/full render.
 func TestGetByID_NonOwnerCanStillView_IsOwnerFalse(t *testing.T) {
-	userID := "owner-1"
+	userID := testOwnerID
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "r1").Return(&testresult.TestResult{ID: "r1", UserID: &userID}, nil).Once()
 	uc := NewResultUseCase(repo, nil, testLogger())
@@ -55,12 +57,12 @@ func TestGetByID_NonOwnerCanStillView_IsOwnerFalse(t *testing.T) {
 }
 
 func TestGetByID_Owner_IsOwnerTrue(t *testing.T) {
-	userID := "owner-1"
+	userID := testOwnerID
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "r1").Return(&testresult.TestResult{ID: "r1", UserID: &userID}, nil).Once()
 	uc := NewResultUseCase(repo, nil, testLogger())
 
-	resp, err := uc.GetByID(context.Background(), "r1", "owner-1", "")
+	resp, err := uc.GetByID(context.Background(), "r1", testOwnerID, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -79,7 +81,7 @@ func TestUpdateMascotStyle_InvalidStyle_Rejected(t *testing.T) {
 }
 
 func TestUpdateMascotStyle_NotOwner_Forbidden(t *testing.T) {
-	ownerID := "owner-1"
+	ownerID := testOwnerID
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "r1").Return(&testresult.TestResult{ID: "r1", UserID: &ownerID}, nil).Once()
 	uc := NewResultUseCase(repo, nil, testLogger())
@@ -91,13 +93,13 @@ func TestUpdateMascotStyle_NotOwner_Forbidden(t *testing.T) {
 }
 
 func TestUpdateMascotStyle_Owner_Persists(t *testing.T) {
-	ownerID := "owner-1"
+	ownerID := testOwnerID
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "r1").Return(&testresult.TestResult{ID: "r1", UserID: &ownerID, MascotStyle: MascotStyleA}, nil).Once()
 	repo.EXPECT().Update(mock.Anything, mock.MatchedBy(func(r *testresult.TestResult) bool { return r.MascotStyle == MascotStyleB })).Return(nil).Once()
 	uc := NewResultUseCase(repo, nil, testLogger())
 
-	resp, err := uc.UpdateMascotStyle(context.Background(), UpdateMascotStyleRequest{ResultID: "r1", CallerUserID: "owner-1", MascotStyle: MascotStyleB})
+	resp, err := uc.UpdateMascotStyle(context.Background(), UpdateMascotStyleRequest{ResultID: "r1", CallerUserID: testOwnerID, MascotStyle: MascotStyleB})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -107,12 +109,12 @@ func TestUpdateMascotStyle_Owner_Persists(t *testing.T) {
 }
 
 func TestGetPDFStatus_Owner_ReturnsStatus(t *testing.T) {
-	ownerID := "owner-1"
+	ownerID := testOwnerID
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "r1").Return(&testresult.TestResult{ID: "r1", UserID: &ownerID, PDFStatus: testresult.PDFStatusCompleted}, nil).Once()
 	uc := NewResultUseCase(repo, nil, testLogger())
 
-	resp, err := uc.GetPDFStatus(context.Background(), "r1", "owner-1", "")
+	resp, err := uc.GetPDFStatus(context.Background(), "r1", testOwnerID, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -122,19 +124,19 @@ func TestGetPDFStatus_Owner_ReturnsStatus(t *testing.T) {
 }
 
 func TestGetPDFDownloadURL_NotReady_Rejected(t *testing.T) {
-	ownerID := "owner-1"
+	ownerID := testOwnerID
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "r1").Return(&testresult.TestResult{ID: "r1", UserID: &ownerID}, nil).Once() // PDFUrl nil
 	uc := NewResultUseCase(repo, nil, testLogger())
 
-	_, err := uc.GetPDFDownloadURL(context.Background(), "r1", "owner-1", "")
+	_, err := uc.GetPDFDownloadURL(context.Background(), "r1", testOwnerID, "")
 	if !errors.Is(err, application.ErrPDFNotReady) {
 		t.Fatalf("expected ErrPDFNotReady, got %v", err)
 	}
 }
 
 func TestGetPDFDownloadURL_Ready_ReturnsSignedURL(t *testing.T) {
-	ownerID := "owner-1"
+	ownerID := testOwnerID
 	pdfURL := "guest/x/r1.pdf"
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "r1").Return(&testresult.TestResult{ID: "r1", UserID: &ownerID, PDFUrl: &pdfURL}, nil).Once()
@@ -142,7 +144,7 @@ func TestGetPDFDownloadURL_Ready_ReturnsSignedURL(t *testing.T) {
 	signer.EXPECT().PresignedGetURL(mock.Anything, pdfURL, mock.Anything).Return("https://signed.example/r1.pdf", nil).Once()
 	uc := NewResultUseCase(repo, signer, testLogger())
 
-	resp, err := uc.GetPDFDownloadURL(context.Background(), "r1", "owner-1", "")
+	resp, err := uc.GetPDFDownloadURL(context.Background(), "r1", testOwnerID, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

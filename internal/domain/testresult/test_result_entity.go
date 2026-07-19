@@ -7,6 +7,7 @@ import (
 // ResultStatus represents the processing state of a test result.
 type ResultStatus string
 
+// The lifecycle states a test result's AI-summary processing moves through.
 const (
 	StatusProcessing     ResultStatus = "processing"
 	StatusCompleted      ResultStatus = "completed"
@@ -16,6 +17,7 @@ const (
 // PDFStatus represents the async PDF generation lifecycle.
 type PDFStatus string
 
+// The lifecycle states async PDF generation moves through.
 const (
 	PDFStatusPending    PDFStatus = "pending"
 	PDFStatusProcessing PDFStatus = "processing"

@@ -1,3 +1,5 @@
+// Package auth implements the auth domain's use cases: registration, login,
+// session/token lifecycle, OTP verification, and password reset.
 package auth
 
 import (

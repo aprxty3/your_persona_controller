@@ -1,3 +1,5 @@
+// Package account implements the GORM-backed repositories for the account
+// domain (users, guest sessions, referrals, verification tokens).
 package account
 
 import (

@@ -1,3 +1,5 @@
+// Package dashboard implements the Member dashboard landing view and
+// paginated test-result history use cases.
 package dashboard
 
 import (
@@ -14,7 +16,7 @@ import (
 )
 
 // TestResultRepository is the narrow slice of TestResult persistence the
-// dashboard needs — scoped smaller than the full domain testresult.TestResultRepository.
+// dashboard needs — scoped smaller than the full domain testresult.Repository.
 type TestResultRepository interface {
 	CountMonthlyUsage(ctx context.Context, userID string) (int64, error)
 	FindHistoryByUser(ctx context.Context, userID string, page, limit int) (results []testresult.TestResult, total int64, err error)
@@ -39,8 +41,8 @@ type GritTrendPoint struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// DashboardResponse summarizes a Member's quota and recent trend for the dashboard landing view.
-type DashboardResponse struct {
+// Response summarizes a Member's quota and recent trend for the dashboard landing view.
+type Response struct {
 	QuotaLimit     int              `json:"quota_limit"`
 	QuotaUsed      int              `json:"quota_used"`
 	QuotaRemaining int              `json:"quota_remaining"`
@@ -65,16 +67,16 @@ type PaginationMeta struct {
 	TotalPages int   `json:"total_pages"`
 }
 
-// DashboardUseCase serves the Member dashboard landing view and test-result history
-type DashboardUseCase struct {
+// UseCase serves the Member dashboard landing view and test-result history
+type UseCase struct {
 	testResultRepo      TestResultRepository
 	insightTemplateRepo InsightTemplateRepository
 	log                 logger.Logger
 }
 
-// NewDashboardUseCase constructs a DashboardUseCase.
-func NewDashboardUseCase(testResultRepo TestResultRepository, insightTemplateRepo InsightTemplateRepository, log logger.Logger) *DashboardUseCase {
-	return &DashboardUseCase{
+// NewDashboardUseCase constructs a UseCase.
+func NewDashboardUseCase(testResultRepo TestResultRepository, insightTemplateRepo InsightTemplateRepository, log logger.Logger) *UseCase {
+	return &UseCase{
 		testResultRepo:      testResultRepo,
 		insightTemplateRepo: insightTemplateRepo,
 		log:                 log.With("usecase", "dashboard"),
@@ -83,7 +85,7 @@ func NewDashboardUseCase(testResultRepo TestResultRepository, insightTemplateRep
 
 // GetDashboard computes the Member's derived remaining quota (never a stored counter), the
 // recent GRIT trend, and rule-based micro-insights  — no Gemini call anywhere in this path.
-func (uc *DashboardUseCase) GetDashboard(ctx context.Context, userID, locale string) (*DashboardResponse, error) {
+func (uc *UseCase) GetDashboard(ctx context.Context, userID, locale string) (*Response, error) {
 	used, err := uc.testResultRepo.CountMonthlyUsage(ctx, userID)
 	if err != nil {
 		uc.log.Error("get dashboard failed", "step", "count_usage", "user_id", userID, "error", err)
@@ -118,7 +120,7 @@ func (uc *DashboardUseCase) GetDashboard(ctx context.Context, userID, locale str
 		return nil, fmt.Errorf("get_dashboard: micro insights: %w", err)
 	}
 
-	return &DashboardResponse{
+	return &Response{
 		QuotaLimit:     application.MemberMonthlyQuota,
 		QuotaUsed:      int(used),
 		QuotaRemaining: remaining,
@@ -134,7 +136,7 @@ func (uc *DashboardUseCase) GetDashboard(ctx context.Context, userID, locale str
 // adds no extra query). Guards against fabricating insights from incomplete
 // or old data (GritScore == 0 is the zero-value for rows scored
 // before scoring engine exist, not a real score).
-func (uc *DashboardUseCase) computeMicroInsights(ctx context.Context, recent []testresult.TestResult, locale string) ([]string, error) {
+func (uc *UseCase) computeMicroInsights(ctx context.Context, recent []testresult.TestResult, locale string) ([]string, error) {
 	insights := []string{}
 	if len(recent) == 0 {
 		return insights, nil
@@ -181,7 +183,7 @@ func (uc *DashboardUseCase) computeMicroInsights(ctx context.Context, recent []t
 }
 
 // GetHistory returns a page of the Member's test results, newest-first.
-func (uc *DashboardUseCase) GetHistory(ctx context.Context, userID string, page, limit int) ([]HistoryItem, PaginationMeta, error) {
+func (uc *UseCase) GetHistory(ctx context.Context, userID string, page, limit int) ([]HistoryItem, PaginationMeta, error) {
 	if page < 1 {
 		page = 1
 	}

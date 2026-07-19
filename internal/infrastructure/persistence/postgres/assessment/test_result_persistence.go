@@ -12,14 +12,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestResultRepository implements testresult.TestResultRepository backed by PostgreSQL via GORM.
+// TestResultRepository implements testresult.Repository backed by PostgreSQL via GORM.
 type TestResultRepository struct {
 	db  *gorm.DB
 	log logger.Logger
 }
 
 // NewTestResultRepository constructs a TestResultRepository.
-func NewTestResultRepository(db *gorm.DB, log logger.Logger) testresult.TestResultRepository {
+func NewTestResultRepository(db *gorm.DB, log logger.Logger) testresult.Repository {
 	return &TestResultRepository{db: db, log: log.With("repository", "testresult")}
 }
 

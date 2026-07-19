@@ -1,3 +1,4 @@
+// Command seed loads the question bank and insight templates. Idempotent, safe to re-run.
 package main
 
 import (

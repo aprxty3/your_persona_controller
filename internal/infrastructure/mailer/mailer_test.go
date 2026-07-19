@@ -26,7 +26,7 @@ func TestSendEmail_Success(t *testing.T) {
 	var gotAddr, gotFrom string
 	var gotTo []string
 	var gotMsg []byte
-	m := newTestMailer(t, func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	m := newTestMailer(t, func(addr string, _ smtp.Auth, from string, to []string, msg []byte) error {
 		gotAddr, gotFrom, gotTo, gotMsg = addr, from, to, msg
 		return nil
 	})
@@ -55,7 +55,7 @@ func TestSendEmail_Success(t *testing.T) {
 
 func TestSendEmail_SMTPError_Propagated(t *testing.T) {
 	sentinelErr := errors.New("smtp: connection refused")
-	m := newTestMailer(t, func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	m := newTestMailer(t, func(_ string, _ smtp.Auth, _ string, _ []string, _ []byte) error {
 		return sentinelErr
 	})
 
@@ -74,7 +74,7 @@ func TestSendEmail_ContextCanceled_ReturnsContextError(t *testing.T) {
 	blockUntil := make(chan struct{})
 	defer close(blockUntil)
 
-	m := newTestMailer(t, func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	m := newTestMailer(t, func(_ string, _ smtp.Auth, _ string, _ []string, _ []byte) error {
 		<-blockUntil
 		return nil
 	})
@@ -98,7 +98,7 @@ func TestSendEmail_NoUsername_NoAuth(t *testing.T) {
 		t.Fatalf("failed to load real locale catalog: %v", err)
 	}
 	m := NewSMTPMailer("smtp.example.com", 587, "", "", "noreply@example.com", catalog)
-	m.sendFunc = func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	m.sendFunc = func(_ string, a smtp.Auth, _ string, _ []string, _ []byte) error {
 		gotAuth = a
 		return nil
 	}
@@ -113,7 +113,7 @@ func TestSendEmail_NoUsername_NoAuth(t *testing.T) {
 
 func TestSendOTP_UsesCatalogTemplateAndFormatsCode(t *testing.T) {
 	var gotSubject, gotBody string
-	m := newTestMailer(t, func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	m := newTestMailer(t, func(_ string, _ smtp.Auth, _ string, _ []string, msg []byte) error {
 		msgStr := string(msg)
 		for _, line := range strings.Split(msgStr, "\r\n") {
 			if strings.HasPrefix(line, "Subject: ") {
@@ -137,7 +137,7 @@ func TestSendOTP_UsesCatalogTemplateAndFormatsCode(t *testing.T) {
 }
 
 func TestSendOTP_UnknownPurpose_ReturnsError(t *testing.T) {
-	m := newTestMailer(t, func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	m := newTestMailer(t, func(_ string, _ smtp.Auth, _ string, _ []string, _ []byte) error {
 		t.Fatal("sendFunc should not be called for an unknown purpose")
 		return nil
 	})
@@ -150,7 +150,7 @@ func TestSendOTP_UnknownPurpose_ReturnsError(t *testing.T) {
 
 func TestSendOTP_UnsupportedLocale_ResolvesToEN(t *testing.T) {
 	var gotBody string
-	m := newTestMailer(t, func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	m := newTestMailer(t, func(_ string, _ smtp.Auth, _ string, _ []string, msg []byte) error {
 		gotBody = string(msg)
 		return nil
 	})
@@ -165,7 +165,7 @@ func TestSendOTP_UnsupportedLocale_ResolvesToEN(t *testing.T) {
 
 func TestSendDeletionConfirmed_SendsExpectedTemplate(t *testing.T) {
 	var gotBody string
-	m := newTestMailer(t, func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	m := newTestMailer(t, func(_ string, _ smtp.Auth, _ string, _ []string, msg []byte) error {
 		gotBody = string(msg)
 		return nil
 	})
@@ -180,11 +180,11 @@ func TestSendDeletionConfirmed_SendsExpectedTemplate(t *testing.T) {
 
 func TestSendOTP_LocaleContentDiffersBetweenENAndID(t *testing.T) {
 	var enBody, idBody string
-	mEN := newTestMailer(t, func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	mEN := newTestMailer(t, func(_ string, _ smtp.Auth, _ string, _ []string, msg []byte) error {
 		enBody = string(msg)
 		return nil
 	})
-	mID := newTestMailer(t, func(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	mID := newTestMailer(t, func(_ string, _ smtp.Auth, _ string, _ []string, msg []byte) error {
 		idBody = string(msg)
 		return nil
 	})

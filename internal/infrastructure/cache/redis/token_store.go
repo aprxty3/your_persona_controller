@@ -9,6 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// TokenStore is the Redis-backed refresh-token denylist (session revocation).
 type TokenStore struct {
 	client *redis.Client
 }

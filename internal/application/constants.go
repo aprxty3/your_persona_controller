@@ -1,3 +1,6 @@
+// Package application holds cross-cutting business constants and use case
+// orchestration shared across the assessment, auth, account, and dashboard
+// subpackages — see each constant's own doc comment for the PRD rule it encodes.
 package application
 
 import (
@@ -59,9 +62,10 @@ const DeletionGracePeriod = 14 * 24 * time.Hour
 // a handful of points is enough for a sparkline, and keeps the query cheap.
 const GritTrendPoints = 5
 
-// ScopeSubmitIP's string value MUST match redis.ScopeSubmitIP exactly — kept
-// in sync manually since this package can't import internal/infrastructure/
-// cache/redis (that package already imports assessment for IdempotencyService/
+// ScopeSubmitIP is the IP rate-limit scope for assessment submission. Its
+// string value MUST match redis.ScopeSubmitIP exactly — kept in sync manually
+// since this package can't import internal/infrastructure/cache/redis (that
+// package already imports assessment for IdempotencyService/
 // DistributedLockService — importing it back would cycle). See
 // dto.IPRateLimitScope's doc comment for why the type itself lives in dto.
 const ScopeSubmitIP dto.IPRateLimitScope = "submit"

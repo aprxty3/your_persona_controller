@@ -12,12 +12,12 @@ import (
 
 // DashboardHandler handles HTTP requests for the Member dashboard.
 type DashboardHandler struct {
-	useCase *dashboard.DashboardUseCase
+	useCase *dashboard.UseCase
 	log     logger.Logger
 }
 
 // NewDashboardHandler is the constructor for Dependency Injection.
-func NewDashboardHandler(useCase *dashboard.DashboardUseCase, log logger.Logger) *DashboardHandler {
+func NewDashboardHandler(useCase *dashboard.UseCase, log logger.Logger) *DashboardHandler {
 	return &DashboardHandler{useCase: useCase, log: log.With("handler", "dashboard")}
 }
 
@@ -29,7 +29,7 @@ func NewDashboardHandler(useCase *dashboard.DashboardUseCase, log logger.Logger)
 // @Tags         User Dashboard
 // @Produce      json
 // @Security     BearerAuth
-// @Success      200 {object} httpresponse.Response{data=dashboard.DashboardResponse} "Dashboard summary"
+// @Success      200 {object} httpresponse.Response{data=dashboard.Response} "Dashboard summary"
 // @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | TOKEN_VERSION_MISMATCH"
 // @Failure      500 {object} httpresponse.Response "INTERNAL_ERROR — unexpected server error"
 // @Router       /v1/user-dashboard [get]

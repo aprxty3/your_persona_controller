@@ -1,3 +1,5 @@
+// Package assessment implements the GORM-backed repositories for the
+// assessment domain (questions, answers, insight templates, prompt audit logs).
 package assessment
 
 import (
@@ -11,6 +13,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// AnswerRepository is the GORM-backed testresult.AnswerRepository.
 type AnswerRepository struct {
 	db  *gorm.DB
 	log logger.Logger
@@ -18,6 +21,7 @@ type AnswerRepository struct {
 
 var _ testresult.AnswerRepository = (*AnswerRepository)(nil)
 
+// NewAnswerRepository constructs an AnswerRepository.
 func NewAnswerRepository(db *gorm.DB, log logger.Logger) *AnswerRepository {
 	return &AnswerRepository{
 		db:  db,
@@ -47,6 +51,7 @@ func toAnswerEntity(model *postgres.AnswerModel) testresult.Answer {
 	}
 }
 
+// UpsertAnswers inserts answers, updating value/updated_at on conflict.
 func (r *AnswerRepository) UpsertAnswers(ctx context.Context, testResultID string, answers []testresult.Answer) error {
 	if len(answers) == 0 {
 		return nil
@@ -68,6 +73,7 @@ func (r *AnswerRepository) UpsertAnswers(ctx context.Context, testResultID strin
 	return postgres.LogQueryError(r.log, "UpsertAnswers", err)
 }
 
+// FindByTestResultID returns every answer belonging to a single test result, oldest first.
 func (r *AnswerRepository) FindByTestResultID(ctx context.Context, testResultID string) ([]testresult.Answer, error) {
 	var models []postgres.AnswerModel
 	err := r.db.WithContext(ctx).

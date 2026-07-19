@@ -1,3 +1,4 @@
+// Package guestpurge implements the scheduled purge of expired guest-owned data.
 package guestpurge
 
 import (
@@ -21,7 +22,7 @@ type PDFStorage interface {
 // then the owning GuestSession itself.
 type PurgeGuestTTLUseCase struct {
 	db             *gorm.DB
-	testResultRepo testresult.TestResultRepository
+	testResultRepo testresult.Repository
 	guestRepo      account.GuestSessionRepository
 	pdfStorage     PDFStorage
 	log            logger.Logger
@@ -30,7 +31,7 @@ type PurgeGuestTTLUseCase struct {
 // NewPurgeGuestTTLUseCase creates a new PurgeGuestTTLUseCase.
 func NewPurgeGuestTTLUseCase(
 	db *gorm.DB,
-	testResultRepo testresult.TestResultRepository,
+	testResultRepo testresult.Repository,
 	guestRepo account.GuestSessionRepository,
 	pdfStorage PDFStorage,
 	log logger.Logger,

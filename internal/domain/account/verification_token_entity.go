@@ -7,8 +7,9 @@ import (
 // TokenType represents the purpose of a verification token.
 type TokenType string
 
+// The two purposes a VerificationToken (OTP) can be issued for.
 const (
-	TokenTypeEmailVerification TokenType = "email_verification"
+	TokenTypeEmailVerification TokenType = "email_verification" //nolint:gosec // enum value, not a credential
 	TokenTypePasswordReset     TokenType = "password_reset"
 )
 

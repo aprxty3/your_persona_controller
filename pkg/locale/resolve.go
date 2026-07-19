@@ -1,7 +1,10 @@
+// Package locale resolves an arbitrary requested locale string down to one
+// of the app's supported locales, falling back to EN.
 package locale
 
 import "strings"
 
+// The two locales this app supports content in.
 const (
 	EN = "en"
 	ID = "id"

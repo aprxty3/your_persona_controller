@@ -1,3 +1,5 @@
+// Package http wires the Echo router: middleware chain (CORS, CSRF,
+// logging, rate limiting), route registration, and Swagger UI.
 package http
 
 import (
@@ -6,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	_ "github.com/aprxty3/your_persona_controller.git/docs"
+	_ "github.com/aprxty3/your_persona_controller.git/docs" // registers the generated swagger.json/yaml with echo-swagger
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
 	appmiddleware "github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/middleware"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
@@ -120,7 +122,7 @@ func SetupRouter(
 		LogLatency:   true,
 		LogRemoteIP:  true,
 		LogError:     true,
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+		LogValuesFunc: func(_ echo.Context, v middleware.RequestLoggerValues) error {
 			fields := []interface{}{
 				"request_id", v.RequestID,
 				"method", v.Method,

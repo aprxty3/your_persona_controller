@@ -6,6 +6,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 )
 
+// Check is one config value RequireProduction validates at boot.
 type Check struct {
 	Name            string
 	Value           string

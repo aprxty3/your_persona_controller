@@ -1,9 +1,10 @@
+// Package security implements the Turnstile bot-check and HIBP breached-password infrastructure services.
 package security
 
 import (
 	"bufio"
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // required by the HIBP range API's k-anonymity protocol, not used for storing/comparing our own credentials
 	"encoding/hex"
 	"fmt"
 	"net/http"
@@ -35,7 +36,7 @@ func NewHIBPBreachChecker(log logger.Logger) auth.PasswordBreachChecker {
 
 // IsBreached reports whether password appears in the HIBP breach corpus.
 func (c *HIBPBreachChecker) IsBreached(ctx context.Context, password string) (bool, error) {
-	sum := sha1.Sum([]byte(password))
+	sum := sha1.Sum([]byte(password)) //nolint:gosec // HIBP range API mandates SHA-1 for its k-anonymity prefix/suffix split
 	hash := strings.ToUpper(hex.EncodeToString(sum[:]))
 	prefix, suffix := hash[:5], hash[5:]
 
@@ -53,7 +54,7 @@ func (c *HIBPBreachChecker) IsBreached(ctx context.Context, password string) (bo
 		c.log.Warn("hibp check failed, failing open", "error", err)
 		return false, fmt.Errorf("hibp: request range api: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		c.log.Warn("hibp check failed, failing open", "status", resp.StatusCode)

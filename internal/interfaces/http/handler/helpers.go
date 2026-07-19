@@ -10,6 +10,13 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// Error codes shared across handlers (and asserted on directly in tests) —
+// centralized so the string only needs to match the API contract in one place.
+const (
+	errCodeValidation  = "VALIDATION_ERROR"
+	errCodeRateLimited = "RATE_LIMITED"
+)
+
 func httpcallError(c echo.Context, err error) error {
 	return httpresponse.Error(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 }
@@ -25,7 +32,7 @@ func httpcallSuccess(c echo.Context, code int, data interface{}, meta interface{
 func rateLimitedResponse(c echo.Context, retryAfterSeconds int, message string) error {
 	return c.JSON(http.StatusTooManyRequests, httpresponse.Response{
 		Success: false,
-		Error:   &httpresponse.ErrorDetail{Code: "RATE_LIMITED", Message: message},
+		Error:   &httpresponse.ErrorDetail{Code: errCodeRateLimited, Message: message},
 		Meta:    map[string]interface{}{"retry_after_seconds": retryAfterSeconds},
 	})
 }
@@ -35,7 +42,7 @@ var errResponseWritten = errors.New("handler: response already written")
 func bindJSON(c echo.Context, log logger.Logger, action string, payload interface{}) error {
 	if err := c.Bind(payload); err != nil {
 		log.Warn(action+" rejected", "reason", "bind_error", "error", err)
-		if writeErr := httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body format"); writeErr != nil {
+		if writeErr := httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, "Invalid request body format"); writeErr != nil {
 			return writeErr
 		}
 		return errResponseWritten

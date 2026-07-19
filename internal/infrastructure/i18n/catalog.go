@@ -1,3 +1,5 @@
+// Package i18n loads the embedded email template catalog (subject/body per
+// purpose and locale) used by pkg/mailer.
 package i18n
 
 import (

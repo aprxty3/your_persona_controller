@@ -18,11 +18,11 @@ import (
 
 func testLogger() logger.Logger { return logger.NewLogger("test") }
 
-func newActiveToken(code string) *account.VerificationToken {
+func newActiveToken() *account.VerificationToken {
 	return &account.VerificationToken{
 		ID:        "token-1",
 		UserID:    "user-1",
-		Token:     code,
+		Token:     "123456",
 		Type:      account.TokenTypeEmailVerification,
 		ExpiresAt: time.Now().Add(15 * time.Minute),
 	}
@@ -34,7 +34,7 @@ func newActiveToken(code string) *account.VerificationToken {
 // ErrInvalidOTP) — this is the attempt actually observed by the caller as
 // exhausting the budget.
 func TestValidateOTPAttempt_FifthWrongGuess_RejectsWithMaxAttempts(t *testing.T) {
-	tok := newActiveToken("123456")
+	tok := newActiveToken()
 	tokenRepo := accountmocks.NewMockVerificationTokenRepository(t)
 	tokenRepo.EXPECT().FindActiveByUserAndType(mock.Anything, "user-1", account.TokenTypeEmailVerification).Return(tok, nil).Times(application.MaxWrongOTPAttempts)
 	// Unlike the single-call tests below, this mutates tok.AttemptCount: this
@@ -45,7 +45,7 @@ func TestValidateOTPAttempt_FifthWrongGuess_RejectsWithMaxAttempts(t *testing.T)
 	// it doesn't skew any single call's "remaining" arithmetic here — this
 	// test only asserts the final error and final count, not intermediate
 	// remaining values.
-	tokenRepo.EXPECT().IncrementAttemptCount(mock.Anything, "token-1").RunAndReturn(func(ctx context.Context, id string) error {
+	tokenRepo.EXPECT().IncrementAttemptCount(mock.Anything, "token-1").RunAndReturn(func(_ context.Context, _ string) error {
 		tok.AttemptCount++
 		return nil
 	}).Times(application.MaxWrongOTPAttempts)
@@ -68,7 +68,7 @@ func TestValidateOTPAttempt_FifthWrongGuess_RejectsWithMaxAttempts(t *testing.T)
 // must not increment attempt_count any further (IncrementAttemptCount must
 // never be called).
 func TestValidateOTPAttempt_AfterMaxAttempts_CorrectCodeStillRejected(t *testing.T) {
-	tok := newActiveToken("123456")
+	tok := newActiveToken()
 	tok.AttemptCount = application.MaxWrongOTPAttempts
 	tokenRepo := accountmocks.NewMockVerificationTokenRepository(t)
 	tokenRepo.EXPECT().FindActiveByUserAndType(mock.Anything, "user-1", account.TokenTypeEmailVerification).Return(tok, nil).Once()
@@ -81,7 +81,7 @@ func TestValidateOTPAttempt_AfterMaxAttempts_CorrectCodeStillRejected(t *testing
 }
 
 func TestValidateOTPAttempt_CorrectCodeBeforeLimit_Succeeds(t *testing.T) {
-	tok := newActiveToken("123456")
+	tok := newActiveToken()
 	tokenRepo := accountmocks.NewMockVerificationTokenRepository(t)
 	tokenRepo.EXPECT().FindActiveByUserAndType(mock.Anything, "user-1", account.TokenTypeEmailVerification).Return(tok, nil).Once()
 
@@ -98,7 +98,7 @@ func TestValidateOTPAttempt_CorrectCodeBeforeLimit_Succeeds(t *testing.T) {
 }
 
 func TestValidateOTPAttempt_WrongCode_IncrementsAndReturnsRemaining(t *testing.T) {
-	tok := newActiveToken("123456")
+	tok := newActiveToken()
 	tokenRepo := accountmocks.NewMockVerificationTokenRepository(t)
 	tokenRepo.EXPECT().FindActiveByUserAndType(mock.Anything, "user-1", account.TokenTypeEmailVerification).Return(tok, nil).Once()
 	// Deliberately does NOT mutate tok.AttemptCount here: the real Postgres
@@ -128,7 +128,7 @@ func TestValidateOTPAttempt_NoActiveToken_ExpiredError(t *testing.T) {
 }
 
 func TestValidateOTPAttempt_ExpiredToken_ExpiredError(t *testing.T) {
-	tok := newActiveToken("123456")
+	tok := newActiveToken()
 	tok.ExpiresAt = time.Now().Add(-1 * time.Minute)
 	tokenRepo := accountmocks.NewMockVerificationTokenRepository(t)
 	tokenRepo.EXPECT().FindActiveByUserAndType(mock.Anything, "user-1", account.TokenTypeEmailVerification).Return(tok, nil).Once()

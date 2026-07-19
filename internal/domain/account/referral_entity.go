@@ -7,6 +7,7 @@ import (
 // ReferralEventType represents the event that triggered a referral record.
 type ReferralEventType string
 
+// The two referral event types that can be recorded against a referral code.
 const (
 	EventTypeSignup        ReferralEventType = "signup"
 	EventTypeTestCompleted ReferralEventType = "test_completed"

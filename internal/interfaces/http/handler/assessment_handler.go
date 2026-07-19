@@ -54,7 +54,7 @@ func NewAssessmentHandler(uc *assessment.SubmitAssessmentUseCase, log logger.Log
 func (h *AssessmentHandler) Submit(c echo.Context) error {
 	idempotencyKey := c.Request().Header.Get("Idempotency-Key")
 	if idempotencyKey == "" {
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Idempotency-Key header is required")
+		return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, "Idempotency-Key header is required")
 	}
 
 	var payload dto.SubmitRequestDTO
@@ -73,7 +73,7 @@ func (h *AssessmentHandler) Submit(c echo.Context) error {
 	}
 
 	if sessionID == "" {
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", "Missing session_id cookie or access token")
+		return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, "Missing session_id cookie or access token")
 	}
 
 	reqLocale := payload.Locale
@@ -100,7 +100,7 @@ func (h *AssessmentHandler) Submit(c echo.Context) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, application.ErrInvalidInput):
-			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+			return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, unwrapMessage(err))
 		case errors.Is(err, application.ErrIdempotencyKeyReused):
 			return httpresponse.Error(c, http.StatusConflict, "IDEMPOTENCY_KEY_REUSED", "This Idempotency-Key was already used with a different payload")
 		case errors.Is(err, application.ErrLockNotAcquired):

@@ -1,3 +1,4 @@
+// Package assessment implements the assessment submission, scoring, and question-catalog use cases.
 package assessment
 
 import (

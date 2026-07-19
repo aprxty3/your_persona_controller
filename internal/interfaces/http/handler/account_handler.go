@@ -1,3 +1,5 @@
+// Package handler implements the Echo HTTP handlers — one file per resource
+// (auth, account, assessment, dashboard, result).
 package handler
 
 import (
@@ -17,14 +19,14 @@ import (
 // AccountHandler handles HTTP requests for everything under /v1/account/* —
 // profile self-service, referral code retrieval, and the deletion-request lifecycle.
 type AccountHandler struct {
-	profileUseCase  *profile.ProfileUseCase
+	profileUseCase  *profile.UseCase
 	deletionUseCase *deletionrequest.DeletionUseCase
 	log             logger.Logger
 }
 
 // NewAccountHandler is the constructor for Dependency Injection.
 func NewAccountHandler(
-	profileUseCase *profile.ProfileUseCase,
+	profileUseCase *profile.UseCase,
 	deletionUseCase *deletionrequest.DeletionUseCase,
 	log logger.Logger,
 ) *AccountHandler {
@@ -50,7 +52,7 @@ func NewAccountHandler(
 // @Security     BearerAuth
 // @Param        X-CSRF-Token header string true "From cookie csrf_token — see CSRF note above"
 // @Param        request body dto.UpdateProfileRequestDTO true "Fields to update (all optional)"
-// @Success      200 {object} httpresponse.Response{data=profile.ProfileResponse} "Profile updated"
+// @Success      200 {object} httpresponse.Response{data=profile.Response} "Profile updated"
 // @Failure      400 {object} httpresponse.Response "VALIDATION_ERROR — an included field has an invalid value"
 // @Failure      401 {object} httpresponse.Response "UNAUTHORIZED | TOKEN_VERSION_MISMATCH"
 // @Failure      403 {object} httpresponse.Response "Missing/invalid X-CSRF-Token"
@@ -71,7 +73,7 @@ func (h *AccountHandler) UpdateProfile(c echo.Context) error {
 	})
 	if err != nil {
 		if errors.Is(err, application.ErrInvalidInput) {
-			return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+			return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, unwrapMessage(err))
 		}
 		h.log.Error("update profile failed", "error", err)
 		return httpcallError(c, err)

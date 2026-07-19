@@ -1,3 +1,4 @@
+// Package profile implements Member self-service profile updates and referral code retrieval.
 package profile
 
 import (
@@ -30,8 +31,8 @@ type UpdateProfileRequest struct {
 	PreferredLocale *string
 }
 
-// ProfileResponse reflects the user's profile fields after an update.
-type ProfileResponse struct {
+// Response reflects the user's profile fields after an update.
+type Response struct {
 	UserID          string `json:"user_id"`
 	DisplayName     string `json:"display_name"`
 	Age             int    `json:"age"`
@@ -52,16 +53,16 @@ type ReferralStatsResponse struct {
 	CompletedCount int64  `json:"completed_count"`
 }
 
-// ProfileUseCase manages Member self-service profile and referral code retrieval.
-type ProfileUseCase struct {
+// UseCase manages Member self-service profile and referral code retrieval.
+type UseCase struct {
 	userRepo     account.UserRepository
 	referralRepo account.ReferralRepository
 	log          logger.Logger
 }
 
-// NewProfileUseCase creates a new ProfileUseCase.
-func NewProfileUseCase(userRepo account.UserRepository, referralRepo account.ReferralRepository, log logger.Logger) *ProfileUseCase {
-	return &ProfileUseCase{
+// NewProfileUseCase creates a new UseCase.
+func NewProfileUseCase(userRepo account.UserRepository, referralRepo account.ReferralRepository, log logger.Logger) *UseCase {
+	return &UseCase{
 		userRepo:     userRepo,
 		referralRepo: referralRepo,
 		log:          log.With("usecase", "profile"),
@@ -69,7 +70,7 @@ func NewProfileUseCase(userRepo account.UserRepository, referralRepo account.Ref
 }
 
 // UpdateProfile applies a partial update — only non-nil fields are changed.
-func (uc *ProfileUseCase) UpdateProfile(ctx context.Context, req UpdateProfileRequest) (*ProfileResponse, error) {
+func (uc *UseCase) UpdateProfile(ctx context.Context, req UpdateProfileRequest) (*Response, error) {
 	u, err := uc.userRepo.FindByID(ctx, req.UserID)
 	if err != nil {
 		uc.log.Error("update profile failed", "step", "lookup_user", "error", err)
@@ -111,7 +112,7 @@ func (uc *ProfileUseCase) UpdateProfile(ctx context.Context, req UpdateProfileRe
 	}
 
 	uc.log.Info("profile updated", "user_id", u.ID)
-	return &ProfileResponse{
+	return &Response{
 		UserID:          u.ID,
 		DisplayName:     u.DisplayName,
 		Age:             u.Age,
@@ -121,7 +122,7 @@ func (uc *ProfileUseCase) UpdateProfile(ctx context.Context, req UpdateProfileRe
 }
 
 // GetReferralCode returns the caller's existing referral code, generating and persisting one on first request.
-func (uc *ProfileUseCase) GetReferralCode(ctx context.Context, userID string) (*ReferralCodeResponse, error) {
+func (uc *UseCase) GetReferralCode(ctx context.Context, userID string) (*ReferralCodeResponse, error) {
 	existing, err := uc.referralRepo.FindCodeByUserID(ctx, userID)
 	if err != nil {
 		uc.log.Error("get referral code failed", "step", "lookup_existing", "user_id", userID, "error", err)
@@ -175,7 +176,7 @@ func (uc *ProfileUseCase) GetReferralCode(ctx context.Context, userID string) (*
 
 // GetReferralStats returns aggregate conversion counts for the caller's own
 // referral code — never invitee identity (email/name/user_id), per UU PDP.
-func (uc *ProfileUseCase) GetReferralStats(ctx context.Context, userID string) (*ReferralStatsResponse, error) {
+func (uc *UseCase) GetReferralStats(ctx context.Context, userID string) (*ReferralStatsResponse, error) {
 	code, err := uc.referralRepo.FindCodeByUserID(ctx, userID)
 	if err != nil {
 		uc.log.Error("get referral stats failed", "step", "lookup_code", "user_id", userID, "error", err)

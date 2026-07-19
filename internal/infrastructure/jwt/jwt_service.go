@@ -1,3 +1,4 @@
+// Package jwtservice issues and validates the access/refresh JWTs used for member authentication.
 package jwtservice
 
 import (

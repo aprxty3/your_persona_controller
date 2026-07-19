@@ -10,11 +10,13 @@ import (
 	"gorm.io/gorm"
 )
 
+// InsightTemplateRepository is the GORM-backed content.InsightTemplateRepository.
 type InsightTemplateRepository struct {
 	db  *gorm.DB
 	log logger.Logger
 }
 
+// NewInsightTemplateRepository constructs an InsightTemplateRepository.
 func NewInsightTemplateRepository(db *gorm.DB, log logger.Logger) content.InsightTemplateRepository {
 	return &InsightTemplateRepository{
 		db:  db,
@@ -36,6 +38,7 @@ func toInsightTemplateEntity(model *postgres.InsightTemplateModel) content.Insig
 	}
 }
 
+// FindMatchingTemplates returns active templates for trait, preferring loc and falling back to English.
 func (r *InsightTemplateRepository) FindMatchingTemplates(ctx context.Context, trait, loc string) ([]content.InsightTemplate, error) {
 	var models []postgres.InsightTemplateModel
 

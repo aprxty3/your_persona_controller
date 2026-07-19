@@ -164,7 +164,7 @@ func (h *ResultHandler) GetPDF(c echo.Context) error {
 func (h *ResultHandler) handleResultError(c echo.Context, err error, op string) error {
 	switch {
 	case errors.Is(err, application.ErrInvalidInput):
-		return httpresponse.Error(c, http.StatusBadRequest, "VALIDATION_ERROR", unwrapMessage(err))
+		return httpresponse.Error(c, http.StatusBadRequest, errCodeValidation, unwrapMessage(err))
 	case errors.Is(err, application.ErrResultNotFound):
 		return httpresponse.Error(c, http.StatusNotFound, "RESULT_NOT_FOUND", "Test result not found")
 	case errors.Is(err, application.ErrForbidden):

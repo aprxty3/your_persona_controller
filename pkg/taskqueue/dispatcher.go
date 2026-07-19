@@ -1,3 +1,4 @@
+// Package taskqueue defines the Asynq queue/task-type constants and the Dispatcher interface used to enqueue background jobs.
 package taskqueue
 
 import (
@@ -8,6 +9,7 @@ import (
 	"github.com/hibiken/asynq"
 )
 
+// The Asynq queue names, ordered highest to lowest priority.
 const (
 	QueueCritical = "critical"
 	QueueDefault  = "default"
@@ -15,6 +17,7 @@ const (
 	QueueLow      = "low"
 )
 
+// The Asynq task type identifiers this package can enqueue/handle.
 const (
 	TaskSendEmail     = "send:email"
 	TaskGeneratePDF   = "generate:pdf"
@@ -38,11 +41,14 @@ type GeneratePDFPayload struct {
 	TestResultID string `json:"test_result_id"`
 }
 
+// AnonymizeUserPayload is the canonical payload for anonymize:user tasks.
 type AnonymizeUserPayload struct {
 	UserID            string `json:"user_id"`
 	DeletionRequestID string `json:"deletion_request_id"`
 }
 
+// Dispatcher enqueues background jobs — the narrow interface application code
+// depends on, backed by AsynqDispatcher in production.
 type Dispatcher interface {
 	EnqueueEmail(ctx context.Context, payload SendEmailPayload, queue string) error
 	EnqueuePDFGeneration(ctx context.Context, payload GeneratePDFPayload) error
@@ -59,14 +65,17 @@ func NewAsynqDispatcher(client *asynq.Client) Dispatcher {
 	return &AsynqDispatcher{client: client}
 }
 
+// EnqueueEmail enqueues a send:email task on the given queue.
 func (d *AsynqDispatcher) EnqueueEmail(ctx context.Context, payload SendEmailPayload, queue string) error {
 	return enqueue(ctx, d.client, TaskSendEmail, payload, queue, 5)
 }
 
+// EnqueuePDFGeneration enqueues a generate:pdf task on QueuePDF.
 func (d *AsynqDispatcher) EnqueuePDFGeneration(ctx context.Context, payload GeneratePDFPayload) error {
 	return enqueue(ctx, d.client, TaskGeneratePDF, payload, QueuePDF, 3)
 }
 
+// EnqueueAnonymize enqueues an anonymize:user task on QueueLow.
 func (d *AsynqDispatcher) EnqueueAnonymize(ctx context.Context, payload AnonymizeUserPayload) error {
 	return enqueue(ctx, d.client, TaskAnonymize, payload, QueueLow, 5)
 }

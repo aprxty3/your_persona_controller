@@ -356,6 +356,7 @@ func (uc *SessionUseCase) Logout(ctx context.Context, req LogoutRequest) error {
 	claims, err := uc.jwtService.ParseRefreshToken(req.RefreshToken)
 	if err != nil {
 		uc.log.Info("logout no-op", "reason", "token_already_invalid", "user_id", req.UserID)
+		//nolint:nilerr // deliberate: an already-invalid token has nothing left to denylist, so logout succeeds as a no-op instead of erroring
 		return nil
 	}
 

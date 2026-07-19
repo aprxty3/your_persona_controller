@@ -1,3 +1,4 @@
+// Command api runs the HTTP API server: Echo router, graceful shutdown, RequireProduction boot checks.
 package main
 
 import (
@@ -15,24 +16,62 @@ import (
 	echo "github.com/labstack/echo/v4"
 )
 
-// Typed aliases to avoid Wire's type ambiguity with multiple string arguments.
+// Typed aliases below exist solely to avoid Wire's type ambiguity when
+// multiple providers would otherwise inject an indistinguishable plain
+// string/bool/int64 — Wire matches by type, not by name.
+
+// GeminiAPIKey is the Gemini API key, Wire-typed.
 type GeminiAPIKey string
+
+// GeminiModel is the Gemini model identifier, Wire-typed.
 type GeminiModel string
+
+// DBDSN is the Postgres connection string, Wire-typed.
 type DBDSN string
+
+// RedisAddr is the Redis host:port address, Wire-typed.
 type RedisAddr string
+
+// RedisPassword is the Redis auth password, Wire-typed.
 type RedisPassword string
+
+// JWTSecret is the JWT signing secret, Wire-typed.
 type JWTSecret string
+
+// S3Endpoint is the S3-compatible object storage endpoint, Wire-typed.
 type S3Endpoint string
+
+// S3Region is the S3-compatible object storage region, Wire-typed.
 type S3Region string
+
+// S3Bucket is the S3-compatible object storage bucket name, Wire-typed.
 type S3Bucket string
+
+// S3AccessKey is the S3-compatible object storage access key, Wire-typed.
 type S3AccessKey string
+
+// S3SecretKey is the S3-compatible object storage secret key, Wire-typed.
 type S3SecretKey string
+
+// S3UsePathStyle toggles path-style S3 addressing (needed for MinIO/R2), Wire-typed.
 type S3UsePathStyle bool
+
+// TurnstileSecretKey is the Cloudflare Turnstile secret key, Wire-typed.
 type TurnstileSecretKey string
+
+// IsProduction reports whether APP_ENV=="production", Wire-typed.
 type IsProduction bool
+
+// AllowedOrigins is the comma-separated CORS allowlist, Wire-typed.
 type AllowedOrigins string
+
+// TrustedProxies is the CIDR range trusted for X-Forwarded-For, Wire-typed.
 type TrustedProxies string
+
+// GeminiDailyTokenBudget is the daily Gemini token spend cap, Wire-typed.
 type GeminiDailyTokenBudget int64
+
+// GeminiTemperature is the Gemini sampling temperature, Wire-typed.
 type GeminiTemperature float32
 
 // @title Your Persona API

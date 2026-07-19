@@ -1,3 +1,5 @@
+// Package aivalidator provides cheap heuristic pre-filters that decide
+// whether free-text input is worth spending a paid Gemini call to analyze.
 package aivalidator
 
 import (
@@ -76,11 +78,11 @@ func nonLetterRatio(runes []rune) float64 {
 
 // longestWordLength returns the rune-length of the longest whitespace-delimited token in text.
 func longestWordLength(text string) int {
-	max := 0
+	longest := 0
 	for _, word := range strings.Fields(text) {
-		if n := len([]rune(word)); n > max {
-			max = n
+		if n := len([]rune(word)); n > longest {
+			longest = n
 		}
 	}
-	return max
+	return longest
 }

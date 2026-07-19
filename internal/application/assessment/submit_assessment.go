@@ -30,12 +30,13 @@ const (
 	promptAuditRetention = 30 * 24 * time.Hour
 )
 
-// DTOs for the Data Transfer between Handler and Usecase
+// AnswerInput is one answered question, as handed from Handler to UseCase.
 type AnswerInput struct {
 	QuestionID string
 	Value      string
 }
 
+// SubmitRequest is the Handler-to-UseCase input for assessment submission.
 type SubmitRequest struct {
 	IdempotencyKey string
 	SessionID      string // Can be GuestSessionID or UserID based on auth state
@@ -45,30 +46,37 @@ type SubmitRequest struct {
 	IPAddress      string // raw client IP, used for per-IP rate limiting only (not persisted)
 }
 
+// TestResultRepository is the slice of test-result persistence SubmitAssessmentUseCase needs.
 type TestResultRepository interface {
 	CountMonthlyUsage(ctx context.Context, userID string) (int64, error)
 	CountMonthlyUsageByGuestSession(ctx context.Context, guestSessionID string) (int64, error)
 	CountCompletedByUser(ctx context.Context, userID string) (int64, error)
 }
 
+// QuestionRepository loads the question bank rows a submission answers against.
 type QuestionRepository interface {
 	FindByIDs(ctx context.Context, ids []string) ([]content.Question, error)
 }
 
+// AIGeneratorService generates the Gemini-backed insight summary for a submission.
 type AIGeneratorService interface {
 	GenerateSummary(ctx context.Context, text string, locale string) (summary string, rawPrompt string, tokens int, err error)
 }
 
+// DistributedLockService is the Redis-backed lock guarding concurrent submits.
 type DistributedLockService interface {
 	AcquireLock(ctx context.Context, key string, ttl time.Duration) (bool, error)
 	ReleaseLock(ctx context.Context, key string) error
 }
 
+// IdempotencyService caches a submit response by Idempotency-Key so a retried
+// request returns the original result instead of double-submitting.
 type IdempotencyService interface {
 	Check(ctx context.Context, key string, payloadHash string) (*dto.SubmitResponse, error)
 	Save(ctx context.Context, key string, payloadHash string, response *dto.SubmitResponse, ttl time.Duration) error
 }
 
+// PDFQueueService enqueues the async PDF-generation job after a successful submit.
 type PDFQueueService interface {
 	EnqueueGeneratePDF(ctx context.Context, testResultID string) error
 }
@@ -88,6 +96,8 @@ type GeminiBudgetService interface {
 	Consume(ctx context.Context, tokens int) error
 }
 
+// SubmitAssessmentUseCase scores a completed assessment, generates its AI
+// summary, and persists the resulting TestResult.
 type SubmitAssessmentUseCase struct {
 	db             *gorm.DB
 	testResultRepo TestResultRepository

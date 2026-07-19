@@ -25,6 +25,7 @@ type UserModel struct {
 	LockedUntil      *time.Time
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (UserModel) TableName() string { return "users" }
 
 // GuestSessionModel represents the database schema for guest sessions.
@@ -40,6 +41,7 @@ type GuestSessionModel struct {
 	ExpiresAt       time.Time `gorm:"index"`
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (GuestSessionModel) TableName() string { return "guest_sessions" }
 
 // TestResultModel represents the database schema for assessment results.
@@ -65,6 +67,7 @@ type TestResultModel struct {
 	ExpiresAt        *time.Time `gorm:"index"`
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (TestResultModel) TableName() string { return "test_results" }
 
 // VerificationTokenModel represents the database schema for OTP tokens.
@@ -79,6 +82,7 @@ type VerificationTokenModel struct {
 	CreatedAt    time.Time `gorm:"autoCreateTime"`
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (VerificationTokenModel) TableName() string { return "verification_tokens" }
 
 // ReferralCodeModel — one code per user.
@@ -89,6 +93,7 @@ type ReferralCodeModel struct {
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (ReferralCodeModel) TableName() string { return "referral_codes" }
 
 // ReferralEventModel records conversion events triggered by a referral code.
@@ -100,6 +105,7 @@ type ReferralEventModel struct {
 	CreatedAt      time.Time `gorm:"autoCreateTime"`
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (ReferralEventModel) TableName() string { return "referral_events" }
 
 // DataDeletionRequestModel records formal deletion requests with grace period.
@@ -112,6 +118,7 @@ type DataDeletionRequestModel struct {
 	CompletedAt       *time.Time
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (DataDeletionRequestModel) TableName() string { return "data_deletion_requests" }
 
 // QuestionModel represents GORM model for questions table.
@@ -126,6 +133,7 @@ type QuestionModel struct {
 	OptionTraitMap   *string `gorm:"type:jsonb"`                           // SJT only: per-option signed dimension points, e.g. {"A":{"EI":2},"B":{"EI":-2}}
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (QuestionModel) TableName() string { return "questions" }
 
 // QuestionTranslationModel represents GORM model for question_translations table.
@@ -137,6 +145,7 @@ type QuestionTranslationModel struct {
 	Options      *string `gorm:"type:jsonb"`
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (QuestionTranslationModel) TableName() string { return "question_translations" }
 
 // AnswerModel represents GORM model for answers table.
@@ -149,6 +158,7 @@ type AnswerModel struct {
 	UpdatedAt    time.Time `gorm:"autoUpdateTime"`
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (AnswerModel) TableName() string { return "answers" }
 
 // InsightTemplateModel represents GORM model for insight_templates table.
@@ -164,6 +174,7 @@ type InsightTemplateModel struct {
 	IsActive       bool     `gorm:"not null;default:true"`
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (InsightTemplateModel) TableName() string { return "insight_templates" }
 
 // PromptAuditLogModel represents GORM model for prompt_audit_logs table.
@@ -177,4 +188,5 @@ type PromptAuditLogModel struct {
 	ExpiresAt      time.Time `gorm:"not null;index"`
 }
 
+// TableName overrides GORM's pluralization guess with the actual table name.
 func (PromptAuditLogModel) TableName() string { return "prompt_audit_logs" }

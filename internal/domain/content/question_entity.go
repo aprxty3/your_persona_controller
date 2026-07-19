@@ -3,6 +3,7 @@ package content
 // QuestionSection represents the assessment section a question belongs to.
 type QuestionSection string
 
+// The three assessment sections a question can belong to.
 const (
 	SectionA QuestionSection = "A"
 	SectionB QuestionSection = "B"
@@ -12,6 +13,7 @@ const (
 // QuestionType represents the format of the question.
 type QuestionType string
 
+// The supported question formats.
 const (
 	TypeMultipleChoice QuestionType = "mc"
 	TypeLikert         QuestionType = "likert"

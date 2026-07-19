@@ -10,6 +10,7 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 )
 
+// The two mascot art styles a result can be rendered with.
 const (
 	MascotStyleA    = "style_a"
 	MascotStyleB    = "style_b"

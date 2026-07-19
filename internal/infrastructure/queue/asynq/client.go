@@ -1,3 +1,5 @@
+// Package asynq provides the Asynq client and the queue-backed service
+// implementations (PDF generation enqueue) built on it.
 package asynq
 
 import (

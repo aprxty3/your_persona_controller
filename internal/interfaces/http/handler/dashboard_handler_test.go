@@ -13,12 +13,12 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func newDashboardCtx(query, userID string) (echo.Context, *httptest.ResponseRecorder) {
+func newDashboardCtx(query string) (echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/v1/user-dashboard?"+query, nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.Set(middleware.ContextUserID, userID)
+	c.Set(middleware.ContextUserID, "user-1")
 	c.Set(middleware.ContextLocale, "en")
 	return c, rec
 }
@@ -32,7 +32,7 @@ func TestGetDashboard_Success_200(t *testing.T) {
 
 	uc := dashboard.NewDashboardUseCase(trRepo, insightRepo, testLog())
 	h := NewDashboardHandler(uc, testLog())
-	c, rec := newDashboardCtx("", "user-1")
+	c, rec := newDashboardCtx("")
 
 	if err := h.GetDashboard(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -48,7 +48,7 @@ func TestGetDashboard_RepoError_500(t *testing.T) {
 
 	uc := dashboard.NewDashboardUseCase(trRepo, dashboardmocks.NewMockInsightTemplateRepository(t), testLog())
 	h := NewDashboardHandler(uc, testLog())
-	c, rec := newDashboardCtx("", "user-1")
+	c, rec := newDashboardCtx("")
 
 	if err := h.GetDashboard(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -65,7 +65,7 @@ func TestGetHistory_Success_200WithPagination(t *testing.T) {
 
 	uc := dashboard.NewDashboardUseCase(trRepo, dashboardmocks.NewMockInsightTemplateRepository(t), testLog())
 	h := NewDashboardHandler(uc, testLog())
-	c, rec := newDashboardCtx("page=2&limit=5", "user-1")
+	c, rec := newDashboardCtx("page=2&limit=5")
 
 	if err := h.GetHistory(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -87,7 +87,7 @@ func TestGetHistory_RepoError_500(t *testing.T) {
 
 	uc := dashboard.NewDashboardUseCase(trRepo, dashboardmocks.NewMockInsightTemplateRepository(t), testLog())
 	h := NewDashboardHandler(uc, testLog())
-	c, rec := newDashboardCtx("", "user-1")
+	c, rec := newDashboardCtx("")
 
 	if err := h.GetHistory(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)

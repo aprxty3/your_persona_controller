@@ -1,3 +1,5 @@
+// Package config provides typed environment-variable helpers and the
+// RequireProduction boot-time safety check.
 package config
 
 import (

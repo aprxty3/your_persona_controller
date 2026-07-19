@@ -22,6 +22,7 @@ func NewEmailHandler(m mailer.Mailer, log logger.Logger) *EmailHandler {
 	return &EmailHandler{mailer: m, log: log.With("worker", "email")}
 }
 
+// ProcessTask handles the send:email task.
 func (h *EmailHandler) ProcessTask(ctx context.Context, t *asynq.Task) error {
 	var payload taskqueue.SendEmailPayload
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {

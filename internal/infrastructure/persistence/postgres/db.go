@@ -1,3 +1,6 @@
+// Package postgres provides the GORM connection setup, table models, and
+// query helpers shared by every domain-specific repository package beneath it
+// (account, assessment, deletionrequest).
 package postgres
 
 import (

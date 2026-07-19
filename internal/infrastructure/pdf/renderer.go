@@ -1,3 +1,4 @@
+// Package pdf implements pdf.Renderer using the Maroto PDF library.
 package pdf
 
 import (
@@ -26,7 +27,7 @@ var (
 	trackColor = props.Color{Red: 226, Green: 232, Blue: 240}
 )
 
-// MarotoRenderer is the maroto v2 implementation of pdf.PDFRenderer.
+// MarotoRenderer is the maroto v2 implementation of pdf.Renderer.
 type MarotoRenderer struct{}
 
 // placeholderSet is the locale-specific copy shown for sections whose source
@@ -62,10 +63,11 @@ func placeholderFor(locale string) placeholderSet {
 }
 
 // NewMarotoRenderer creates a new MarotoRenderer.
-func NewMarotoRenderer() pdf.PDFRenderer {
+func NewMarotoRenderer() pdf.Renderer {
 	return &MarotoRenderer{}
 }
 
+// Render generates the result PDF's bytes from data.
 func (r *MarotoRenderer) Render(_ context.Context, data dto.PDFData) ([]byte, error) {
 	m := maroto.New(config.NewBuilder().WithPageSize(pagesize.A4).Build())
 	ph := placeholderFor(data.Locale)
@@ -136,8 +138,8 @@ func addChartSection(m core.Maroto, data dto.PDFData, ph placeholderSet) {
 }
 
 // addBarRow draws one "label — proportional bar — value" row
-func addBarRow(m core.Maroto, label string, value, max float64) {
-	proportion := value / max
+func addBarRow(m core.Maroto, label string, value, maxValue float64) {
+	proportion := value / maxValue
 	if proportion < 0 {
 		proportion = 0
 	}

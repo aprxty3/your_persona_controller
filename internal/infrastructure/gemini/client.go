@@ -1,3 +1,4 @@
+// Package gemini implements the Gemini API client used to generate assessment summaries.
 package gemini
 
 import (

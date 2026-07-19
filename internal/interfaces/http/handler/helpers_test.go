@@ -37,7 +37,7 @@ func TestHttpcallError_Writes500WithMessage(t *testing.T) {
 		t.Errorf("expected 500, got %d", rec.Code)
 	}
 	var body httpresponse.Response
-	json.Unmarshal(rec.Body.Bytes(), &body)
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
 	if body.Error == nil || body.Error.Code != "INTERNAL_ERROR" || body.Error.Message != "boom" {
 		t.Errorf("unexpected error body: %+v", body.Error)
 	}
@@ -52,7 +52,7 @@ func TestHttpcallErrorCustom_WritesGivenCodeAndStatus(t *testing.T) {
 		t.Errorf("expected 409, got %d", rec.Code)
 	}
 	var body httpresponse.Response
-	json.Unmarshal(rec.Body.Bytes(), &body)
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
 	if body.Error == nil || body.Error.Code != "SOME_CODE" {
 		t.Errorf("unexpected error body: %+v", body.Error)
 	}
@@ -67,7 +67,7 @@ func TestHttpcallSuccess_WritesDataAndMeta(t *testing.T) {
 		t.Errorf("expected 201, got %d", rec.Code)
 	}
 	var body httpresponse.Response
-	json.Unmarshal(rec.Body.Bytes(), &body)
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
 	if !body.Success {
 		t.Error("expected success=true")
 	}
@@ -99,8 +99,8 @@ func TestBindJSON_MalformedBody_ReturnsValidationError(t *testing.T) {
 		t.Errorf("expected 400, got %d", rec.Code)
 	}
 	var body httpresponse.Response
-	json.Unmarshal(rec.Body.Bytes(), &body)
-	if body.Error == nil || body.Error.Code != "VALIDATION_ERROR" {
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if body.Error == nil || body.Error.Code != errCodeValidation {
 		t.Errorf("unexpected error body: %+v", body.Error)
 	}
 }

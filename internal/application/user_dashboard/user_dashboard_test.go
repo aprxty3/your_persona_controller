@@ -23,7 +23,7 @@ func newResult(id string, gritScore int, when time.Time) testresult.TestResult {
 
 // newTestDashboardUseCase stubs CountMonthlyUsage (irrelevant to micro-insight
 // tests) and wires the given history/templates.
-func newTestDashboardUseCase(t *testing.T, history []testresult.TestResult, templates []content.InsightTemplate, templatesErr error) (*DashboardUseCase, *mocks.MockInsightTemplateRepository) {
+func newTestDashboardUseCase(t *testing.T, history []testresult.TestResult, templates []content.InsightTemplate, templatesErr error) (*UseCase, *mocks.MockInsightTemplateRepository) {
 	t.Helper()
 	trRepo := mocks.NewMockTestResultRepository(t)
 	trRepo.EXPECT().CountMonthlyUsage(mock.Anything, mock.Anything).Return(int64(0), nil).Once()

@@ -1,3 +1,4 @@
+// Package mailer sends transactional email (OTP, deletion confirmation) via SMTP.
 package mailer
 
 import (

@@ -1,3 +1,4 @@
+// Command migrate applies GORM AutoMigrate against the configured database. Run manually, never at container boot.
 package main
 
 import (

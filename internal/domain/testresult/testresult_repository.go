@@ -4,8 +4,8 @@ import (
 	"context"
 )
 
-// TestResultRepository defines the contract for TestResult data persistence.
-type TestResultRepository interface {
+// Repository defines the contract for TestResult data persistence.
+type Repository interface {
 	Create(ctx context.Context, result *TestResult) error
 	FindByID(ctx context.Context, id string) (*TestResult, error)
 	Update(ctx context.Context, result *TestResult) error

@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-func newAuthedCtx(method, body, userID string) (echo.Context, *httptest.ResponseRecorder) {
+func newAuthedCtx(method, body string) (echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
 	var req *http.Request
 	if body != "" {
@@ -30,7 +30,7 @@ func newAuthedCtx(method, body, userID string) (echo.Context, *httptest.Response
 	}
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
-	c.Set(middleware.ContextUserID, userID)
+	c.Set(middleware.ContextUserID, "user-1")
 	return c, rec
 }
 
@@ -49,7 +49,7 @@ func TestUpdateProfile_Success(t *testing.T) {
 	userRepo.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Once()
 
 	h := NewAccountHandler(profile.NewProfileUseCase(userRepo, accountmocks.NewMockReferralRepository(t), testLog()), nil, testLog())
-	c, rec := newAuthedCtx(http.MethodPatch, `{"display_name":"New Name"}`, "user-1")
+	c, rec := newAuthedCtx(http.MethodPatch, `{"display_name":"New Name"}`)
 
 	if err := h.UpdateProfile(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -68,7 +68,7 @@ func TestUpdateProfile_InvalidInput_400(t *testing.T) {
 	userRepo.EXPECT().FindByID(mock.Anything, "user-1").Return(&account.User{ID: "user-1"}, nil).Once()
 
 	h := NewAccountHandler(profile.NewProfileUseCase(userRepo, accountmocks.NewMockReferralRepository(t), testLog()), nil, testLog())
-	c, rec := newAuthedCtx(http.MethodPatch, `{"age":-5}`, "user-1")
+	c, rec := newAuthedCtx(http.MethodPatch, `{"age":-5}`)
 
 	if err := h.UpdateProfile(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -77,14 +77,14 @@ func TestUpdateProfile_InvalidInput_400(t *testing.T) {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := decodeResponse(t, rec)
-	if body.Error == nil || body.Error.Code != "VALIDATION_ERROR" {
+	if body.Error == nil || body.Error.Code != errCodeValidation {
 		t.Errorf("expected VALIDATION_ERROR, got %+v", body.Error)
 	}
 }
 
 func TestUpdateProfile_MalformedBody_400(t *testing.T) {
 	h := NewAccountHandler(profile.NewProfileUseCase(accountmocks.NewMockUserRepository(t), accountmocks.NewMockReferralRepository(t), testLog()), nil, testLog())
-	c, rec := newAuthedCtx(http.MethodPatch, `{"age":`, "user-1")
+	c, rec := newAuthedCtx(http.MethodPatch, `{"age":`)
 
 	// A bind failure legitimately returns errResponseWritten (so real Echo routing
 	// stops there) — the response body/status is what matters here, not the
@@ -100,7 +100,7 @@ func TestGetReferralCode_ExistingCode_ReturnedAsIs(t *testing.T) {
 	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(&account.ReferralCode{Code: "ABC12345"}, nil).Once()
 
 	h := NewAccountHandler(profile.NewProfileUseCase(accountmocks.NewMockUserRepository(t), referralRepo, testLog()), nil, testLog())
-	c, rec := newAuthedCtx(http.MethodGet, "", "user-1")
+	c, rec := newAuthedCtx(http.MethodGet, "")
 
 	if err := h.GetReferralCode(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -118,7 +118,7 @@ func TestGetReferralCode_RepoError_500(t *testing.T) {
 	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(nil, assertErrHandler).Once()
 
 	h := NewAccountHandler(profile.NewProfileUseCase(accountmocks.NewMockUserRepository(t), referralRepo, testLog()), nil, testLog())
-	c, rec := newAuthedCtx(http.MethodGet, "", "user-1")
+	c, rec := newAuthedCtx(http.MethodGet, "")
 
 	if err := h.GetReferralCode(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -133,7 +133,7 @@ func TestGetReferralStats_NoCodeYet_ReturnsZeroCounts200(t *testing.T) {
 	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(nil, nil).Once()
 
 	h := NewAccountHandler(profile.NewProfileUseCase(accountmocks.NewMockUserRepository(t), referralRepo, testLog()), nil, testLog())
-	c, rec := newAuthedCtx(http.MethodGet, "", "user-1")
+	c, rec := newAuthedCtx(http.MethodGet, "")
 
 	if err := h.GetReferralStats(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -153,7 +153,7 @@ func TestGetReferralStats_ExistingCode_ReturnsCountsNoInviteePII(t *testing.T) {
 	referralRepo.EXPECT().CountEventsByCodeID(mock.Anything, "code-1", account.EventTypeTestCompleted).Return(int64(1), nil).Once()
 
 	h := NewAccountHandler(profile.NewProfileUseCase(accountmocks.NewMockUserRepository(t), referralRepo, testLog()), nil, testLog())
-	c, rec := newAuthedCtx(http.MethodGet, "", "user-1")
+	c, rec := newAuthedCtx(http.MethodGet, "")
 
 	if err := h.GetReferralStats(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -185,7 +185,7 @@ func TestGetReferralStats_RepoError_500(t *testing.T) {
 	referralRepo.EXPECT().FindCodeByUserID(mock.Anything, "user-1").Return(nil, assertErrHandler).Once()
 
 	h := NewAccountHandler(profile.NewProfileUseCase(accountmocks.NewMockUserRepository(t), referralRepo, testLog()), nil, testLog())
-	c, rec := newAuthedCtx(http.MethodGet, "", "user-1")
+	c, rec := newAuthedCtx(http.MethodGet, "")
 
 	if err := h.GetReferralStats(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -209,7 +209,7 @@ func TestRequestDeletion_Success_200(t *testing.T) {
 	userRepo.EXPECT().FindByID(mock.Anything, "user-1").Return(&account.User{ID: "user-1", Email: "a@example.com"}, nil).Once()
 
 	h := NewAccountHandler(nil, deletionrequest.NewDeletionUseCase(userRepo, deleteRepo, testLog()), testLog())
-	c, rec := newAuthedCtx(http.MethodPost, "", "user-1")
+	c, rec := newAuthedCtx(http.MethodPost, "")
 
 	if err := h.RequestDeletion(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -225,7 +225,7 @@ func TestRequestDeletion_AlreadyRequested_409(t *testing.T) {
 		Return(&deletiondomain.DataDeletionRequest{ID: "req-1", Status: deletiondomain.StatusPendingGrace}, nil).Once()
 
 	h := NewAccountHandler(nil, deletionrequest.NewDeletionUseCase(accountmocks.NewMockUserRepository(t), deleteRepo, testLog()), testLog())
-	c, rec := newAuthedCtx(http.MethodPost, "", "user-1")
+	c, rec := newAuthedCtx(http.MethodPost, "")
 
 	if err := h.RequestDeletion(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -247,7 +247,7 @@ func TestCancelDeletion_Success_200(t *testing.T) {
 		Return(true, nil).Once()
 
 	h := NewAccountHandler(nil, deletionrequest.NewDeletionUseCase(accountmocks.NewMockUserRepository(t), deleteRepo, testLog()), testLog())
-	c, rec := newAuthedCtx(http.MethodPost, "", "user-1")
+	c, rec := newAuthedCtx(http.MethodPost, "")
 
 	if err := h.CancelDeletion(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -262,7 +262,7 @@ func TestCancelDeletion_NoActiveRequest_404(t *testing.T) {
 	deleteRepo.EXPECT().FindActiveByUserID(mock.Anything, "user-1").Return(nil, nil).Once()
 
 	h := NewAccountHandler(nil, deletionrequest.NewDeletionUseCase(accountmocks.NewMockUserRepository(t), deleteRepo, testLog()), testLog())
-	c, rec := newAuthedCtx(http.MethodPost, "", "user-1")
+	c, rec := newAuthedCtx(http.MethodPost, "")
 
 	if err := h.CancelDeletion(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -282,7 +282,7 @@ func TestCancelDeletion_AlreadyProcessing_409(t *testing.T) {
 		Return(&deletiondomain.DataDeletionRequest{ID: "req-1", Status: deletiondomain.StatusProcessing}, nil).Once()
 
 	h := NewAccountHandler(nil, deletionrequest.NewDeletionUseCase(accountmocks.NewMockUserRepository(t), deleteRepo, testLog()), testLog())
-	c, rec := newAuthedCtx(http.MethodPost, "", "user-1")
+	c, rec := newAuthedCtx(http.MethodPost, "")
 
 	if err := h.CancelDeletion(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -21,9 +21,9 @@ func newTestTurnstileClient(url string) *turnstileClient {
 }
 
 func TestTurnstileVerify_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"success":true}`))
+		_, _ = w.Write([]byte(`{"success":true}`))
 	}))
 	defer srv.Close()
 
@@ -38,9 +38,9 @@ func TestTurnstileVerify_Success(t *testing.T) {
 
 // An explicit Cloudflare "not successful" verdict must fail CLOSED, not open.
 func TestTurnstileVerify_ExplicitFailure_FailsClosed(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"success":false,"error-codes":["invalid-input-response"]}`))
+		_, _ = w.Write([]byte(`{"success":false,"error-codes":["invalid-input-response"]}`))
 	}))
 	defer srv.Close()
 
@@ -56,7 +56,7 @@ func TestTurnstileVerify_ExplicitFailure_FailsClosed(t *testing.T) {
 // Transport/5xx/malformed-JSON failures must fail OPEN —
 // a Cloudflare outage degrades bot protection, it must not block signup/login.
 func TestTurnstileVerify_ServerError_FailsOpen(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -71,9 +71,9 @@ func TestTurnstileVerify_ServerError_FailsOpen(t *testing.T) {
 }
 
 func TestTurnstileVerify_MalformedJSON_FailsOpen(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{not json`))
+		_, _ = w.Write([]byte(`{not json`))
 	}))
 	defer srv.Close()
 
@@ -87,7 +87,7 @@ func TestTurnstileVerify_MalformedJSON_FailsOpen(t *testing.T) {
 }
 
 func TestTurnstileVerify_Timeout_FailsOpen(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		// Never respond within the client's context deadline below.
 		<-r.Context().Done()
 	}))

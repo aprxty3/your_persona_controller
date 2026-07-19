@@ -1,3 +1,4 @@
+// Package otp generates the numeric one-time-passwords used for email verification and password reset.
 package otp
 
 import (

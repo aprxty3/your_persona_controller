@@ -8,6 +8,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// ContextLocale is the echo.Context key the locale middleware stores the
+// negotiated request locale under.
 const ContextLocale = "locale"
 
 // LocaleFromContext reads the negotiated locale set by LocaleMiddleware.

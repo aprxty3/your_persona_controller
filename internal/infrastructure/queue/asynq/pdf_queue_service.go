@@ -18,6 +18,7 @@ func NewPDFQueueService(dispatcher taskqueue.Dispatcher) assessment.PDFQueueServ
 	return &PDFQueueService{dispatcher: dispatcher}
 }
 
+// EnqueueGeneratePDF enqueues a generate:pdf task for testResultID.
 func (s *PDFQueueService) EnqueueGeneratePDF(ctx context.Context, testResultID string) error {
 	return s.dispatcher.EnqueuePDFGeneration(ctx, taskqueue.GeneratePDFPayload{TestResultID: testResultID})
 }

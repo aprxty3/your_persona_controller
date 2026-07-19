@@ -11,6 +11,7 @@ import (
 // IPScope namespaces per-IP request counters by the endpoint category being protected
 type IPScope string
 
+// The IP-scoped rate-limit buckets this service enforces.
 const (
 	ScopeLoginIP        IPScope = "login"
 	ScopeRegisterIP     IPScope = "register"

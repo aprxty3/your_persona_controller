@@ -22,5 +22,5 @@ func TestNewAsynqClient_ValidAddr_ReturnsClient(t *testing.T) {
 	if client == nil {
 		t.Fatal("expected a non-nil client")
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 }

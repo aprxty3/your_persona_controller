@@ -1,5 +1,8 @@
+// Package dto holds the HTTP request-body structs the handler layer binds
+// and validates before mapping into application-layer use case requests.
 package dto
 
+// SubmitRequestDTO is the request body for POST /v1/assessment/submit.
 type SubmitRequestDTO struct {
 	Locale  string `json:"locale"`
 	Answers []struct {

@@ -1,3 +1,5 @@
+// Package redis provides the Redis client and its Redis-backed service
+// implementations: rate limiting, idempotency, distributed locks, token store.
 package redis
 
 import (

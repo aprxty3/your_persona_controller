@@ -1,3 +1,4 @@
+// Package httpresponse defines the API's standard JSON envelope and helpers for writing it.
 package httpresponse
 
 import "github.com/labstack/echo/v4"

@@ -1,3 +1,5 @@
+// Package pdf implements the generate:pdf worker job: rendering a completed
+// TestResult into a report PDF and uploading it to object storage.
 package pdf
 
 import (
@@ -15,40 +17,40 @@ import (
 
 const pdfContentType = "application/pdf"
 
-// PDFRenderer turns assembled report data into PDF bytes.
-type PDFRenderer interface {
+// Renderer turns assembled report data into PDF bytes.
+type Renderer interface {
 	Render(ctx context.Context, data dto.PDFData) ([]byte, error)
 }
 
-// PDFUploader stores rendered PDF bytes and returns their public/stored URL.
-type PDFUploader interface {
+// Uploader stores rendered PDF bytes and returns their public/stored URL.
+type Uploader interface {
 	Upload(ctx context.Context, key string, data []byte, contentType string) (url string, err error)
 }
 
 // GeneratePDFUseCase implements the generate:pdf worker job : render a report from a completed TestResult and upload it to
 // R2/MinIO, tracking progress via TestResult.pdf_status.
 type GeneratePDFUseCase struct {
-	testResultRepo   testresult.TestResultRepository
+	testResultRepo   testresult.Repository
 	answerRepo       testresult.AnswerRepository
 	questionRepo     content.QuestionRepository
 	insightRepo      content.InsightTemplateRepository
 	userRepo         account.UserRepository
 	guestSessionRepo account.GuestSessionRepository
-	renderer         PDFRenderer
-	uploader         PDFUploader
+	renderer         Renderer
+	uploader         Uploader
 	log              logger.Logger
 }
 
 // NewGeneratePDFUseCase creates a new GeneratePDFUseCase.
 func NewGeneratePDFUseCase(
-	testResultRepo testresult.TestResultRepository,
+	testResultRepo testresult.Repository,
 	answerRepo testresult.AnswerRepository,
 	questionRepo content.QuestionRepository,
 	insightRepo content.InsightTemplateRepository,
 	userRepo account.UserRepository,
 	guestSessionRepo account.GuestSessionRepository,
-	renderer PDFRenderer,
-	uploader PDFUploader,
+	renderer Renderer,
+	uploader Uploader,
 	log logger.Logger,
 ) *GeneratePDFUseCase {
 	return &GeneratePDFUseCase{

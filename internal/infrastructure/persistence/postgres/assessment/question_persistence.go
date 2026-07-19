@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// QuestionRepository is the GORM-backed content.QuestionRepository and content.QuestionTranslationRepository.
 type QuestionRepository struct {
 	db  *gorm.DB
 	log logger.Logger
@@ -21,6 +22,7 @@ var (
 	_ content.QuestionTranslationRepository = (*QuestionRepository)(nil)
 )
 
+// NewQuestionRepository constructs a QuestionRepository.
 func NewQuestionRepository(db *gorm.DB, log logger.Logger) *QuestionRepository {
 	return &QuestionRepository{
 		db:  db,
@@ -61,6 +63,7 @@ func toQuestionTranslationModel(entity *content.QuestionTranslation) postgres.Qu
 	}
 }
 
+// FindByID returns a single question, or (nil, nil) if it doesn't exist.
 func (r *QuestionRepository) FindByID(ctx context.Context, id string) (*content.Question, error) {
 	var m postgres.QuestionModel
 	err := r.db.WithContext(ctx).First(&m, "id = ?", id).Error
@@ -93,6 +96,8 @@ func (r *QuestionRepository) FindByIDs(ctx context.Context, ids []string) ([]con
 	return questions, nil
 }
 
+// FindAllWithTranslation returns the full question bank plus a per-question
+// translation map, preferring loc and falling back to English.
 func (r *QuestionRepository) FindAllWithTranslation(ctx context.Context, loc string) ([]content.Question, map[string]content.QuestionTranslation, error) {
 	var questionModels []postgres.QuestionModel
 	err := r.db.WithContext(ctx).
@@ -130,6 +135,7 @@ func (r *QuestionRepository) FindAllWithTranslation(ctx context.Context, loc str
 	return questions, translationMap, nil
 }
 
+// FindByQuestionAndLocale returns a single translation, or (nil, nil) if it doesn't exist.
 func (r *QuestionRepository) FindByQuestionAndLocale(ctx context.Context, questionID, locale string) (*content.QuestionTranslation, error) {
 	var m postgres.QuestionTranslationModel
 	err := r.db.WithContext(ctx).
@@ -147,6 +153,7 @@ func (r *QuestionRepository) FindByQuestionAndLocale(ctx context.Context, questi
 	return &entity, nil
 }
 
+// UpsertTranslation inserts a translation, updating question_text/options on conflict.
 func (r *QuestionRepository) UpsertTranslation(ctx context.Context, tr *content.QuestionTranslation) error {
 	m := toQuestionTranslationModel(tr)
 	err := r.db.WithContext(ctx).

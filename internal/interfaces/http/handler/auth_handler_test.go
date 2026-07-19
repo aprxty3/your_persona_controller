@@ -27,9 +27,9 @@ func allowingAuthIPLimiter(t *testing.T) *authmocks.MockIPRateLimiter {
 	return limiter
 }
 
-func newAuthCtx(method, path, body string) (echo.Context, *httptest.ResponseRecorder) {
+func newAuthCtx(path, body string) (echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
-	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	return e.NewContext(req, rec), rec
@@ -37,12 +37,11 @@ func newAuthCtx(method, path, body string) (echo.Context, *httptest.ResponseReco
 
 func newTestAuthHandler(
 	createGuestSessionUC *auth.CreateGuestSessionUseCase,
-	registerUC *auth.RegisterUseCase,
 	accountUC *auth.AccountUseCase,
 	sessionUC *auth.SessionUseCase,
 	turnstile auth.TurnstileVerifier,
 ) *AuthHandler {
-	return NewAuthHandler(createGuestSessionUC, registerUC, accountUC, sessionUC, turnstile, false, testLog())
+	return NewAuthHandler(createGuestSessionUC, nil, accountUC, sessionUC, turnstile, false, testLog())
 }
 
 // --- CreateGuestSession ---
@@ -52,8 +51,8 @@ func TestCreateGuestSession_Success_201SetsCookie(t *testing.T) {
 	guestRepo.EXPECT().Create(mock.Anything, mock.Anything).Return(nil).Once()
 
 	uc := auth.NewCreateGuestSessionUseCase(guestRepo, allowingAuthIPLimiter(t), testLog())
-	h := newTestAuthHandler(uc, nil, nil, nil, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/guest-session", `{"display_name":"Alice","age":20,"status":"student","locale":"en"}`)
+	h := newTestAuthHandler(uc, nil, nil, nil)
+	c, rec := newAuthCtx("/v1/guest-session", `{"display_name":"Alice","age":20,"status":"student","locale":"en"}`)
 
 	if err := h.CreateGuestSession(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -74,8 +73,8 @@ func TestCreateGuestSession_Success_201SetsCookie(t *testing.T) {
 
 func TestCreateGuestSession_ValidationError_400(t *testing.T) {
 	uc := auth.NewCreateGuestSessionUseCase(accountmocks.NewMockGuestSessionRepository(t), allowingAuthIPLimiter(t), testLog())
-	h := newTestAuthHandler(uc, nil, nil, nil, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/guest-session", `{"display_name":"","age":20,"status":"student","locale":"en"}`)
+	h := newTestAuthHandler(uc, nil, nil, nil)
+	c, rec := newAuthCtx("/v1/guest-session", `{"display_name":"","age":20,"status":"student","locale":"en"}`)
 
 	if err := h.CreateGuestSession(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -84,7 +83,7 @@ func TestCreateGuestSession_ValidationError_400(t *testing.T) {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := decodeResponse(t, rec)
-	if body.Error == nil || body.Error.Code != "VALIDATION_ERROR" {
+	if body.Error == nil || body.Error.Code != errCodeValidation {
 		t.Errorf("expected VALIDATION_ERROR, got %+v", body.Error)
 	}
 }
@@ -93,8 +92,8 @@ func TestCreateGuestSession_RateLimited_429(t *testing.T) {
 	limiter := authmocks.NewMockIPRateLimiter(t)
 	limiter.EXPECT().Allow(mock.Anything, mock.Anything, mock.Anything).Return(false, 3600, nil).Once()
 	uc := auth.NewCreateGuestSessionUseCase(accountmocks.NewMockGuestSessionRepository(t), limiter, testLog()) // repo mock has no EXPECT(): Create must never be called
-	h := newTestAuthHandler(uc, nil, nil, nil, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/guest-session", `{"display_name":"Alice","age":20,"status":"student","locale":"en"}`)
+	h := newTestAuthHandler(uc, nil, nil, nil)
+	c, rec := newAuthCtx("/v1/guest-session", `{"display_name":"Alice","age":20,"status":"student","locale":"en"}`)
 
 	if err := h.CreateGuestSession(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -103,7 +102,7 @@ func TestCreateGuestSession_RateLimited_429(t *testing.T) {
 		t.Fatalf("expected 429, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := decodeResponse(t, rec)
-	if body.Error == nil || body.Error.Code != "RATE_LIMITED" {
+	if body.Error == nil || body.Error.Code != errCodeRateLimited {
 		t.Errorf("expected RATE_LIMITED, got %+v", body.Error)
 	}
 	if body.Meta == nil {
@@ -117,8 +116,8 @@ func TestRegister_MissingTurnstileToken_400_NoVerifierCall(t *testing.T) {
 	// No mock.On() registered on the verifier — a call would panic, proving
 	// verifyTurnstile short-circuits on an empty token before ever invoking it.
 	turnstile := authmocks.NewMockTurnstileVerifier(t)
-	h := newTestAuthHandler(nil, nil, nil, nil, turnstile)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/register", `{"email":"a@example.com","password":"longenoughpassword","preferred_locale":"en"}`)
+	h := newTestAuthHandler(nil, nil, nil, turnstile)
+	c, rec := newAuthCtx("/v1/auth/register", `{"email":"a@example.com","password":"longenoughpassword","preferred_locale":"en"}`)
 
 	// verifyTurnstile rejects and returns errResponseWritten, not nil — the
 	// point of this test is that it never reaches h.registerUseCase (nil above).
@@ -127,15 +126,15 @@ func TestRegister_MissingTurnstileToken_400_NoVerifierCall(t *testing.T) {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := decodeResponse(t, rec)
-	if body.Error == nil || body.Error.Code != "VALIDATION_ERROR" {
+	if body.Error == nil || body.Error.Code != errCodeValidation {
 		t.Errorf("expected VALIDATION_ERROR, got %+v", body.Error)
 	}
 }
 
 func TestLogin_MissingTurnstileToken_400(t *testing.T) {
 	turnstile := authmocks.NewMockTurnstileVerifier(t)
-	h := newTestAuthHandler(nil, nil, nil, nil, turnstile)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/login", `{"email":"a@example.com","password":"pw"}`)
+	h := newTestAuthHandler(nil, nil, nil, turnstile)
+	c, rec := newAuthCtx("/v1/auth/login", `{"email":"a@example.com","password":"pw"}`)
 
 	_ = h.Login(c)
 	if rec.Code != http.StatusBadRequest {
@@ -145,8 +144,8 @@ func TestLogin_MissingTurnstileToken_400(t *testing.T) {
 
 func TestForgotPassword_MissingTurnstileToken_400(t *testing.T) {
 	turnstile := authmocks.NewMockTurnstileVerifier(t)
-	h := newTestAuthHandler(nil, nil, nil, nil, turnstile)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/forgot-password", `{"email":"a@example.com"}`)
+	h := newTestAuthHandler(nil, nil, nil, turnstile)
+	c, rec := newAuthCtx("/v1/auth/forgot-password", `{"email":"a@example.com"}`)
 
 	_ = h.ForgotPassword(c)
 	if rec.Code != http.StatusBadRequest {
@@ -159,8 +158,8 @@ func TestLogin_TurnstileExplicitlyRejects_400(t *testing.T) {
 	turnstile := authmocks.NewMockTurnstileVerifier(t)
 	turnstile.EXPECT().Verify(mock.Anything, "bad-token", mock.Anything).Return(false, nil).Once()
 
-	h := newTestAuthHandler(nil, nil, nil, nil, turnstile)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/login", `{"email":"a@example.com","password":"pw","cf_turnstile_response":"bad-token"}`)
+	h := newTestAuthHandler(nil, nil, nil, turnstile)
+	c, rec := newAuthCtx("/v1/auth/login", `{"email":"a@example.com","password":"pw","cf_turnstile_response":"bad-token"}`)
 
 	_ = h.Login(c)
 	if rec.Code != http.StatusBadRequest {
@@ -182,8 +181,8 @@ func TestLogin_TurnstileError_FailsOpenAndContinues(t *testing.T) {
 	ipLimiter.EXPECT().Allow(mock.Anything, mock.Anything, mock.Anything).Return(true, 0, nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, accountmocks.NewMockVerificationTokenRepository(t), nil, jwtservice.NewJWTService("secret"), authmocks.NewMockSessionTokenStore(t), ipLimiter, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, turnstile)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/login", `{"email":"a@example.com","password":"pw","cf_turnstile_response":"any-token"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, turnstile)
+	c, rec := newAuthCtx("/v1/auth/login", `{"email":"a@example.com","password":"pw","cf_turnstile_response":"any-token"}`)
 
 	if err := h.Login(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -198,8 +197,8 @@ func TestLogin_TurnstileError_FailsOpenAndContinues(t *testing.T) {
 // --- VerifyEmailOTP ---
 
 func TestVerifyEmailOTP_MissingFields_400(t *testing.T) {
-	h := newTestAuthHandler(nil, nil, nil, auth.NewSessionUseCase(nil, nil, nil, nil, jwtservice.NewJWTService("secret"), nil, nil, testLog()), nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/verify-email-otp", `{"email":"","otp":""}`)
+	h := newTestAuthHandler(nil, nil, auth.NewSessionUseCase(nil, nil, nil, nil, jwtservice.NewJWTService("secret"), nil, nil, testLog()), nil)
+	c, rec := newAuthCtx("/v1/auth/verify-email-otp", `{"email":"","otp":""}`)
 
 	if err := h.VerifyEmailOTP(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -214,8 +213,8 @@ func TestVerifyEmailOTP_UserNotFound_InvalidOTP400(t *testing.T) {
 	userRepo.EXPECT().FindByEmail(mock.Anything, "a@example.com").Return(nil, nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, accountmocks.NewMockVerificationTokenRepository(t), nil, jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/verify-email-otp", `{"email":"a@example.com","otp":"123456"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthCtx("/v1/auth/verify-email-otp", `{"email":"a@example.com","otp":"123456"}`)
 
 	_ = h.VerifyEmailOTP(c)
 	if rec.Code != http.StatusBadRequest {
@@ -237,8 +236,8 @@ func TestVerifyEmailOTP_Success_200(t *testing.T) {
 	tokenRepo.EXPECT().MarkUsed(mock.Anything, "tok-1").Return(nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, tokenRepo, nil, jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/verify-email-otp", `{"email":"a@example.com","otp":"123456"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthCtx("/v1/auth/verify-email-otp", `{"email":"a@example.com","otp":"123456"}`)
 
 	if err := h.VerifyEmailOTP(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -254,8 +253,8 @@ func TestVerifyEmailOTP_Success_200(t *testing.T) {
 // --- ResendEmailOTP ---
 
 func TestResendEmailOTP_MissingEmail_400(t *testing.T) {
-	h := newTestAuthHandler(nil, nil, auth.NewAccountUseCase(nil, nil, nil, nil, testLog()), nil, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/resend-email-otp", `{"email":""}`)
+	h := newTestAuthHandler(nil, auth.NewAccountUseCase(nil, nil, nil, nil, testLog()), nil, nil)
+	c, rec := newAuthCtx("/v1/auth/resend-email-otp", `{"email":""}`)
 
 	if err := h.ResendEmailOTP(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -270,8 +269,8 @@ func TestResendEmailOTP_RateLimited_429(t *testing.T) {
 	rateLimiter.EXPECT().CheckAndConsume(mock.Anything, mock.Anything, "a@example.com").Return(30, nil).Once()
 
 	accountUC := auth.NewAccountUseCase(accountmocks.NewMockUserRepository(t), accountmocks.NewMockVerificationTokenRepository(t), nil, rateLimiter, testLog())
-	h := newTestAuthHandler(nil, nil, accountUC, nil, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/resend-email-otp", `{"email":"a@example.com"}`)
+	h := newTestAuthHandler(nil, accountUC, nil, nil)
+	c, rec := newAuthCtx("/v1/auth/resend-email-otp", `{"email":"a@example.com"}`)
 
 	if err := h.ResendEmailOTP(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -280,7 +279,7 @@ func TestResendEmailOTP_RateLimited_429(t *testing.T) {
 		t.Fatalf("expected 429, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := decodeResponse(t, rec)
-	if body.Error == nil || body.Error.Code != "RATE_LIMITED" {
+	if body.Error == nil || body.Error.Code != errCodeRateLimited {
 		t.Errorf("expected RATE_LIMITED, got %+v", body.Error)
 	}
 	if body.Meta == nil {
@@ -296,8 +295,8 @@ func TestResendEmailOTP_UnregisteredEmail_StillReturns200(t *testing.T) {
 	userRepo.EXPECT().FindByEmail(mock.Anything, "nobody@example.com").Return(nil, nil).Once()
 
 	accountUC := auth.NewAccountUseCase(userRepo, accountmocks.NewMockVerificationTokenRepository(t), nil, rateLimiter, testLog())
-	h := newTestAuthHandler(nil, nil, accountUC, nil, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/resend-email-otp", `{"email":"nobody@example.com"}`)
+	h := newTestAuthHandler(nil, accountUC, nil, nil)
+	c, rec := newAuthCtx("/v1/auth/resend-email-otp", `{"email":"nobody@example.com"}`)
 
 	if err := h.ResendEmailOTP(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -313,8 +312,8 @@ func TestLogin_MissingFields_400(t *testing.T) {
 	turnstile := authmocks.NewMockTurnstileVerifier(t)
 	turnstile.EXPECT().Verify(mock.Anything, "tok", mock.Anything).Return(true, nil).Once()
 	sessionUC := auth.NewSessionUseCase(nil, nil, nil, nil, jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, turnstile)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/login", `{"email":"","password":"","cf_turnstile_response":"tok"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, turnstile)
+	c, rec := newAuthCtx("/v1/auth/login", `{"email":"","password":"","cf_turnstile_response":"tok"}`)
 
 	_ = h.Login(c)
 	if rec.Code != http.StatusBadRequest {
@@ -331,8 +330,8 @@ func TestLogin_InvalidCredentials_401(t *testing.T) {
 	userRepo.EXPECT().FindByEmail(mock.Anything, "a@example.com").Return(nil, nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, nil, nil, jwtservice.NewJWTService("secret"), nil, ipLimiter, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, turnstile)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/login", `{"email":"a@example.com","password":"wrongpassword","cf_turnstile_response":"tok"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, turnstile)
+	c, rec := newAuthCtx("/v1/auth/login", `{"email":"a@example.com","password":"wrongpassword","cf_turnstile_response":"tok"}`)
 
 	if err := h.Login(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -356,8 +355,8 @@ func TestLogin_AccountLocked_423(t *testing.T) {
 	userRepo.EXPECT().FindByEmail(mock.Anything, "a@example.com").Return(&account.User{ID: "user-1", LockedUntil: &lockedUntil}, nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, nil, nil, jwtservice.NewJWTService("secret"), nil, ipLimiter, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, turnstile)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/login", `{"email":"a@example.com","password":"pw","cf_turnstile_response":"tok"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, turnstile)
+	c, rec := newAuthCtx("/v1/auth/login", `{"email":"a@example.com","password":"pw","cf_turnstile_response":"tok"}`)
 
 	if err := h.Login(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -376,8 +375,8 @@ func TestLogin_EmailNotVerified_403(t *testing.T) {
 	userRepo.EXPECT().FindByEmail(mock.Anything, "a@example.com").Return(&account.User{ID: "user-1", EmailVerifiedAt: nil}, nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, nil, nil, jwtservice.NewJWTService("secret"), nil, ipLimiter, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, turnstile)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/login", `{"email":"a@example.com","password":"pw","cf_turnstile_response":"tok"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, turnstile)
+	c, rec := newAuthCtx("/v1/auth/login", `{"email":"a@example.com","password":"pw","cf_turnstile_response":"tok"}`)
 
 	if err := h.Login(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -402,8 +401,8 @@ func TestLogin_Success_200(t *testing.T) {
 		Return(&account.User{ID: "user-1", PasswordHash: string(hash), EmailVerifiedAt: &verifiedAt}, nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, nil, nil, jwtservice.NewJWTService("secret"), nil, ipLimiter, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, turnstile)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/login", `{"email":"a@example.com","password":"correct-password","cf_turnstile_response":"tok"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, turnstile)
+	c, rec := newAuthCtx("/v1/auth/login", `{"email":"a@example.com","password":"correct-password","cf_turnstile_response":"tok"}`)
 
 	if err := h.Login(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -423,8 +422,8 @@ func TestLogin_RateLimited_429(t *testing.T) {
 	ipLimiter.EXPECT().Allow(mock.Anything, mock.Anything, mock.Anything).Return(false, 60, nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, nil, nil, nil, jwtservice.NewJWTService("secret"), nil, ipLimiter, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, turnstile)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/login", `{"email":"a@example.com","password":"pw","cf_turnstile_response":"tok"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, turnstile)
+	c, rec := newAuthCtx("/v1/auth/login", `{"email":"a@example.com","password":"pw","cf_turnstile_response":"tok"}`)
 
 	if err := h.Login(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -436,16 +435,16 @@ func TestLogin_RateLimited_429(t *testing.T) {
 
 // --- ChangePassword ---
 
-func newAuthedAuthCtx(body, userID string) (echo.Context, *httptest.ResponseRecorder) {
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/change-password", body)
-	c.Set(middleware.ContextUserID, userID)
+func newAuthedAuthCtx(body string) (echo.Context, *httptest.ResponseRecorder) {
+	c, rec := newAuthCtx("/v1/auth/change-password", body)
+	c.Set(middleware.ContextUserID, "user-1")
 	return c, rec
 }
 
 func TestChangePassword_ConfirmationMismatch_400(t *testing.T) {
 	sessionUC := auth.NewSessionUseCase(nil, nil, nil, nil, jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthedAuthCtx(`{"old_password":"oldpassword1","new_password":"newpassword1","retry_new_password":"different1"}`, "user-1")
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthedAuthCtx(`{"old_password":"oldpassword1","new_password":"newpassword1","retry_new_password":"different1"}`)
 
 	if err := h.ChangePassword(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -461,8 +460,8 @@ func TestChangePassword_ConfirmationMismatch_400(t *testing.T) {
 
 func TestChangePassword_TooShort_400(t *testing.T) {
 	sessionUC := auth.NewSessionUseCase(nil, nil, nil, authmocks.NewMockPasswordBreachChecker(t), jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthedAuthCtx(`{"old_password":"oldpassword1","new_password":"short","retry_new_password":"short"}`, "user-1")
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthedAuthCtx(`{"old_password":"oldpassword1","new_password":"short","retry_new_password":"short"}`)
 
 	if err := h.ChangePassword(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -487,8 +486,8 @@ func TestChangePassword_OldPasswordWrong_401(t *testing.T) {
 	userRepo.EXPECT().FindByID(mock.Anything, "user-1").Return(&account.User{ID: "user-1", PasswordHash: string(hash)}, nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, nil, breachChecker, jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthedAuthCtx(`{"old_password":"wrong-old-password","new_password":"newpassword1","retry_new_password":"newpassword1"}`, "user-1")
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthedAuthCtx(`{"old_password":"wrong-old-password","new_password":"newpassword1","retry_new_password":"newpassword1"}`)
 
 	if err := h.ChangePassword(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -506,8 +505,8 @@ func TestChangePassword_OldPasswordWrong_401(t *testing.T) {
 
 func TestRefreshToken_MissingField_400(t *testing.T) {
 	sessionUC := auth.NewSessionUseCase(nil, nil, nil, nil, jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/refresh", `{"refresh_token":""}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthCtx("/v1/auth/refresh", `{"refresh_token":""}`)
 
 	if err := h.RefreshToken(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -519,8 +518,8 @@ func TestRefreshToken_MissingField_400(t *testing.T) {
 
 func TestRefreshToken_InvalidToken_401(t *testing.T) {
 	sessionUC := auth.NewSessionUseCase(nil, nil, nil, nil, jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/refresh", `{"refresh_token":"not-a-valid-jwt"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthCtx("/v1/auth/refresh", `{"refresh_token":"not-a-valid-jwt"}`)
 
 	if err := h.RefreshToken(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -547,8 +546,8 @@ func TestRefreshToken_Success_200(t *testing.T) {
 	userRepo.EXPECT().FindByID(mock.Anything, "user-1").Return(&account.User{ID: "user-1", TokenVersion: 0}, nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, nil, nil, jwtSvc, tokenStore, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/refresh", `{"refresh_token":"`+refreshToken+`"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthCtx("/v1/auth/refresh", `{"refresh_token":"`+refreshToken+`"}`)
 
 	if err := h.RefreshToken(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -570,8 +569,8 @@ func TestRefreshToken_TokenVersionMismatch_401(t *testing.T) {
 	userRepo.EXPECT().FindByID(mock.Anything, "user-1").Return(&account.User{ID: "user-1", TokenVersion: 1}, nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, nil, nil, jwtSvc, tokenStore, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/refresh", `{"refresh_token":"`+refreshToken+`"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthCtx("/v1/auth/refresh", `{"refresh_token":"`+refreshToken+`"}`)
 
 	if err := h.RefreshToken(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -589,8 +588,8 @@ func TestRefreshToken_TokenVersionMismatch_401(t *testing.T) {
 
 func TestLogout_MissingField_400(t *testing.T) {
 	sessionUC := auth.NewSessionUseCase(nil, nil, nil, nil, jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthedAuthCtx(`{"refresh_token":""}`, "user-1")
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthedAuthCtx(`{"refresh_token":""}`)
 
 	if err := h.Logout(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -610,8 +609,8 @@ func TestLogout_Success_200(t *testing.T) {
 	tokenStore.EXPECT().DenylistRefreshJTI(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, nil, nil, nil, jwtSvc, tokenStore, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthedAuthCtx(`{"refresh_token":"`+refreshToken+`"}`, "user-1")
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthedAuthCtx(`{"refresh_token":"` + refreshToken + `"}`)
 
 	if err := h.Logout(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -626,8 +625,8 @@ func TestLogoutAll_Success_200(t *testing.T) {
 	userRepo.EXPECT().IncrementTokenVersion(mock.Anything, "user-1").Return(nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, nil, nil, jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthedAuthCtx("", "user-1")
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthedAuthCtx("")
 
 	if err := h.LogoutAll(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -650,8 +649,8 @@ func TestVerifyResetOTP_Success_200(t *testing.T) {
 	tokenStore.EXPECT().StoreResetJTI(mock.Anything, mock.Anything, "user-1", mock.Anything).Return(nil).Once()
 
 	sessionUC := auth.NewSessionUseCase(nil, userRepo, tokenRepo, nil, jwtservice.NewJWTService("secret"), tokenStore, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/verify-reset-otp", `{"email":"a@example.com","otp":"654321"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthCtx("/v1/auth/verify-reset-otp", `{"email":"a@example.com","otp":"654321"}`)
 
 	if err := h.VerifyResetOTP(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -668,8 +667,8 @@ func TestResetPassword_InvalidToken_401(t *testing.T) {
 	breachChecker := authmocks.NewMockPasswordBreachChecker(t)
 	breachChecker.EXPECT().IsBreached(mock.Anything, "newpassword1").Return(false, nil).Once()
 	sessionUC := auth.NewSessionUseCase(nil, nil, nil, breachChecker, jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/reset-password", `{"reset_token":"not-a-valid-jwt","new_password":"newpassword1"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthCtx("/v1/auth/reset-password", `{"reset_token":"not-a-valid-jwt","new_password":"newpassword1"}`)
 
 	if err := h.ResetPassword(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -685,8 +684,8 @@ func TestResetPassword_InvalidToken_401(t *testing.T) {
 
 func TestResetPassword_TooShort_400(t *testing.T) {
 	sessionUC := auth.NewSessionUseCase(nil, nil, nil, authmocks.NewMockPasswordBreachChecker(t), jwtservice.NewJWTService("secret"), nil, nil, testLog())
-	h := newTestAuthHandler(nil, nil, nil, sessionUC, nil)
-	c, rec := newAuthCtx(http.MethodPost, "/v1/auth/reset-password", `{"reset_token":"whatever","new_password":"short"}`)
+	h := newTestAuthHandler(nil, nil, sessionUC, nil)
+	c, rec := newAuthCtx("/v1/auth/reset-password", `{"reset_token":"whatever","new_password":"short"}`)
 
 	if err := h.ResetPassword(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)

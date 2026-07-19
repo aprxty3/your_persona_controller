@@ -1,3 +1,4 @@
+// Package testresult is the domain package for assessment test results, answers, and prompt audit logs.
 package testresult
 
 import (

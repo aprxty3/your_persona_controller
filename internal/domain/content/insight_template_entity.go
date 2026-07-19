@@ -3,6 +3,7 @@ package content
 // ConditionType defines how a micro-insight is triggered.
 type ConditionType string
 
+// The four ways a micro-insight template's condition can be evaluated.
 const (
 	ConditionIncrease       ConditionType = "increase"
 	ConditionDecrease       ConditionType = "decrease"

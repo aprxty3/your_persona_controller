@@ -1,3 +1,5 @@
+// Package deletionrequest is the domain package for UU PDP account-deletion
+// requests and their anonymization grace-period lifecycle.
 package deletionrequest
 
 import (
@@ -7,6 +9,7 @@ import (
 // DeletionStatus represents the lifecycle state of a data deletion request.
 type DeletionStatus string
 
+// The lifecycle states a deletion request moves through.
 const (
 	StatusPendingGrace DeletionStatus = "pending_grace"
 	StatusProcessing   DeletionStatus = "processing"

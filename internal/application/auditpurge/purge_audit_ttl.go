@@ -1,3 +1,4 @@
+// Package auditpurge implements the scheduled purge of expired prompt audit logs.
 package auditpurge
 
 import (

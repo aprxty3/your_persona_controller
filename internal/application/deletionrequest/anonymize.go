@@ -1,3 +1,5 @@
+// Package deletionrequest implements the account-deletion request lifecycle:
+// requesting, the grace period, and anonymization.
 package deletionrequest
 
 import (
@@ -33,7 +35,7 @@ type AnonymizeUseCase struct {
 	deleteRepo     deletionrequest.Repository
 	userRepo       account.UserRepository
 	guestRepo      account.GuestSessionRepository
-	testResultRepo testresult.TestResultRepository
+	testResultRepo testresult.Repository
 	pdfStorage     PDFStorage
 	dispatcher     taskqueue.Dispatcher
 	log            logger.Logger
@@ -45,7 +47,7 @@ func NewAnonymizeUseCase(
 	deleteRepo deletionrequest.Repository,
 	userRepo account.UserRepository,
 	guestRepo account.GuestSessionRepository,
-	testResultRepo testresult.TestResultRepository,
+	testResultRepo testresult.Repository,
 	pdfStorage PDFStorage,
 	dispatcher taskqueue.Dispatcher,
 	log logger.Logger,

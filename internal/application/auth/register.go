@@ -34,7 +34,7 @@ func txReferralRepository(tx *gorm.DB, log logger.Logger) account.ReferralReposi
 	return pgaccount.NewReferralRepository(tx, log)
 }
 
-func txTestResultRepository(tx *gorm.DB, log logger.Logger) testresult.TestResultRepository {
+func txTestResultRepository(tx *gorm.DB, log logger.Logger) testresult.Repository {
 	return pgassessment.NewTestResultRepository(tx, log)
 }
 
@@ -61,7 +61,7 @@ type RegisterUseCase struct {
 	guestRepo      account.GuestSessionRepository
 	tokenRepo      account.VerificationTokenRepository
 	referralRepo   account.ReferralRepository
-	testResultRepo testresult.TestResultRepository
+	testResultRepo testresult.Repository
 	breachChecker  PasswordBreachChecker
 	dispatcher     taskqueue.Dispatcher
 	ipRateLimiter  IPRateLimiter
@@ -75,7 +75,7 @@ func NewRegisterUseCase(
 	guestRepo account.GuestSessionRepository,
 	tokenRepo account.VerificationTokenRepository,
 	referralRepo account.ReferralRepository,
-	testResultRepo testresult.TestResultRepository,
+	testResultRepo testresult.Repository,
 	breachChecker PasswordBreachChecker,
 	dispatcher taskqueue.Dispatcher,
 	ipRateLimiter IPRateLimiter,
@@ -246,7 +246,7 @@ func buildUser(req RegisterRequest, hash string, guest *account.GuestSession) *a
 func recordReferralConversion(
 	ctx context.Context,
 	refRepo account.ReferralRepository,
-	trRepo testresult.TestResultRepository,
+	trRepo testresult.Repository,
 	newUserID,
 	referralCode,
 	guestSessionID string,

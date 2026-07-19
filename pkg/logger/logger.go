@@ -36,22 +36,27 @@ func NewLogger(env string) Logger {
 	}
 }
 
+// Debug logs at debug level.
 func (l *SlogLogger) Debug(msg string, args ...any) {
 	l.logger.Debug(msg, args...)
 }
 
+// Info logs at info level.
 func (l *SlogLogger) Info(msg string, args ...any) {
 	l.logger.Info(msg, args...)
 }
 
+// Warn logs at warn level.
 func (l *SlogLogger) Warn(msg string, args ...any) {
 	l.logger.Warn(msg, args...)
 }
 
+// Error logs at error level.
 func (l *SlogLogger) Error(msg string, args ...any) {
 	l.logger.Error(msg, args...)
 }
 
+// With returns a child Logger that always includes the given key/value args.
 func (l *SlogLogger) With(args ...any) Logger {
 	return &SlogLogger{
 		logger: l.logger.With(args...),

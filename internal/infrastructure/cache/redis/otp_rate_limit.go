@@ -18,6 +18,7 @@ const (
 // OTPScope namespaces the rate-limit counters per email-sending purpose.
 type OTPScope string
 
+// The two OTP-sending purposes this service rate-limits independently.
 const (
 	ScopeEmailVerification OTPScope = "verify"
 	ScopePasswordReset     OTPScope = "reset"

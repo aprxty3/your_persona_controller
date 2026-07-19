@@ -1,3 +1,5 @@
+// Package middleware holds Echo middleware: JWT auth (required/optional),
+// locale negotiation, and their shared echo.Context keys.
 package middleware
 
 import (
@@ -11,10 +13,14 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// ContextUserID is the echo.Context key the auth middleware stores the
+// authenticated member's user ID under.
 const (
 	ContextUserID = "auth_user_id"
 )
 
+// UserIDFromContext returns the authenticated user ID set by the auth
+// middleware, or "" if the request is unauthenticated.
 func UserIDFromContext(c echo.Context) string {
 	id, _ := c.Get(ContextUserID).(string)
 	return id
@@ -104,6 +110,7 @@ type authenticatedUser struct {
 func (m *AuthMiddleware) authenticate(c echo.Context, tokenStr string) (*authenticatedUser, error) {
 	claims, err := m.jwtService.ParseAccessToken(tokenStr)
 	if err != nil {
+		//nolint:nilerr // deliberate, see doc comment above: invalid/expired token is "not authenticated", not an infra failure
 		return nil, nil
 	}
 

@@ -77,7 +77,7 @@ func (c *turnstileClient) Verify(ctx context.Context, token, remoteIP string) (b
 		c.log.Warn("turnstile verify failed, failing open", "error", err)
 		return true, fmt.Errorf("turnstile: request siteverify api: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		c.log.Warn("turnstile verify failed, failing open", "status", resp.StatusCode)

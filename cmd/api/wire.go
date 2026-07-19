@@ -155,11 +155,11 @@ func InitializeAPI(
 		pgassessment.NewQuestionRepository,
 		pgassessment.NewInsightTemplateRepository,
 
-		wire.Bind(new(assessment.TestResultRepository), new(testresult.TestResultRepository)),
+		wire.Bind(new(assessment.TestResultRepository), new(testresult.Repository)),
 		wire.Bind(new(assessment.QuestionRepository), new(*pgassessment.QuestionRepository)),
-		wire.Bind(new(assessment.ResultRepository), new(testresult.TestResultRepository)),
+		wire.Bind(new(assessment.ResultRepository), new(testresult.Repository)),
 		wire.Bind(new(assessment.QuestionCatalogRepository), new(*pgassessment.QuestionRepository)),
-		wire.Bind(new(dashboard.TestResultRepository), new(testresult.TestResultRepository)),
+		wire.Bind(new(dashboard.TestResultRepository), new(testresult.Repository)),
 		wire.Bind(new(dashboard.InsightTemplateRepository), new(content.InsightTemplateRepository)),
 
 		asynqclient.NewPDFQueueService,

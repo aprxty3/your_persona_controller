@@ -1,3 +1,4 @@
+// Package account is the domain package for users, guest sessions, referrals, and verification tokens.
 package account
 
 import (

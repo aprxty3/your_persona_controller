@@ -1,3 +1,4 @@
+// Package logger defines the structured-logging interface and its slog-backed implementation.
 package logger
 
 import "context"

@@ -17,9 +17,9 @@ import (
 
 const validNewPassword = "Str0ngPassw0rd!"
 
-func newHash(t *testing.T, password string) string {
+func newHash(t *testing.T) string {
 	t.Helper()
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte("correct-password"), bcrypt.DefaultCost)
 	if err != nil {
 		t.Fatalf("bcrypt hash fixture: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestLogin_WrongPassword_IncrementsFailedCountAndRejects(t *testing.T) {
 	now := time.Now()
 	userRepo := accountmocks.NewMockUserRepository(t)
 	userRepo.EXPECT().FindByEmail(mock.Anything, "a@example.com").Return(&account.User{
-		ID: "user-1", Email: "a@example.com", PasswordHash: newHash(t, "correct-password"), EmailVerifiedAt: &now,
+		ID: "user-1", Email: "a@example.com", PasswordHash: newHash(t), EmailVerifiedAt: &now,
 	}, nil).Once()
 	userRepo.EXPECT().UpdateLoginAttempt(mock.Anything, "user-1", 1, (*time.Time)(nil)).Return(nil).Once()
 	ipLimiter := mocks.NewMockIPRateLimiter(t)
@@ -250,7 +250,7 @@ func TestLogin_WrongPassword_LocksAccountAtMaxAttempts(t *testing.T) {
 	now := time.Now()
 	userRepo := accountmocks.NewMockUserRepository(t)
 	userRepo.EXPECT().FindByEmail(mock.Anything, "a@example.com").Return(&account.User{
-		ID: "user-1", Email: "a@example.com", PasswordHash: newHash(t, "correct-password"), EmailVerifiedAt: &now, FailedLoginCount: 2,
+		ID: "user-1", Email: "a@example.com", PasswordHash: newHash(t), EmailVerifiedAt: &now, FailedLoginCount: 2,
 	}, nil).Once()
 	userRepo.EXPECT().UpdateLoginAttempt(mock.Anything, "user-1", 3, mock.AnythingOfType("*time.Time")).Return(nil).Once()
 	ipLimiter := mocks.NewMockIPRateLimiter(t)
@@ -269,7 +269,7 @@ func TestLogin_CorrectPassword_Succeeds(t *testing.T) {
 	now := time.Now()
 	userRepo := accountmocks.NewMockUserRepository(t)
 	userRepo.EXPECT().FindByEmail(mock.Anything, "a@example.com").Return(&account.User{
-		ID: "user-1", Email: "a@example.com", PasswordHash: newHash(t, "correct-password"), EmailVerifiedAt: &now, TokenVersion: 1,
+		ID: "user-1", Email: "a@example.com", PasswordHash: newHash(t), EmailVerifiedAt: &now, TokenVersion: 1,
 	}, nil).Once()
 	ipLimiter := mocks.NewMockIPRateLimiter(t)
 	ipLimiter.EXPECT().Allow(mock.Anything, mock.Anything, mock.Anything).Return(true, 0, nil).Once()
@@ -290,7 +290,7 @@ func TestLogin_CorrectPassword_ResetsFailedCountWhenNonZero(t *testing.T) {
 	now := time.Now()
 	userRepo := accountmocks.NewMockUserRepository(t)
 	userRepo.EXPECT().FindByEmail(mock.Anything, "a@example.com").Return(&account.User{
-		ID: "user-1", Email: "a@example.com", PasswordHash: newHash(t, "correct-password"), EmailVerifiedAt: &now, FailedLoginCount: 2,
+		ID: "user-1", Email: "a@example.com", PasswordHash: newHash(t), EmailVerifiedAt: &now, FailedLoginCount: 2,
 	}, nil).Once()
 	userRepo.EXPECT().UpdateLoginAttempt(mock.Anything, "user-1", 0, (*time.Time)(nil)).Return(nil).Once()
 	ipLimiter := mocks.NewMockIPRateLimiter(t)

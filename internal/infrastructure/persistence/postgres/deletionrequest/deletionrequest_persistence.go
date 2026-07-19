@@ -1,3 +1,4 @@
+// Package deletionrequest implements the GORM-backed repository for the deletionrequest domain.
 package deletionrequest
 
 import (
