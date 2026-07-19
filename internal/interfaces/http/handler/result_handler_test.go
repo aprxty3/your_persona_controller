@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -185,14 +186,14 @@ func TestGetPDF_NotReady_409(t *testing.T) {
 	}
 }
 
-func TestGetPDF_Success_302Redirect(t *testing.T) {
+func TestGetPDF_Success_StreamsBytes(t *testing.T) {
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "result-1").Return(&testresult.TestResult{
 		ID: "result-1", UserID: strPtr("user-1"), Status: testresult.StatusCompleted, PDFUrl: strPtr("https://storage.example.com/obj.pdf"),
 	}, nil).Once()
 	signer := mocks.NewMockPDFSignerService(t)
-	signer.EXPECT().PresignedGetURL(mock.Anything, "https://storage.example.com/obj.pdf", mock.Anything).
-		Return("https://storage.example.com/signed-url", nil).Once()
+	signer.EXPECT().Download(mock.Anything, "https://storage.example.com/obj.pdf").
+		Return(io.NopCloser(strings.NewReader("%PDF-1.7")), nil).Once()
 
 	h := NewResultHandler(nil, assessment.NewResultUseCase(repo, signer, testLog()), testLog())
 	c, rec := newResultCtx(http.MethodGet, "", "result-1", "user-1", "")
@@ -200,10 +201,13 @@ func TestGetPDF_Success_302Redirect(t *testing.T) {
 	if err := h.GetPDF(c); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if rec.Code != http.StatusFound {
-		t.Fatalf("expected 302, got %d: %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
-	if loc := rec.Header().Get("Location"); loc != "https://storage.example.com/signed-url" {
-		t.Errorf("expected redirect to signed URL, got %q", loc)
+	if rec.Body.String() != "%PDF-1.7" {
+		t.Errorf("expected the PDF bytes to be streamed through, got %q", rec.Body.String())
+	}
+	if ct := rec.Header().Get(echo.HeaderContentType); ct != "application/pdf" {
+		t.Errorf("expected Content-Type application/pdf, got %q", ct)
 	}
 }

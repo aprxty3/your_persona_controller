@@ -5,9 +5,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -48,8 +48,8 @@ func NewClient(endpoint, region, bucket, accessKey, secretKey string, usePathSty
 }
 
 // Upload writes data to key and returns its stored URL — the same URL shape
-// DeleteByURL/PresignedGetURL parse back out via keyFromURL, so a value
-// returned here round-trips through either without a separate convention.
+// DeleteByURL/Download parse back out via keyFromURL, so a value returned
+// here round-trips through either without a separate convention.
 func (c *Client) Upload(ctx context.Context, key string, data []byte, contentType string) (string, error) {
 	_, err := c.mc.PutObject(ctx, c.bucket, key, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{
 		ContentType: contentType,
@@ -72,19 +72,29 @@ func (c *Client) DeleteByURL(ctx context.Context, rawURL string) error {
 	return nil
 }
 
-// PresignedGetURL returns a time-limited signed URL for downloading the object
-// a stored URL (e.g. TEST_RESULT.pdf_url) points to — the object itself stays
-// private; only holders of the short-lived signed link can fetch it.
-func (c *Client) PresignedGetURL(ctx context.Context, rawURL string, expiry time.Duration) (string, error) {
+// Download streams the object a stored URL (e.g. TEST_RESULT.pdf_url) points
+// to — proxied through our own API rather than handed out as a signed URL, so
+// the browser never needs a cross-origin redirect to the storage backend
+// (which forces an opaque "null" Origin per the Fetch spec's redirect
+// algorithm, something R2's CORS policy form won't let us allow-list). The
+// caller owns closing the returned reader.
+func (c *Client) Download(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	key, err := c.keyFromURL(rawURL)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	signed, err := c.mc.PresignedGetObject(ctx, c.bucket, key, expiry, url.Values{})
+	obj, err := c.mc.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		return "", fmt.Errorf("s3: presign object %q: %w", key, err)
+		return nil, fmt.Errorf("s3: download object %q: %w", key, err)
 	}
-	return signed.String(), nil
+	// GetObject never errors eagerly (S3 is lazy) — the first Read() is what
+	// actually surfaces a missing/inaccessible object, so probe it now
+	// rather than handing the caller a reader that fails silently later.
+	if _, err := obj.Stat(); err != nil {
+		_ = obj.Close()
+		return nil, fmt.Errorf("s3: stat object %q: %w", key, err)
+	}
+	return obj, nil
 }
 
 // keyFromURL extracts the object key from a stored object URL, handling both
