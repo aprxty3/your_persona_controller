@@ -1,12 +1,12 @@
 module github.com/aprxty3/your_persona_controller.git
 
-go 1.25.0
+go 1.26.1
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/wire v0.7.0
 	github.com/hibiken/asynq v0.26.0
-	github.com/johnfercher/maroto/v2 v2.3.3
+	github.com/johnfercher/maroto/v2 v2.4.0
 	github.com/labstack/echo/v4 v4.15.4
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/stretchr/testify v1.11.1
@@ -140,7 +140,7 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	google.golang.org/genai v1.62.0
+	google.golang.org/genai v1.64.0
 	google.golang.org/protobuf v1.36.10 // indirect
 	gorm.io/gorm v1.31.2
 )
