@@ -1,23 +1,22 @@
 version: 2
 updates:
-  # Keeps go.mod/go.sum dependencies current — also the thing that will nudge us
-  # when govulncheck starts failing on a dep that has a newer, patched release.
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      go-dependencies:
+        update-types: ["minor", "patch"]
 
-  # Keeps every `uses: owner/repo@version` action reference current — including
-  # `securego/gosec@v2.22.0` and `appleboy/ssh-action@v1` in ci.yml — without
-  # going back to unpinned `@latest`/`@master`. NOTE: this does NOT cover the
-  # `go install ...@v2.1.6` lines for golangci-lint/govulncheck in ci.yml — those
-  # are shell commands, not `uses:` refs, so Dependabot can't see them. Bump
-  # those two by hand occasionally (e.g. when govulncheck starts flagging one
-  # of our own deps and you're in there anyway).
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        update-types: ["minor", "patch"]
 
   # Dockerfile base images (oven/bun, postgres, redis, caddy — see docker/).
   - package-ecosystem: "docker"
@@ -25,3 +24,7 @@ updates:
       - "/docker"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      docker-base-images:
+        update-types: ["minor", "patch"]
