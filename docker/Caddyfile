@@ -1,4 +1,4 @@
-# Reverse proxy for api.yourpersonas.com — Caddy provisions and renews the
+# Reverse proxy for your-personas.duckdns.org — Caddy provisions and renews the
 # TLS certificate automatically (ACME/Let's Encrypt) as long as DNS for this
 # domain points at the VM and ports 80/443 are reachable from the internet.
 # No other config needed: this IS the whole production TLS setup.
@@ -9,6 +9,6 @@
 # sets below — otherwise c.RealIP() sees Caddy's IP for every request,
 # breaking per-IP rate limiting (TICKET-22) and Turnstile's remoteip
 # (TICKET-11). See docs/deploy_runbook.md for the exact value.
-api.yourpersonas.com {
+your-personas.duckdns.org {
 	reverse_proxy api:8080
 }
