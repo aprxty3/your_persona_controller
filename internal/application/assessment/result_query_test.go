@@ -150,7 +150,7 @@ func TestDownloadPDF_Ready_ReturnsStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	body, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatalf("unexpected read error: %v", err)
@@ -173,5 +173,5 @@ func TestDownloadPDF_GuestOwnerBySessionID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	reader.Close()
+	_ = reader.Close()
 }
