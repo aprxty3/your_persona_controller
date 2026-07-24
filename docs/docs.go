@@ -223,7 +223,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/profile.ProfileResponse"
+                                            "$ref": "#/definitions/profile.Response"
                                         }
                                     }
                                 }
@@ -1371,7 +1371,7 @@ const docTemplate = `{
         },
         "/v1/results/{id}/pdf": {
             "get": {
-                "description": "Owner only. Redirects (302) to a short-lived signed URL once the PDF is ready.",
+                "description": "Owner only. Streams the PDF bytes directly (not a redirect to\nstorage) — a cross-origin redirect forces the browser's Fetch\nspec to send an opaque \"null\" Origin on the follow-up\nrequest, which R2's CORS policy can't be configured to allow.",
                 "tags": [
                     "Result"
                 ],
@@ -1386,10 +1386,10 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "302": {
-                        "description": "Redirect to signed PDF URL",
+                    "200": {
+                        "description": "The PDF file",
                         "schema": {
-                            "type": "string"
+                            "type": "file"
                         }
                     },
                     "403": {
@@ -1505,7 +1505,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "$ref": "#/definitions/dashboard.DashboardResponse"
+                                            "$ref": "#/definitions/dashboard.Response"
                                         }
                                     }
                                 }
@@ -1753,35 +1753,6 @@ const docTemplate = `{
                 }
             }
         },
-        "dashboard.DashboardResponse": {
-            "type": "object",
-            "properties": {
-                "grit_trend": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dashboard.GritTrendPoint"
-                    }
-                },
-                "latest_mbti_type": {
-                    "type": "string"
-                },
-                "micro_insights": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "quota_limit": {
-                    "type": "integer"
-                },
-                "quota_remaining": {
-                    "type": "integer"
-                },
-                "quota_used": {
-                    "type": "integer"
-                }
-            }
-        },
         "dashboard.GritTrendPoint": {
             "type": "object",
             "properties": {
@@ -1826,6 +1797,35 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "total_pages": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dashboard.Response": {
+            "type": "object",
+            "properties": {
+                "grit_trend": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dashboard.GritTrendPoint"
+                    }
+                },
+                "latest_mbti_type": {
+                    "type": "string"
+                },
+                "micro_insights": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "quota_limit": {
+                    "type": "integer"
+                },
+                "quota_remaining": {
+                    "type": "integer"
+                },
+                "quota_used": {
                     "type": "integer"
                 }
             }
@@ -2197,26 +2197,6 @@ const docTemplate = `{
                 }
             }
         },
-        "profile.ProfileResponse": {
-            "type": "object",
-            "properties": {
-                "age": {
-                    "type": "integer"
-                },
-                "display_name": {
-                    "type": "string"
-                },
-                "preferred_locale": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "user_id": {
-                    "type": "string"
-                }
-            }
-        },
         "profile.ReferralCodeResponse": {
             "type": "object",
             "properties": {
@@ -2236,6 +2216,26 @@ const docTemplate = `{
                 },
                 "signup_count": {
                     "type": "integer"
+                }
+            }
+        },
+        "profile.Response": {
+            "type": "object",
+            "properties": {
+                "age": {
+                    "type": "integer"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "preferred_locale": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
                 }
             }
         }

@@ -100,25 +100,6 @@ definitions:
       reset_token:
         type: string
     type: object
-  dashboard.DashboardResponse:
-    properties:
-      grit_trend:
-        items:
-          $ref: '#/definitions/dashboard.GritTrendPoint'
-        type: array
-      latest_mbti_type:
-        type: string
-      micro_insights:
-        items:
-          type: string
-        type: array
-      quota_limit:
-        type: integer
-      quota_remaining:
-        type: integer
-      quota_used:
-        type: integer
-    type: object
   dashboard.GritTrendPoint:
     properties:
       created_at:
@@ -148,6 +129,25 @@ definitions:
       total:
         type: integer
       total_pages:
+        type: integer
+    type: object
+  dashboard.Response:
+    properties:
+      grit_trend:
+        items:
+          $ref: '#/definitions/dashboard.GritTrendPoint'
+        type: array
+      latest_mbti_type:
+        type: string
+      micro_insights:
+        items:
+          type: string
+        type: array
+      quota_limit:
+        type: integer
+      quota_remaining:
+        type: integer
+      quota_used:
         type: integer
     type: object
   deletionrequest.RequestDeletionResponse:
@@ -394,19 +394,6 @@ definitions:
       success:
         type: boolean
     type: object
-  profile.ProfileResponse:
-    properties:
-      age:
-        type: integer
-      display_name:
-        type: string
-      preferred_locale:
-        type: string
-      status:
-        type: string
-      user_id:
-        type: string
-    type: object
   profile.ReferralCodeResponse:
     properties:
       code:
@@ -420,6 +407,19 @@ definitions:
         type: integer
       signup_count:
         type: integer
+    type: object
+  profile.Response:
+    properties:
+      age:
+        type: integer
+      display_name:
+        type: string
+      preferred_locale:
+        type: string
+      status:
+        type: string
+      user_id:
+        type: string
     type: object
 host: localhost:8080
 info:
@@ -580,7 +580,7 @@ paths:
             - $ref: '#/definitions/httpresponse.Response'
             - properties:
                 data:
-                  $ref: '#/definitions/profile.ProfileResponse'
+                  $ref: '#/definitions/profile.Response'
               type: object
         "400":
           description: VALIDATION_ERROR — an included field has an invalid value
@@ -1435,8 +1435,11 @@ paths:
       - Result
   /v1/results/{id}/pdf:
     get:
-      description: Owner only. Redirects (302) to a short-lived signed URL once the
-        PDF is ready.
+      description: |-
+        Owner only. Streams the PDF bytes directly (not a redirect to
+        storage) — a cross-origin redirect forces the browser's Fetch
+        spec to send an opaque "null" Origin on the follow-up
+        request, which R2's CORS policy can't be configured to allow.
       parameters:
       - description: Test result ID
         in: path
@@ -1444,10 +1447,10 @@ paths:
         required: true
         type: string
       responses:
-        "302":
-          description: Redirect to signed PDF URL
+        "200":
+          description: The PDF file
           schema:
-            type: string
+            type: file
         "403":
           description: FORBIDDEN — caller does not own this result
           schema:
@@ -1521,7 +1524,7 @@ paths:
             - $ref: '#/definitions/httpresponse.Response'
             - properties:
                 data:
-                  $ref: '#/definitions/dashboard.DashboardResponse'
+                  $ref: '#/definitions/dashboard.Response'
               type: object
         "401":
           description: UNAUTHORIZED | TOKEN_VERSION_MISMATCH

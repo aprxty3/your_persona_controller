@@ -3,6 +3,8 @@ package assessment
 import (
 	"context"
 	"errors"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,47 +125,53 @@ func TestGetPDFStatus_Owner_ReturnsStatus(t *testing.T) {
 	}
 }
 
-func TestGetPDFDownloadURL_NotReady_Rejected(t *testing.T) {
+func TestDownloadPDF_NotReady_Rejected(t *testing.T) {
 	ownerID := testOwnerID
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "r1").Return(&testresult.TestResult{ID: "r1", UserID: &ownerID}, nil).Once() // PDFUrl nil
 	uc := NewResultUseCase(repo, nil, testLogger())
 
-	_, err := uc.GetPDFDownloadURL(context.Background(), "r1", testOwnerID, "")
+	_, err := uc.DownloadPDF(context.Background(), "r1", testOwnerID, "")
 	if !errors.Is(err, application.ErrPDFNotReady) {
 		t.Fatalf("expected ErrPDFNotReady, got %v", err)
 	}
 }
 
-func TestGetPDFDownloadURL_Ready_ReturnsSignedURL(t *testing.T) {
+func TestDownloadPDF_Ready_ReturnsStream(t *testing.T) {
 	ownerID := testOwnerID
 	pdfURL := "guest/x/r1.pdf"
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "r1").Return(&testresult.TestResult{ID: "r1", UserID: &ownerID, PDFUrl: &pdfURL}, nil).Once()
 	signer := mocks.NewMockPDFSignerService(t)
-	signer.EXPECT().PresignedGetURL(mock.Anything, pdfURL, mock.Anything).Return("https://signed.example/r1.pdf", nil).Once()
+	signer.EXPECT().Download(mock.Anything, pdfURL).Return(io.NopCloser(strings.NewReader("%PDF-1.7")), nil).Once()
 	uc := NewResultUseCase(repo, signer, testLogger())
 
-	resp, err := uc.GetPDFDownloadURL(context.Background(), "r1", testOwnerID, "")
+	reader, err := uc.DownloadPDF(context.Background(), "r1", testOwnerID, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.URL != "https://signed.example/r1.pdf" {
-		t.Fatalf("expected the signed URL to be returned, got %q", resp.URL)
+	defer func() { _ = reader.Close() }()
+	body, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("unexpected read error: %v", err)
+	}
+	if string(body) != "%PDF-1.7" {
+		t.Fatalf("expected the PDF bytes to be streamed through, got %q", body)
 	}
 }
 
-func TestGetPDFDownloadURL_GuestOwnerBySessionID(t *testing.T) {
+func TestDownloadPDF_GuestOwnerBySessionID(t *testing.T) {
 	sessionID := "guest-session-1"
 	pdfURL := "guest/guest-session-1/r1.pdf"
 	repo := mocks.NewMockResultRepository(t)
 	repo.EXPECT().FindByID(mock.Anything, "r1").Return(&testresult.TestResult{ID: "r1", GuestSessionID: &sessionID, PDFUrl: &pdfURL}, nil).Once()
 	signer := mocks.NewMockPDFSignerService(t)
-	signer.EXPECT().PresignedGetURL(mock.Anything, pdfURL, mock.Anything).Return("https://signed.example/r1.pdf", nil).Once()
+	signer.EXPECT().Download(mock.Anything, pdfURL).Return(io.NopCloser(strings.NewReader("%PDF-1.7")), nil).Once()
 	uc := NewResultUseCase(repo, signer, testLogger())
 
-	_, err := uc.GetPDFDownloadURL(context.Background(), "r1", "", "guest-session-1")
+	reader, err := uc.DownloadPDF(context.Background(), "r1", "", "guest-session-1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	_ = reader.Close()
 }

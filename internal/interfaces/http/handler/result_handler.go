@@ -142,10 +142,13 @@ func (h *ResultHandler) GetPDFStatus(c echo.Context) error {
 
 // GetPDF handles GET /v1/results/:id/pdf
 // @Summary      Download the generated PDF
-// @Description  Owner only. Redirects (302) to a short-lived signed URL once the PDF is ready.
+// @Description  Owner only. Streams the PDF bytes directly (not a redirect to
+// @Description  storage) — a cross-origin redirect forces the browser's Fetch
+// @Description  spec to send an opaque "null" Origin on the follow-up
+// @Description  request, which R2's CORS policy can't be configured to allow.
 // @Tags         Result
 // @Param        id path string true "Test result ID"
-// @Success      302 {string} string "Redirect to signed PDF URL"
+// @Success      200 {file} file "The PDF file"
 // @Failure      403 {object} httpresponse.Response "FORBIDDEN — caller does not own this result"
 // @Failure      404 {object} httpresponse.Response "RESULT_NOT_FOUND"
 // @Failure      409 {object} httpresponse.Response "PDF_NOT_READY — generation hasn't completed yet"
@@ -154,11 +157,14 @@ func (h *ResultHandler) GetPDFStatus(c echo.Context) error {
 func (h *ResultHandler) GetPDF(c echo.Context) error {
 	userID, guestSessionID := callerIdentity(c)
 
-	resp, err := h.resultUseCase.GetPDFDownloadURL(c.Request().Context(), c.Param("id"), userID, guestSessionID)
+	reader, err := h.resultUseCase.DownloadPDF(c.Request().Context(), c.Param("id"), userID, guestSessionID)
 	if err != nil {
 		return h.handleResultError(c, err, "get_pdf")
 	}
-	return c.Redirect(http.StatusFound, resp.URL)
+	defer func() { _ = reader.Close() }()
+
+	c.Response().Header().Set(echo.HeaderContentDisposition, `attachment; filename="your-persona-result.pdf"`)
+	return c.Stream(http.StatusOK, "application/pdf", reader)
 }
 
 func (h *ResultHandler) handleResultError(c echo.Context, err error, op string) error {

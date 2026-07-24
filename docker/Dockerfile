@@ -1,7 +1,10 @@
 # --- Build stage ---
-FROM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+ARG TARGETOS
+ARG TARGETARCH
 ENV CGO_ENABLED=0 \
-    GOOS=linux
+    GOOS=$TARGETOS \
+    GOARCH=$TARGETARCH
 WORKDIR /app
 RUN apk add --no-cache git
 COPY go.mod go.sum ./
