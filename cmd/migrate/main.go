@@ -19,6 +19,9 @@ func main() {
 	dbURL := atlasURL()
 
 	log.Println("Applying Atlas migrations...")
+	// #nosec G204 -- the binary is the hardcoded "atlas" literal (not user input)
+	// and exec.Command passes args straight to execve without a shell, so the
+	// env-derived dbURL cannot inject a command; migrationsDir is a const.
 	cmd := exec.Command("atlas", "migrate", "apply",
 		"--dir", migrationsDir,
 		"--url", dbURL,
