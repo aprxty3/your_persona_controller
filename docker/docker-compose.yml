@@ -34,10 +34,7 @@ services:
       disable: true
 
   postgres:
-    # NOT -alpine — Alpine lacks the full IANA timezone database this app's
-    # hardcoded TimeZone=Asia/Jakarta DSN param needs (MEMORY.md 2026-07-17),
-    # and fails to boot the app with "unknown time zone Asia/Jakarta".
-    image: postgres:16
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}

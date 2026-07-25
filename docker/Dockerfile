@@ -18,7 +18,13 @@ RUN go build -mod=readonly -ldflags="-s -w" -buildvcs=false -o /bin/seed ./cmd/s
 
 # --- Runtime stage (minimal, does not include Go toolchain) ---
 FROM alpine:3.24
-RUN apk add --no-cache ca-certificates
+# tzdata: the postgres driver (pgx, via gorm.io/driver/postgres) resolves the
+# DSN's TimeZone=Asia/Jakarta param client-side via Go's time.LoadLocation,
+# which reads /usr/share/zoneinfo from the OS — Alpine doesn't ship it by
+# default. Without this, every binary here (api/worker/migrate/seed) fails
+# to open a DB connection at all with "unknown time zone Asia/Jakarta",
+# regardless of what the Postgres server itself supports.
+RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /bin/api /bin/worker /bin/migrate /bin/seed ./
 

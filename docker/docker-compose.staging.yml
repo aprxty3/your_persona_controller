@@ -58,10 +58,7 @@ services:
       disable: true
 
   postgres-staging:
-    # NOT -alpine — see the same note on docker-compose.prod.yml's postgres
-    # service: Alpine lacks the full IANA timezone database this app's
-    # hardcoded TimeZone=Asia/Jakarta DSN param needs (MEMORY.md 2026-07-17).
-    image: postgres:16
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER}
