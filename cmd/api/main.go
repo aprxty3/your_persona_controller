@@ -132,7 +132,7 @@ func main() {
 	trustedProxies := os.Getenv("TRUSTED_PROXIES")
 
 	if isProduction && geminiDailyBudget <= 0 {
-		logInstance.Warn("GEMINI_DAILY_TOKEN_BUDGET is unset — running production WITHOUT an aggregate daily Gemini cost cap (TICKET-28)")
+		logInstance.Warn("GEMINI_DAILY_TOKEN_BUDGET is unset — running production WITHOUT an aggregate daily Gemini cost cap")
 	}
 
 	// refuse to boot in production with insecure/missing config
