@@ -22,6 +22,9 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /bin/api /bin/worker /bin/migrate /bin/seed ./
 
+COPY --from=arigaio/atlas:latest /atlas /usr/local/bin/atlas
+COPY migrations ./migrations
+
 RUN addgroup -S app && adduser -S app -G app
 USER app:app
 
