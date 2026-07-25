@@ -59,7 +59,11 @@ services:
       disable: true
 
   postgres:
-    image: postgres:16-alpine
+    # NOT -alpine: the Alpine postgres image doesn't bundle the full IANA
+    # timezone database, and this app's DSN hardcodes TimeZone=Asia/Jakarta
+    # (see MEMORY.md 2026-07-17) — Alpine fails to boot the app with
+    # "unknown time zone Asia/Jakarta". The Debian-based image includes it.
+    image: postgres:16
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER}
