@@ -5,6 +5,19 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-07-25 (3)
+
+### CI fixes: gosec G204 + govulncheck (atlas-provider-gorm dependency tree)
+
+#### [F] `cmd/migrate` gosec G204 (subprocess launched with variable)
+- `exec.Command("atlas", "migrate", "apply", ...)` flagged by gosec: the binary is a hardcoded literal (not user input) and args go straight to `execve` without a shell, so the env-derived DB URL cannot inject a command — annotated `// #nosec G204` with that justification rather than restructured.
+
+#### [F] `security` CI job failing on 2 vulnerabilities (`GO-2026-4394` otel/sdk + a `go-jose` CVE)
+- Root cause: `ariga.io/atlas-provider-gorm` (pulled in only by the dev-only `cmd/atlasloader`, invoked by `atlas migrate diff`) dragged a large indirect dependency tree — including `go.opentelemetry.io/otel/sdk` and `go-jose` — into the **main module**, so `govulncheck ./...` flagged it as code our runtime binaries "use," even though `atlasloader` is never built into `api`/`worker`/`migrate`.
+- Fix: `cmd/atlasloader` is now its **own Go module** (`cmd/atlasloader/go.mod`, `replace .../your_persona_controller.git => ../../`), isolating `atlas-provider-gorm`'s entire dependency tree away from the root module. `atlas.hcl`'s `program` now runs it via `go run -C cmd/atlasloader .` so `go run` resolves against that module's `go.mod`, not root's.
+- Bonus effect: root `go.sum` shrank from ~1989 to ~355 lines (the atlas dependency bloat noted as a downside when Atlas was first adopted is now contained to the isolated module, not the runtime build).
+- Verified: `go build ./...`, `go vet ./...`, `go build -tags=integration ./...`, `go mod verify`, and the full unit suite all pass; govulncheck confirms 0 occurrences of both flagged vulnerabilities in the main module.
+
 ## [UNRELEASED] — 2026-07-25 (2)
 
 ### Migration: GORM AutoMigrate → Atlas versioned migrations

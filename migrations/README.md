@@ -36,10 +36,16 @@ atlas migrate down --env gorm --url "<db-url>"
 (dropping/renaming columns), review first — Atlas generates the down step from
 the diff, but data already lost cannot be restored by a migration.
 
-## Baseline (done once, during the migration away from AutoMigrate)
+## Baseline (pending — tracked in issue #29, do this once before Atlas can apply anything to prod/staging)
 
-The prod & staging databases already contain data (created by AutoMigrate), so
-migration `000001` (the baseline) reflects the schema as it was at that point,
-and prod/staging were marked "already at this baseline" via
-`atlas migrate apply --baseline <version>` so Atlas does not try to recreate
-tables that already exist.
+Prod & staging already contain data (created by the old `db.AutoMigrate`), so the
+**first** migration this folder needs is a baseline: a migration whose SQL matches
+the schema as it currently exists in those databases, generated via
+`make migrate-diff name=baseline` against a DB with that exact schema.
+
+Once `000001_baseline.sql` is committed, prod & staging must each be marked
+"already at this baseline" via `atlas migrate apply --baseline <version>` —
+**without this step Atlas will try to (re)create tables that already exist and
+fail.** Do this exactly once, then all subsequent `atlas migrate apply` runs
+(local dev included) behave normally. Until this is done, `make migrate` /
+`./migrate` have nothing to apply against prod/staging.
