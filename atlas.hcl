@@ -10,8 +10,11 @@
 // compute the diff, then tears it down. Nothing here touches prod/staging.
 
 data "external_schema" "gorm" {
+  # cmd/atlasloader is its own Go module (so atlas-provider-gorm's huge dep tree
+  # stays out of the main module) — run it with `go run -C` so `go run` uses that
+  # module's go.mod, not the repo-root one.
   program = [
-    "go", "run", "./cmd/atlasloader",
+    "go", "run", "-C", "cmd/atlasloader", ".",
   ]
 }
 
