@@ -80,7 +80,9 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image_sha_tag: ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+      # Tag only, no image name: docker-compose.prod.yml already hardcodes the
+      # image name and substitutes ${CONTROLLER_API_IMAGE_TAG} as the tag part.
+      image_sha_tag: sha-${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
       - name: Compute lowercase image name
@@ -98,8 +100,10 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ steps.image.outputs.name }}
+          # sha format=long (full 40-char) so the pushed tag matches the
+          # sha-${{ github.sha }} reference the deploy job pulls by.
           tags: |
-            type=sha,prefix=sha-,format=short
+            type=sha,prefix=sha-,format=long
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
       - name: Set up QEMU (emulation for non-native target platforms)
