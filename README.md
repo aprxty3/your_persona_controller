@@ -175,13 +175,26 @@ go test -tags=integration ./...   # + testcontainers (needs Docker running)
 | Command | Description |
 |---|---|
 | `make dev` | Starts dev environment with Air live-reload (Postgres/Redis/MinIO/Mailpit). |
-| `make prod` | Starts production containers (detached). |
+| `make prod` | **Local** prod-like preview via `docker-compose.yml` (no Caddy/TLS) — NOT the VPS deploy, see below. |
 | `make stop` / `make prune` | Stops containers / stops + wipes volumes (**DB data lost**). |
 | `make migrate` / `make seed` | Applies schema migration / seeds initial data. |
 | `make wire` | Regenerates dependency injection (`wire_gen.go`). |
 | `make swag` | Regenerates Swagger API documentation. |
 | `make test` / `make lint` | Unit tests (race + coverage) / golangci-lint. |
 | `make run-api` / `make run-worker` | Runs binaries locally without Docker. |
+
+**VPS ops** (run these ON THE VPS, not on a dev machine — see [`docs/deploy_runbook.md`](./docs/deploy_runbook.md)):
+
+| Command | Description |
+|---|---|
+| `make prod-up` / `make staging-up` | Pull latest image + (re)create containers for that environment. |
+| `make prod-restart [s=<service>]` / `make staging-restart [s=<service>]` | Restart without pulling a new image (optionally scoped to one service). |
+| `make prod-redeploy` / `make staging-redeploy` | Full redeploy: `git reset --hard` to the tracked branch + pull image + recreate. **Destructive** (discards local changes) — this is what the CI `deploy`/`deploy-staging` jobs run over SSH. |
+| `make prod-logs [s=<service>]` / `make staging-logs [s=<service>]` | Tail logs, optionally scoped to one service. |
+| `make prod-ps` / `make staging-ps` | Container status. |
+| `make prod-migrate` / `make staging-migrate` | Apply pending migrations against that environment's DB. |
+| `make prod-seed` / `make staging-seed` | Seed that environment's DB (idempotent). |
+| `make restart-caddy` | Restart the shared Caddy — fixes a stuck ACME/TLS retry backoff (recurring gotcha, see `DEPLOYMENT-GUIDE.md`). |
 
 ---
 

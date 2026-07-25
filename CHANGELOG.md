@@ -5,6 +5,17 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-07-26
+
+### VPS ops convenience via Makefile
+
+#### [A] `make prod-*` / `make staging-*` / `make restart-caddy` targets
+- VPS operations (redeploy, restart, logs, migrate, seed, status) previously required copy-pasting raw `docker compose -f docker/docker-compose.prod.yml --env-file .env ...` commands from the runbook — no shortcut existed, unlike local dev's `make dev`. Added a matching set of targets for both environments (`prod-up`/`prod-down`/`prod-restart`/`prod-redeploy`/`prod-logs`/`prod-ps`/`prod-migrate`/`prod-seed`, and the `staging-*` equivalents), plus `restart-caddy` for the recurring ACME/TLS retry-backoff gotcha (see `DEPLOYMENT-GUIDE.md`).
+- `prod-redeploy`/`staging-redeploy` run the same `git reset --hard origin/<branch>` the CI `deploy`/`deploy-staging` jobs perform over SSH — documented as destructive and VPS-only (never run on a dev machine).
+
+#### [F] `make prod`'s help text corrected
+- The pre-existing `make prod` target runs `docker-compose.yml` (a local prod-like preview — no Caddy/TLS/shared network), which is **not** what the VPS actually runs (`docker-compose.prod.yml`). Its description previously read "Starts production containers (detached)," which could be misread as the real VPS deploy path. Clarified as `[LOCAL]` preview only; behavior unchanged.
+
 ## [UNRELEASED] — 2026-07-25 (3)
 
 ### CI fixes: gosec G204 + govulncheck (atlas-provider-gorm dependency tree)
