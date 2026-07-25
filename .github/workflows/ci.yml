@@ -80,8 +80,6 @@ jobs:
       contents: read
       packages: write
     outputs:
-      # Tag only, no image name: docker-compose.prod.yml already hardcodes the
-      # image name and substitutes ${CONTROLLER_API_IMAGE_TAG} as the tag part.
       image_sha_tag: sha-${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
@@ -100,8 +98,6 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ steps.image.outputs.name }}
-          # sha format=long (full 40-char) so the pushed tag matches the
-          # sha-${{ github.sha }} reference the deploy job pulls by.
           tags: |
             type=sha,prefix=sha-,format=long
             type=raw,value=latest,enable={{is_default_branch}}
@@ -158,3 +154,40 @@ jobs:
         run: |
           curl -fsS --retry 5 --retry-delay 3 --retry-connrefused \
             https://your-personas.duckdns.org/healthz
+
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment: staging
+    concurrency:
+      group: staging-deploy
+      cancel-in-progress: false
+    env:
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+    steps:
+      - name: SSH deploy — pull & recreate staging
+        if: env.VPS_SSH_KEY != ''
+        uses: appleboy/ssh-action@v1
+        env:
+          IMAGE_TAG: ${{ needs.build.outputs.image_sha_tag }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          envs: IMAGE_TAG
+          script: |
+            set -euo pipefail
+            cd /opt/your-persona/controller-api-staging
+            git fetch origin develop
+            git reset --hard origin/develop
+            export CONTROLLER_API_IMAGE_TAG="$IMAGE_TAG"
+            docker compose -f docker/docker-compose.staging.yml --env-file .env.staging pull
+            docker compose -f docker/docker-compose.staging.yml --env-file .env.staging up -d --no-build --remove-orphans
+            docker image prune -f
+      - name: Smoke test
+        if: env.VPS_SSH_KEY != ''
+        run: |
+          curl -fsS --retry 5 --retry-delay 3 --retry-connrefused \
+            https://your-personas-stg.duckdns.org/healthz
