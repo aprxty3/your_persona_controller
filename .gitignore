@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.prod
+.env.staging
 .env.*.local
 *.pem
 *.key
