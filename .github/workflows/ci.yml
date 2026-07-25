@@ -153,4 +153,4 @@ jobs:
         if: env.VPS_SSH_KEY != ''
         run: |
           curl -fsS --retry 5 --retry-delay 3 --retry-connrefused \
-            https://api.yourpersonas.com/healthz
+            https://your-personas.duckdns.org/healthz
