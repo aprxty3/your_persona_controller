@@ -1,24 +1,10 @@
 name: your-persona-staging
 
 networks:
-  # Internal traffic for this stack only (api-staging <-> worker-staging <->
-  # postgres-staging/redis-staging). Separate subnet from
-  # docker-compose.prod.yml's 172.28.0.0/16 so both stacks can run on the
-  # same host without an address clash.
   default:
     ipam:
       config:
         - subnet: 172.29.0.0/16
-  # Shared with docker-compose.prod.yml's Caddy — the only container from
-  # the prod stack allowed to reach into this stack, and only to reach
-  # api-staging (one Caddy handles both domains; only one process can bind
-  # host :80/:443). Must exist BEFORE `docker compose up` — compose will not
-  # create an external network with a custom subnet for you:
-  #   docker network create --subnet=172.30.0.0/16 your-persona-shared
-  # TRUSTED_PROXIES in .env.staging must be 172.30.0.0/16 (this shared
-  # subnet), NOT the 172.29.0.0/16 default above — Caddy reaches
-  # api-staging over the shared network, so that's the subnet its
-  # connection actually originates from.
   shared:
     external: true
     name: your-persona-shared
@@ -72,11 +58,6 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
 
-  # Catches all outbound mail from staging instead of sending it anywhere
-  # real — staging is exercised by automated/manual testing, and nobody
-  # wants a test run accidentally emailing a real user's inbox. Swap
-  # SMTP_HOST override above to a real provider only if you deliberately
-  # want to test the actual delivery path.
   mailpit-staging:
     image: axllent/mailpit
     restart: unless-stopped
