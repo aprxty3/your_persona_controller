@@ -76,7 +76,7 @@ func TestKeyFromURL_MalformedURL_ReturnsError(t *testing.T) {
 
 func TestKeyFromURL_RoundTripsWithUploadURLShape(t *testing.T) {
 	// Upload() returns endpointURL + "/" + bucket + "/" + key — keyFromURL
-	// must invert that exact shape for DeleteByURL/PresignedGetURL to work.
+	// must invert that exact shape for DeleteByURL/Download to work.
 	c := &Client{bucket: "my-bucket"}
 	uploadedURL := "http://localhost:9000/my-bucket/deep/nested/key with spaces.pdf"
 

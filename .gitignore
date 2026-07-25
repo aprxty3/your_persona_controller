@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.prod
+.env.staging
 .env.*.local
 *.pem
 *.key
@@ -57,3 +58,6 @@ coverage.html
 AGENTS.md
 CLAUDE.md
 TECHNICAL_DOCUMENTATION.md
+
+# AI agent skills — internal workflow docs, machine-specific (same class as AGENTS.md)
+.claude/

@@ -3,6 +3,7 @@ package assessment
 import (
 	"context"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/application"
@@ -12,9 +13,8 @@ import (
 
 // The two mascot art styles a result can be rendered with.
 const (
-	MascotStyleA    = "style_a"
-	MascotStyleB    = "style_b"
-	pdfSignedURLTTL = 15 * time.Minute
+	MascotStyleA = "style_a"
+	MascotStyleB = "style_b"
 )
 
 // ResultRepository is the narrow slice of TestResult persistence this usecase needs
@@ -23,9 +23,9 @@ type ResultRepository interface {
 	Update(ctx context.Context, result *testresult.TestResult) error
 }
 
-// PDFSignerService generates a time-limited download URL for a stored PDF object.
+// PDFSignerService streams a stored PDF object's bytes.
 type PDFSignerService interface {
-	PresignedGetURL(ctx context.Context, objectURL string, expiry time.Duration) (string, error)
+	Download(ctx context.Context, objectURL string) (io.ReadCloser, error)
 }
 
 // ResultResponse is the public shape of a TestResult returned to clients.
@@ -47,11 +47,6 @@ type ResultResponse struct {
 // PDFStatusResponse reflects the async PDF generation lifecycle for polling clients.
 type PDFStatusResponse struct {
 	PDFStatus string `json:"pdf_status"`
-}
-
-// PDFDownloadResponse carries a short-lived signed URL to the generated PDF.
-type PDFDownloadResponse struct {
-	URL string `json:"url"`
 }
 
 // UpdateMascotStyleRequest carries the caller's identity for the ownership check
@@ -114,8 +109,10 @@ func (uc *ResultUseCase) GetPDFStatus(ctx context.Context, id, callerUserID, cal
 	return &PDFStatusResponse{PDFStatus: string(result.PDFStatus)}, nil
 }
 
-// GetPDFDownloadURL mints a short-lived signed URL to the generated PDF — owner only.
-func (uc *ResultUseCase) GetPDFDownloadURL(ctx context.Context, id, callerUserID, callerGuestSessionID string) (*PDFDownloadResponse, error) {
+// DownloadPDF streams the generated PDF's bytes — owner only. Proxied through
+// our own API (not a redirect to a signed storage URL) so the browser never
+// has to follow a cross-origin redirect to fetch it.
+func (uc *ResultUseCase) DownloadPDF(ctx context.Context, id, callerUserID, callerGuestSessionID string) (io.ReadCloser, error) {
 	result, err := uc.findOwned(ctx, id, callerUserID, callerGuestSessionID)
 	if err != nil {
 		return nil, err
@@ -124,12 +121,12 @@ func (uc *ResultUseCase) GetPDFDownloadURL(ctx context.Context, id, callerUserID
 		return nil, application.ErrPDFNotReady
 	}
 
-	signedURL, err := uc.signer.PresignedGetURL(ctx, *result.PDFUrl, pdfSignedURLTTL)
+	reader, err := uc.signer.Download(ctx, *result.PDFUrl)
 	if err != nil {
-		uc.log.Error("get pdf download url failed", "step", "sign", "result_id", id, "error", err)
-		return nil, fmt.Errorf("get_pdf_download_url: %w", err)
+		uc.log.Error("download pdf failed", "step", "fetch", "result_id", id, "error", err)
+		return nil, fmt.Errorf("download_pdf: %w", err)
 	}
-	return &PDFDownloadResponse{URL: signedURL}, nil
+	return reader, nil
 }
 
 // findVisible loads a result and applies the retention visibility rule shared

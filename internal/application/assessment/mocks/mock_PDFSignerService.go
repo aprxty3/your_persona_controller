@@ -4,7 +4,7 @@ package mocks
 
 import (
 	context "context"
-	time "time"
+	io "io"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -22,27 +22,29 @@ func (_m *MockPDFSignerService) EXPECT() *MockPDFSignerService_Expecter {
 	return &MockPDFSignerService_Expecter{mock: &_m.Mock}
 }
 
-// PresignedGetURL provides a mock function with given fields: ctx, objectURL, expiry
-func (_m *MockPDFSignerService) PresignedGetURL(ctx context.Context, objectURL string, expiry time.Duration) (string, error) {
-	ret := _m.Called(ctx, objectURL, expiry)
+// Download provides a mock function with given fields: ctx, objectURL
+func (_m *MockPDFSignerService) Download(ctx context.Context, objectURL string) (io.ReadCloser, error) {
+	ret := _m.Called(ctx, objectURL)
 
 	if len(ret) == 0 {
-		panic("no return value specified for PresignedGetURL")
+		panic("no return value specified for Download")
 	}
 
-	var r0 string
+	var r0 io.ReadCloser
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, time.Duration) (string, error)); ok {
-		return rf(ctx, objectURL, expiry)
+	if rf, ok := ret.Get(0).(func(context.Context, string) (io.ReadCloser, error)); ok {
+		return rf(ctx, objectURL)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, time.Duration) string); ok {
-		r0 = rf(ctx, objectURL, expiry)
+	if rf, ok := ret.Get(0).(func(context.Context, string) io.ReadCloser); ok {
+		r0 = rf(ctx, objectURL)
 	} else {
-		r0 = ret.Get(0).(string)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(io.ReadCloser)
+		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string, time.Duration) error); ok {
-		r1 = rf(ctx, objectURL, expiry)
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, objectURL)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -50,32 +52,31 @@ func (_m *MockPDFSignerService) PresignedGetURL(ctx context.Context, objectURL s
 	return r0, r1
 }
 
-// MockPDFSignerService_PresignedGetURL_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PresignedGetURL'
-type MockPDFSignerService_PresignedGetURL_Call struct {
+// MockPDFSignerService_Download_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Download'
+type MockPDFSignerService_Download_Call struct {
 	*mock.Call
 }
 
-// PresignedGetURL is a helper method to define mock.On call
+// Download is a helper method to define mock.On call
 //   - ctx context.Context
 //   - objectURL string
-//   - expiry time.Duration
-func (_e *MockPDFSignerService_Expecter) PresignedGetURL(ctx interface{}, objectURL interface{}, expiry interface{}) *MockPDFSignerService_PresignedGetURL_Call {
-	return &MockPDFSignerService_PresignedGetURL_Call{Call: _e.mock.On("PresignedGetURL", ctx, objectURL, expiry)}
+func (_e *MockPDFSignerService_Expecter) Download(ctx interface{}, objectURL interface{}) *MockPDFSignerService_Download_Call {
+	return &MockPDFSignerService_Download_Call{Call: _e.mock.On("Download", ctx, objectURL)}
 }
 
-func (_c *MockPDFSignerService_PresignedGetURL_Call) Run(run func(ctx context.Context, objectURL string, expiry time.Duration)) *MockPDFSignerService_PresignedGetURL_Call {
+func (_c *MockPDFSignerService_Download_Call) Run(run func(ctx context.Context, objectURL string)) *MockPDFSignerService_Download_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string), args[2].(time.Duration))
+		run(args[0].(context.Context), args[1].(string))
 	})
 	return _c
 }
 
-func (_c *MockPDFSignerService_PresignedGetURL_Call) Return(_a0 string, _a1 error) *MockPDFSignerService_PresignedGetURL_Call {
+func (_c *MockPDFSignerService_Download_Call) Return(_a0 io.ReadCloser, _a1 error) *MockPDFSignerService_Download_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockPDFSignerService_PresignedGetURL_Call) RunAndReturn(run func(context.Context, string, time.Duration) (string, error)) *MockPDFSignerService_PresignedGetURL_Call {
+func (_c *MockPDFSignerService_Download_Call) RunAndReturn(run func(context.Context, string) (io.ReadCloser, error)) *MockPDFSignerService_Download_Call {
 	_c.Call.Return(run)
 	return _c
 }

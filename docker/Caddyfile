@@ -1,14 +1,28 @@
-# Reverse proxy for api.yourpersonas.com — Caddy provisions and renews the
-# TLS certificate automatically (ACME/Let's Encrypt) as long as DNS for this
-# domain points at the VM and ports 80/443 are reachable from the internet.
-# No other config needed: this IS the whole production TLS setup.
+# Reverse proxy for production + staging, sharing this ONE Caddy instance
+# (only one process can bind host :80/:443, so two domains -> one Caddy,
+# routed by SNI). Caddy provisions and renews a separate TLS certificate
+# per domain automatically (ACME/Let's Encrypt) as long as DNS for each
+# points at this VM and ports 80/443 are reachable from the internet.
 #
-# TRUSTED_PROXIES in .env must include this container's address on the
-# compose network (see docker-compose.prod.yml) so the Go app's
-# ParseTrustedProxies (TICKET-26) trusts the X-Forwarded-For header Caddy
-# sets below — otherwise c.RealIP() sees Caddy's IP for every request,
-# breaking per-IP rate limiting (TICKET-22) and Turnstile's remoteip
-# (TICKET-11). See docs/deploy_runbook.md for the exact value.
-api.yourpersonas.com {
+# your-personas-stg.duckdns.org must be registered as its OWN DuckDNS name
+# pointing at this VM's IP — DuckDNS only supports flat <name>.duckdns.org
+# entries, NOT arbitrary subdomains of an existing one, so
+# "stg.your-personas.duckdns.org" would NOT work here.
+#
+# TRUSTED_PROXIES in .env/.env.staging must include this container's
+# address on the relevant compose network (see docker-compose.prod.yml /
+# docker-compose.staging.yml) so the Go app's ParseTrustedProxies
+# (TICKET-26) trusts the X-Forwarded-For header Caddy sets below —
+# otherwise c.RealIP() sees Caddy's IP for every request, breaking per-IP
+# rate limiting (TICKET-22) and Turnstile's remoteip (TICKET-11). See
+# docs/deploy_runbook.md for the production value; staging uses the
+# `shared` network's subnet instead (172.30.0.0/16) since that's the
+# network Caddy actually reaches api-staging over.
+
+your-personas.duckdns.org {
 	reverse_proxy api:8080
+}
+
+your-personas-stg.duckdns.org {
+	reverse_proxy api-staging:8080
 }
