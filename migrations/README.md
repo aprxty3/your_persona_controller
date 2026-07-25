@@ -2,8 +2,7 @@
 
 Versioned database migrations, managed by [Atlas](https://atlasgo.io) with the
 GORM structs as the single source of truth. This folder replaced the old
-`db.AutoMigrate` approach (see `psyche-assessment-docs/MEMORY.md` 2026-07-03,
-superseded 2026-07-25).
+`db.AutoMigrate`.
 
 ## Folder contents
 
@@ -16,12 +15,13 @@ superseded 2026-07-25).
 2. Generate a migration from the struct changes (requires Docker — Atlas spins an
    ephemeral postgres:16 to compute the diff):
    ```sh
-   atlas migrate diff <change_name> --env gorm
+   make migrate-diff name=<change_name>     # wraps: atlas migrate diff <name> --env gorm
    ```
    This creates `migrations/<timestamp>_<change_name>.sql` and updates `atlas.sum`.
 3. Review the generated SQL, then commit it.
 4. Apply:
-   - **Local/manual:** `docker compose -f docker/docker-compose.prod.yml --env-file .env run --rm api ./migrate`
+   - **Local dev:** `make migrate`
+   - **Prod/staging:** `docker compose -f docker/docker-compose.prod.yml --env-file .env run --rm api ./migrate`
      (`./migrate` shells out to `atlas migrate apply` inside the container)
    - **Deploy:** migrations do NOT run automatically (by design) — run `./migrate`
      manually after a deploy whenever the release carries a schema change.
@@ -42,4 +42,4 @@ The prod & staging databases already contain data (created by AutoMigrate), so
 migration `000001` (the baseline) reflects the schema as it was at that point,
 and prod/staging were marked "already at this baseline" via
 `atlas migrate apply --baseline <version>` so Atlas does not try to recreate
-tables that already exist. Full procedure: `psyche-assessment-docs/DEPLOYMENT-GUIDE.md`.
+tables that already exist.

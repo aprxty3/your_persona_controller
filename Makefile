@@ -3,7 +3,7 @@ export
 
 .DEFAULT_GOAL := help
 
-.PHONY: help dev prod stop prune logs run-api run-worker migrate seed build clean wire swag test lint tidy
+.PHONY: help dev prod stop prune logs run-api run-worker migrate migrate-diff seed build clean wire swag test lint tidy
 
 dev: ## Start dev environment (Air hot-reload + Postgres/Redis/MinIO/Mailpit)
 	@echo "Starting development environment (Air Hot-Reload)..."
@@ -30,8 +30,11 @@ run-api: ## Run API server locally
 run-worker: ## Run Asynq worker locally
 	go run ./cmd/worker
 
-migrate: ## Run database migration (GORM AutoMigrate)
+migrate: ## Apply pending migrations to the DB (Atlas; needs atlas CLI on host)
 	go run ./cmd/migrate
+
+migrate-diff: ## Generate a migration from struct changes (usage: make migrate-diff [name=add_x]; name optional but recommended; needs Docker + atlas CLI)
+	atlas migrate diff $(name) --env gorm
 
 seed: ## Seed database with initial data (questions, templates, etc.)
 	go run ./cmd/seed

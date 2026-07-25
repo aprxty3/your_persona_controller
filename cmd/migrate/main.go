@@ -12,8 +12,8 @@ import (
 	"github.com/aprxty3/your_persona_controller.git/internal/config"
 )
 
-// migrationsDir is where docker/Dockerfile copies the migrations/ folder.
-const migrationsDir = "file:///app/migrations"
+// migrationsDir is a path RELATIVE to the working directory.
+const migrationsDir = "file://migrations"
 
 func main() {
 	dbURL := atlasURL()
