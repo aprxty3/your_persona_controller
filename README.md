@@ -11,7 +11,7 @@ This service is structured using **Clean Architecture + Domain-Driven Design (DD
 * **Domain** (`internal/domain`): Framework-agnostic core entities (`User`, `TestResult`, `GuestSession`, `DeletionRequest`) and repository interfaces. Imports nothing from GORM/HTTP/SDKs.
 * **Application** (`internal/application`): Business workflows (assessment submission + scoring, auth/OTP flows, quota enforcement, referral events, anonymization orchestration).
 * **Interfaces** (`internal/interfaces`): Two parallel delivery layers calling the same use cases — HTTP REST handlers (Echo) and Asynq worker handlers.
-* **Infrastructure** (`internal/infrastructure`): Third-party adapters — PostgreSQL (GORM), Redis, Cloudflare R2/MinIO, Gemini API, SMTP (Brevo/Mailpit).
+* **Infrastructure** (`internal/infrastructure`): Third-party adapters — PostgreSQL (GORM), Redis, Cloudflare R2/MinIO, Gemini API, SMTP (`mail.digitalsekuriti.id` prod / Mailpit dev).
 
 ```mermaid
 flowchart LR
@@ -47,8 +47,10 @@ controller-api/
 ├── cmd/
 │   ├── api/                 # HTTP server entrypoint + Wire DI config
 │   ├── worker/              # Asynq background worker entrypoint
-│   ├── migrate/             # GORM AutoMigrate (manual-only, never at boot)
+│   ├── migrate/             # Applies Atlas versioned migrations (manual-only, never at boot)
+│   ├── atlasloader/         # Dev-only: emits GORM schema as SQL for `atlas migrate diff`
 │   └── seed/                # Question bank & insight template seeder (idempotent)
+├── migrations/              # Atlas versioned migration files (see migrations/README.md)
 ├── docs/                    # Swagger files — swagger.json = official FE contract
 ├── internal/
 │   ├── domain/              # Entities and repository contracts
@@ -70,6 +72,7 @@ controller-api/
 * Go 1.26+
 * Docker & Docker Compose
 * `make` tool
+* [Atlas CLI](https://atlasgo.io) — for generating/applying schema migrations (`curl -sSf https://atlasgo.sh | sh`); the Docker image bundles it, so this is only needed for local migration work
 
 ### Step 1 — Environment Settings
 Copy `.env.example` to `.env` and fill in the necessary fields. In production mode (`APP_ENV=production`), the server enforces strict boot validation — it refuses to start if secrets are still dev defaults or required keys are empty.
@@ -87,9 +90,10 @@ make dev    # Postgres, Redis, MinIO, Mailpit + Air hot-reload
 
 ### Step 3 — Migrate & Seed
 ```bash
-make migrate    # schema migration (never auto-runs — by design)
+make migrate    # applies Atlas versioned migrations (never auto-runs — by design)
 make seed       # question bank + insight templates
 ```
+Schema changes are versioned with Atlas from the GORM structs — see [`migrations/README.md`](./migrations/README.md) for the `atlas migrate diff` workflow. (Switched from GORM AutoMigrate on 2026-07-25.)
 
 Dev tools available at:
 * **Swagger UI**: http://localhost:8080/swagger/index.html
@@ -140,7 +144,9 @@ flowchart LR
     MAIN -->|CI deploy job| VPS[VPS]
 ```
 
-`main` and `develop` are **branch-protected**: no direct pushes, no force-push, no deletion — every change lands via a PR passing all 6 required checks on an up-to-date branch. Releases: PR `develop` → `main`, then SemVer tag + GitHub Release. The `deploy` job no-ops safely until `VPS_SSH_KEY` is configured; **migrations never auto-run on deploy** — see [`docs/deploy_runbook.md`](./docs/deploy_runbook.md).
+`main` and `develop` are **branch-protected**: no direct pushes, no force-push, no deletion — every change lands via a PR passing all 6 required checks on an up-to-date branch. Releases: PR `develop` → `main`, then SemVer tag + GitHub Release.
+
+**Deploy (live since 2026-07-25):** push to `main` → `deploy` job **pauses for owner approval** (GitHub `production` environment gate) → SSH pull & recreate + smoke test. Push to `develop` → `deploy-staging` job auto-deploys to the staging stack (no approval). Both target one Oracle Cloud ARM64 VPS; images are multi-arch (`amd64`+`arm64`). **Migrations never auto-run on deploy** — see [`docs/deploy_runbook.md`](./docs/deploy_runbook.md).
 
 ---
 
@@ -169,13 +175,26 @@ go test -tags=integration ./...   # + testcontainers (needs Docker running)
 | Command | Description |
 |---|---|
 | `make dev` | Starts dev environment with Air live-reload (Postgres/Redis/MinIO/Mailpit). |
-| `make prod` | Starts production containers (detached). |
+| `make prod` | **Local** prod-like preview via `docker-compose.yml` (no Caddy/TLS) — NOT the VPS deploy, see below. |
 | `make stop` / `make prune` | Stops containers / stops + wipes volumes (**DB data lost**). |
 | `make migrate` / `make seed` | Applies schema migration / seeds initial data. |
 | `make wire` | Regenerates dependency injection (`wire_gen.go`). |
 | `make swag` | Regenerates Swagger API documentation. |
 | `make test` / `make lint` | Unit tests (race + coverage) / golangci-lint. |
 | `make run-api` / `make run-worker` | Runs binaries locally without Docker. |
+
+**VPS ops** (run these ON THE VPS, not on a dev machine — see [`docs/deploy_runbook.md`](./docs/deploy_runbook.md)):
+
+| Command | Description |
+|---|---|
+| `make prod-up` / `make staging-up` | Pull latest image + (re)create containers for that environment. |
+| `make prod-restart [s=<service>]` / `make staging-restart [s=<service>]` | Restart without pulling a new image (optionally scoped to one service). |
+| `make prod-redeploy` / `make staging-redeploy` | Full redeploy: `git reset --hard` to the tracked branch + pull image + recreate. **Destructive** (discards local changes) — this is what the CI `deploy`/`deploy-staging` jobs run over SSH. |
+| `make prod-logs [s=<service>]` / `make staging-logs [s=<service>]` | Tail logs, optionally scoped to one service. |
+| `make prod-ps` / `make staging-ps` | Container status. |
+| `make prod-migrate` / `make staging-migrate` | Apply pending migrations against that environment's DB. |
+| `make prod-seed` / `make staging-seed` | Seed that environment's DB (idempotent). |
+| `make restart-caddy` | Restart the shared Caddy — fixes a stuck ACME/TLS retry backoff (recurring gotcha, see `DEPLOYMENT-GUIDE.md`). |
 
 ---
 

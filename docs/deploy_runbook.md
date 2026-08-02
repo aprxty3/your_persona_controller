@@ -125,16 +125,27 @@ docker compose -f docker/docker-compose.prod.yml logs worker | tail -20
 
 Until these are set, `deploy` is **skipped** (not failed) — CI stays green while the VM is still being provisioned. Also configure a `production` GitHub Environment (Settings → Environments) if you want a manual approval gate before the SSH step runs.
 
-**Manual** (fallback, or for a release you want to babysit):
+**Manual** (fallback, or for a release you want to babysit) — shortcut via `Makefile`'s VPS-ops targets (run from `/opt/your-persona/controller-api`, see README's "VPS ops" table):
 
 ```sh
 cd /opt/your-persona/controller-api
-git pull
+make prod-redeploy      # git reset --hard origin/main + pull image + recreate + prune
+# If this release includes a migration:
+make prod-migrate
+```
+
+Equivalent raw commands, if you'd rather not use `make` (e.g. debugging what a target actually runs):
+
+```sh
+cd /opt/your-persona/controller-api
+git fetch origin main && git reset --hard origin/main
 docker compose -f docker/docker-compose.prod.yml --env-file .env pull
-docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build
+docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build --remove-orphans
 # If this release includes a migration:
 docker compose -f docker/docker-compose.prod.yml run --rm api ./migrate
 ```
+
+Same commands apply to staging from `/opt/your-persona/controller-api-staging`, substituting `make staging-redeploy` / `make staging-migrate` (or the raw `docker-compose.staging.yml --env-file .env.staging` equivalents, tracking `origin/develop`).
 
 `docker compose up -d` recreates changed containers one at a time; `api`/`worker` both handle `SIGTERM` gracefully (`SHUTDOWN_TIMEOUT` in `.env`, default 30s) — in-flight HTTP requests and Asynq jobs finish before the old container exits, not before the new one is ready to receive traffic. No separate "drain" step needed.
 

@@ -1,38 +1,47 @@
-// Command migrate applies GORM AutoMigrate against the configured database. Run manually, never at container boot.
+// Command migrate applies pending Atlas versioned migrations against the
+// configured database. Run manually, never at container boot.
 package main
 
 import (
+	"fmt"
 	"log"
+	"net/url"
+	"os"
+	"os/exec"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/config"
-	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
 )
 
+// migrationsDir is a path RELATIVE to the working directory.
+const migrationsDir = "file://migrations"
+
 func main() {
-	log.Println("Connecting to database for migration...")
-	db, err := postgres.NewPostgresDB(config.PostgresDSN())
-	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
+	dbURL := atlasURL()
 
-	log.Println("Running GORM AutoMigrate...")
-	err = db.AutoMigrate(
-		&postgres.UserModel{},
-		&postgres.GuestSessionModel{},
-		&postgres.TestResultModel{},
-		&postgres.VerificationTokenModel{},
-		&postgres.ReferralCodeModel{},
-		&postgres.ReferralEventModel{},
-		&postgres.DataDeletionRequestModel{},
-		&postgres.QuestionModel{},
-		&postgres.QuestionTranslationModel{},
-		&postgres.AnswerModel{},
-		&postgres.InsightTemplateModel{},
-		&postgres.PromptAuditLogModel{},
+	log.Println("Applying Atlas migrations...")
+	// #nosec G204 -- the binary is the hardcoded "atlas" literal (not user input)
+	// and exec.Command passes args straight to execve without a shell, so the
+	// env-derived dbURL cannot inject a command; migrationsDir is a const.
+	cmd := exec.Command("atlas", "migrate", "apply",
+		"--dir", migrationsDir,
+		"--url", dbURL,
 	)
-	if err != nil {
-		log.Fatalf("Migration failed: %v", err)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Fatalf("atlas migrate apply failed: %v", err)
 	}
-
 	log.Println("Migration completed successfully!")
+}
+
+// atlasURL builds the postgres URL Atlas expects from the same DB_* env vars the app uses.
+func atlasURL() string {
+	host := config.EnvOr("DB_HOST", "localhost")
+	port := config.EnvOr("DB_PORT", "5432")
+	user := config.EnvOr("DB_USER", "postgres")
+	pass := config.EnvOr("DB_PASSWORD", "changeme")
+	name := config.EnvOr("DB_NAME", "psyche_assessment")
+	sslmode := config.EnvOr("DB_SSLMODE", "disable")
+	return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=%s&search_path=public",
+		url.QueryEscape(user), url.QueryEscape(pass), host, port, name, sslmode)
 }

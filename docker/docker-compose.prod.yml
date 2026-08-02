@@ -1,22 +1,10 @@
 name: your-persona-prod
 
-# Fixed subnet (instead of Docker's auto-assigned default bridge range) so
-# TRUSTED_PROXIES in .env.prod can be set once, in advance, without needing to
-# `docker network inspect` after the VPS is actually provisioned. Caddy is the
-# only container-to-container hop in front of `api`, so this /16 covering the
-# whole compose network is deliberately generous rather than pinning Caddy's
-# exact IP — that IP isn't guaranteed stable across container recreation.
 networks:
   default:
     ipam:
       config:
         - subnet: 172.28.0.0/16
-  # Shared with docker-compose.staging.yml — lets this same Caddy also reach
-  # api-staging by service name for the stg. domain block (only one process
-  # can bind host :80/:443, so Caddy can't be duplicated per stack). Must
-  # exist BEFORE `docker compose up` — compose will not create an external
-  # network with a custom subnet for you:
-  #   docker network create --subnet=172.30.0.0/16 your-persona-shared
   shared:
     external: true
     name: your-persona-shared

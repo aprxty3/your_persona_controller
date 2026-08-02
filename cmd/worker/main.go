@@ -156,10 +156,6 @@ func main() {
 					logInstance.Error("pdf worker: failed to unmarshal payload on final failure", "error", jsonErr)
 					return
 				}
-				// This runs on the task's final-failure path — ctx may already be near
-				// cancellation by the time asynq calls us, but the failure write still
-				// has to land. WithoutCancel keeps ctx's values while dropping its
-				// cancellation, same convention used for in-flight Gemini calls (AGENTS.md).
 				if updErr := testResultRepo.UpdatePDFStatus(context.WithoutCancel(ctx), payload.TestResultID, nil, testresult.PDFStatusFailed); updErr != nil {
 					logInstance.Error("pdf worker: failed to mark pdf_status=failed after max retries", "test_result_id", payload.TestResultID, "error", updErr)
 				}

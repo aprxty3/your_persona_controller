@@ -27,7 +27,64 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 ### `develop`/`main` reconciliation
 - `develop` carries in-progress Atlas-migration work (`atlas.hcl`, `cmd/atlasloader`, `migrations/`) deliberately **not** promoted to `main` yet — not part of this release. A separate sync merged `main`'s exclusive commits (dependabot bump: `gorm.io/driver/postgres` 1.6.0→1.6.1, `google.golang.org/genai` 1.64.0→1.66.0) back into `develop`, and the arm64/release-please fixes were applied to both branches independently (cherry-picked onto `main`, not merged wholesale) to keep `main` from inheriting unreleased migration work.
 
-## [UNRELEASED] — 2026-07-18 (4)
+## [UNRELEASED] — 2026-07-26
+
+### VPS ops convenience via Makefile
+
+#### [A] `make prod-*` / `make staging-*` / `make restart-caddy` targets
+- VPS operations (redeploy, restart, logs, migrate, seed, status) previously required copy-pasting raw `docker compose -f docker/docker-compose.prod.yml --env-file .env ...` commands from the runbook — no shortcut existed, unlike local dev's `make dev`. Added a matching set of targets for both environments (`prod-up`/`prod-down`/`prod-restart`/`prod-redeploy`/`prod-logs`/`prod-ps`/`prod-migrate`/`prod-seed`, and the `staging-*` equivalents), plus `restart-caddy` for the recurring ACME/TLS retry-backoff gotcha (see `DEPLOYMENT-GUIDE.md`).
+- `prod-redeploy`/`staging-redeploy` run the same `git reset --hard origin/<branch>` the CI `deploy`/`deploy-staging` jobs perform over SSH — documented as destructive and VPS-only (never run on a dev machine).
+
+#### [F] `make prod`'s help text corrected
+- The pre-existing `make prod` target runs `docker-compose.yml` (a local prod-like preview — no Caddy/TLS/shared network), which is **not** what the VPS actually runs (`docker-compose.prod.yml`). Its description previously read "Starts production containers (detached)," which could be misread as the real VPS deploy path. Clarified as `[LOCAL]` preview only; behavior unchanged.
+
+## [UNRELEASED] — 2026-07-25 (3)
+
+### CI fixes: gosec G204 + govulncheck (atlas-provider-gorm dependency tree)
+
+#### [F] `cmd/migrate` gosec G204 (subprocess launched with variable)
+- `exec.Command("atlas", "migrate", "apply", ...)` flagged by gosec: the binary is a hardcoded literal (not user input) and args go straight to `execve` without a shell, so the env-derived DB URL cannot inject a command — annotated `// #nosec G204` with that justification rather than restructured.
+
+#### [F] `security` CI job failing on 2 vulnerabilities (`GO-2026-4394` otel/sdk + a `go-jose` CVE)
+- Root cause: `ariga.io/atlas-provider-gorm` (pulled in only by the dev-only `cmd/atlasloader`, invoked by `atlas migrate diff`) dragged a large indirect dependency tree — including `go.opentelemetry.io/otel/sdk` and `go-jose` — into the **main module**, so `govulncheck ./...` flagged it as code our runtime binaries "use," even though `atlasloader` is never built into `api`/`worker`/`migrate`.
+- Fix: `cmd/atlasloader` is now its **own Go module** (`cmd/atlasloader/go.mod`, `replace .../your_persona_controller.git => ../../`), isolating `atlas-provider-gorm`'s entire dependency tree away from the root module. `atlas.hcl`'s `program` now runs it via `go run -C cmd/atlasloader .` so `go run` resolves against that module's `go.mod`, not root's.
+- Bonus effect: root `go.sum` shrank from ~1989 to ~355 lines (the atlas dependency bloat noted as a downside when Atlas was first adopted is now contained to the isolated module, not the runtime build).
+- Verified: `go build ./...`, `go vet ./...`, `go build -tags=integration ./...`, `go mod verify`, and the full unit suite all pass; govulncheck confirms 0 occurrences of both flagged vulnerabilities in the main module.
+
+## [UNRELEASED] — 2026-07-25 (2)
+
+### Migration: GORM AutoMigrate → Atlas versioned migrations
+
+#### [C] `cmd/migrate` now applies Atlas versioned migrations, not `db.AutoMigrate`
+- The schema is still defined by the GORM structs (single source of truth), but Atlas now diffs them into versioned SQL under `migrations/`, giving a reviewable history and real `down`/rollback — things AutoMigrate cannot do (it is additive-only: never drops/renames/re-types). This is the escalation path anticipated in MEMORY.md 2026-07-03. Rationale + trade-offs: MEMORY.md 2026-07-25.
+- `cmd/migrate/main.go` is now a thin wrapper that shells out to the `atlas` CLI (`atlas migrate apply`), so the long-standing `docker compose run --rm api ./migrate` invocation is unchanged. New `atlas.hcl` (env `gorm`, schema loaded via `cmd/atlasloader`), new `cmd/atlasloader/` (dev-only GORM→SQL loader, not built into the runtime image), new `migrations/` dir.
+- `docker/Dockerfile` runtime stage now bakes the `atlas` binary (from `arigaio/atlas`, verified to run on Alpine/musl) and copies `migrations/` to `/app/migrations`. **NOTE:** image pinned to `:latest` for now — pin a stable version for reproducibility.
+- `ariga.io/atlas-provider-gorm` added to `go.mod` (pulls a large indirect dep set — Azure SDK, mysql/sqlserver drivers; does NOT enlarge the runtime binaries, only go.sum + builder download).
+- **Transition cost:** the `migrate` binary now requires the atlas binary at runtime — rebuild the image before running `./migrate`. Existing prod/staging DBs must be baselined once (`atlas migrate apply --baseline`) so Atlas does not recreate existing tables.
+
+#### [C] Swagger UI host is now environment-aware
+- `docs.SwaggerInfo.Host` is set to `""` at boot in `cmd/api`, so Swagger UI ("Try it out") targets whatever origin serves the page — correct across dev/staging/prod without config. The static `// @host` annotation was updated to the production domain (only affects the committed `swagger.json` for offline readers).
+
+## [UNRELEASED] — 2026-07-25 (1)
+
+### Production deployment live (v1.1.0, v1.1.1) — first VPS deploy + dual-environment pipeline
+
+Full operational detail: `psyche-assessment-docs/DEPLOYMENT-PROGRESS.md` and `DEPLOYMENT-GUIDE.md`.
+
+#### [A] Multi-arch Docker builds (`linux/amd64,linux/arm64`)
+- `ci.yml` `build` job now uses QEMU + Buildx to publish a multi-arch image to GHCR — required because the production VPS is ARM64 (Oracle Cloud aarch64). Previously amd64-only, so `docker compose pull` failed on the VPS with `no matching manifest for linux/arm64/v8`.
+
+#### [F] `unknown time zone Asia/Jakarta` crash-loop on first deploy
+- The runtime image (`alpine`) never installed `tzdata`. `gorm.io/driver/postgres` (pgx) resolves the DSN's `TimeZone=Asia/Jakarta` client-side via Go's `time.LoadLocation`, which reads `/usr/share/zoneinfo` — absent on Alpine. `api`/`worker`/`migrate`/`seed` all failed to open a DB connection. Fix: `apk add tzdata` in `docker/Dockerfile` (not a Postgres-image change — the server was always correct). Diagnosis saga: MEMORY.md / DEPLOYMENT-GUIDE.md 2026-07-25.
+
+#### [A] Staging environment sharing one VPS with production
+- New `docker/docker-compose.staging.yml` (own `api-staging`/`worker-staging`/`postgres-staging`/`redis-staging`/`mailpit-staging`, isolated subnet+volumes). One Caddy serves both domains (`your-personas.duckdns.org` prod, `your-personas-stg.duckdns.org` staging) via an external shared Docker network. `TRUSTED_PROXIES` for staging must be the shared-network subnet, not the staging default — verified with per-IP rate-limit bucket test.
+
+#### [A] Deploy pipeline: manual-approval prod + auto-deploy staging
+- Push to `main` → build → `deploy` job **pauses for owner approval** (GitHub `production` environment with a required reviewer) → SSH pull & recreate + smoke test. Push to `develop` → build → `deploy-staging` job auto-deploys (no approval) to a separate `/opt/your-persona/controller-api-staging` checkout tracking develop. Repo secrets `VPS_HOST`/`VPS_USER`/`VPS_SSH_KEY`/`VPS_PORT` now set.
+
+#### [F] deploy job used a placeholder domain and a malformed image tag
+- Smoke test hit `api.yourpersonas.com` (never purchased) → now `your-personas.duckdns.org`. The `build` job's `image_sha_tag` output doubled the image name (`ghcr.io/...:ghcr.io/...:sha-...` → `invalid reference format`); it now emits the tag only (`sha-<full>`, `format=long`) since `docker-compose.prod.yml` supplies the image name.
 
 ### Gemini sampling temperature pinned
 

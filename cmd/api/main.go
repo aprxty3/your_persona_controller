@@ -11,14 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/aprxty3/your_persona_controller.git/docs"
 	"github.com/aprxty3/your_persona_controller.git/internal/config"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	echo "github.com/labstack/echo/v4"
 )
-
-// Typed aliases below exist solely to avoid Wire's type ambiguity when
-// multiple providers would otherwise inject an indistinguishable plain
-// string/bool/int64 — Wire matches by type, not by name.
 
 // GeminiAPIKey is the Gemini API key, Wire-typed.
 type GeminiAPIKey string
@@ -77,7 +74,7 @@ type GeminiTemperature float32
 // @title Your Persona API
 // @version 1.0
 // @description API Server for Your Persona psychological assessment platform.
-// @host localhost:8080
+// @host your-personas.duckdns.org
 // @BasePath /
 // @securityDefinitions.apikey BearerAuth
 // @in header
@@ -95,17 +92,13 @@ func main() {
 		maxConcurrent = 10
 	}
 
-	// Sampling temperature — 0.6 keeps output reliably inside the pinned
-	// 2-4-paragraph format (fewer validator rejections = fewer wasted tokens)
-	// while staying warm enough to feel personal. Valid range 0-2.
+	// Sampling temperature
 	geminiTemperature, err := strconv.ParseFloat(os.Getenv("GEMINI_TEMPERATURE"), 32)
 	if err != nil || geminiTemperature < 0 || geminiTemperature > 2 {
 		geminiTemperature = 0.6
 	}
 
-	// 0/unset disables the aggregate daily cap (dev default) — deliberately
-	// NOT part of RequireProduction (running uncapped is a legitimate choice),
-	// but production gets a boot-time warning below.
+	// 0/unset disables the aggregate daily cap (dev default)
 	geminiDailyBudget, _ := strconv.ParseInt(os.Getenv("GEMINI_DAILY_TOKEN_BUDGET"), 10, 64)
 
 	dbDSN := config.PostgresDSN()
@@ -130,6 +123,9 @@ func main() {
 	turnstileSecretKey := os.Getenv("TURNSTILE_SECRET_KEY")
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
 	trustedProxies := os.Getenv("TRUSTED_PROXIES")
+
+	// Empty host = Swagger UI uses whatever origin serves the page.
+	docs.SwaggerInfo.Host = ""
 
 	if isProduction && geminiDailyBudget <= 0 {
 		logInstance.Warn("GEMINI_DAILY_TOKEN_BUDGET is unset — running production WITHOUT an aggregate daily Gemini cost cap")

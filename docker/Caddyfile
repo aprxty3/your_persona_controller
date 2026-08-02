@@ -12,9 +12,9 @@
 # TRUSTED_PROXIES in .env/.env.staging must include this container's
 # address on the relevant compose network (see docker-compose.prod.yml /
 # docker-compose.staging.yml) so the Go app's ParseTrustedProxies
-# (TICKET-26) trusts the X-Forwarded-For header Caddy sets below —
+# trusts the X-Forwarded-For header Caddy sets below —
 # otherwise c.RealIP() sees Caddy's IP for every request, breaking per-IP
-# rate limiting (TICKET-22) and Turnstile's remoteip (TICKET-11). See
+# rate limiting and Turnstile's remoteip. See
 # docs/deploy_runbook.md for the production value; staging uses the
 # `shared` network's subnet instead (172.30.0.0/16) since that's the
 # network Caddy actually reaches api-staging over.
