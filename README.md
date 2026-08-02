@@ -146,7 +146,9 @@ flowchart LR
 
 `main` and `develop` are **branch-protected**: no direct pushes, no force-push, no deletion — every change lands via a PR passing all 6 required checks on an up-to-date branch. Releases: PR `develop` → `main`, then SemVer tag + GitHub Release.
 
-**Deploy (live since 2026-07-25):** push to `main` → `deploy` job **pauses for owner approval** (GitHub `production` environment gate) → SSH pull & recreate + smoke test. Push to `develop` → `deploy-staging` job auto-deploys to the staging stack (no approval). Both target one Oracle Cloud ARM64 VPS; images are multi-arch (`amd64`+`arm64`). **Migrations never auto-run on deploy** — see [`docs/deploy_runbook.md`](./docs/deploy_runbook.md).
+**Deploy (live since 2026-07-25):** push to `main` → `deploy` job **pauses for owner approval** (GitHub `production` environment gate) → SSH pull & recreate + smoke test. Push to `develop` → `deploy-staging` job auto-deploys to the staging stack (no approval). Both target one Oracle Cloud Ampere A1 VPS (arm64); the image is built **natively for `linux/arm64` only** on a `ubuntu-24.04-arm` runner (`linux/amd64` was dropped 2026-08-02 — it was never pulled by anything, and cross-building arm64 under QEMU cost several minutes per run). **Migrations never auto-run on deploy** — see [`docs/deploy_runbook.md`](./docs/deploy_runbook.md).
+
+**Versioning:** automated via [`release-please`](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`). Pushing to `main` opens a release PR that bumps the version and, once merged, creates the git tag + GitHub Release. The bump is derived from Conventional Commits — and specifically from the **merge-commit title (= PR title)**, so a promotion PR must be titled `feat:`/`fix:`, never `release:`/`chore:` (those are not "user facing" and the release is silently skipped). `CHANGELOG.md` is hand-maintained and deliberately untouched by the tool (`skip-changelog: true`).
 
 ---
 
