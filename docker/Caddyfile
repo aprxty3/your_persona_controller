@@ -26,3 +26,11 @@ your-personas.duckdns.org {
 your-personas-stg.duckdns.org {
 	reverse_proxy api-staging:8080
 }
+
+your-personas-app.duckdns.org {
+	reverse_proxy ui:3000
+}
+
+your-personas-app-stg.duckdns.org {
+	reverse_proxy ui-staging:3000
+}
