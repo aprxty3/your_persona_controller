@@ -5,6 +5,28 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## v1.2.0 — 2026-08-02
+
+### FE-04 activation: Caddy reverse proxy for the FE VPS deployment + security/CI fixes
+
+#### [A] `docker/Caddyfile` gains 2 site blocks for `your_persona_ui`'s prod/staging domains
+- `your-personas-app.duckdns.org` → `ui:3000`, `your-personas-app-stg.duckdns.org` → `ui-staging:3000` — same shared-Caddy-instance pattern as the BE's own domains (SNI-routed, one process on :80/:443). Part of `your_persona_ui` issue FE-04's runbook; TLS cert issuance and routing verified live before the FE containers themselves existed (502 until `ui`/`ui-staging` came up, confirming Caddy + ACME worked independently of the backend).
+
+#### [F] `security` CI job failing on every PR — `GO-2026-6061` (grpc)
+- A newly-disclosed advisory for `google.golang.org/grpc` (indirect dep via `google.golang.org/genai` → `cloud.google.com/go/auth` → `s2a-go`) started failing `govulncheck` on `develop` and `main` alike — not caused by any code change, confirmed by re-running CI on `develop`'s unchanged HEAD and seeing the same failure. Fixed by bumping `grpc` v1.67.0/v1.74.2 → v1.82.1 (cascades `go.opentelemetry.io/otel*`, `google.golang.org/genproto`, `cloud.google.com/go/compute/metadata`, `google.golang.org/protobuf`) on both branches independently (their go.mod baselines had diverged).
+
+#### [F] `build` CI job build image for `linux/amd64` (wasted) + emulate `linux/arm64` via QEMU (slow)
+- VPS is Oracle Cloud Ampere A1 — arm64-only. The `amd64` leg of the multi-arch build was never pulled by anything; the `arm64` leg paid QEMU cross-compilation overhead compiling on an amd64 runner. Switched `build` job to GitHub's native `ubuntu-24.04-arm` runner (free for public repos), dropped `linux/amd64` and the QEMU setup step entirely, target `linux/arm64` only. Observed build time dropped from ~4-7min to ~1-2min (first arm64-native run took longer, ~3-4min, due to a cold GHA cache for that runner architecture).
+
+#### [A] Automated versioning/tagging via `release-please`
+- New `release-please-config.json` (`release-type: simple`, `skip-changelog: true` — this `CHANGELOG.md` stays hand-maintained, untouched by the tool), `.release-please-manifest.json` (bootstrapped from `v1.1.1`), `.github/workflows/release-please.yml` (triggers on push to `main`). Determines semver bump from Conventional Commits (`fix:`→patch, `feat:`→minor, `feat!:`/`BREAKING CHANGE:`→major) since the last tag, opens a "release PR"; merging it auto-creates the git tag + GitHub Release.
+- **Operational gotcha found**: PRs opened by `release-please-action`'s `GITHUB_TOKEN` never trigger the `pull_request`-event CI workflow (GitHub's anti-recursion behavior for Actions-authored PRs) — required status checks permanently show as not-run, so the PR sits `mergeStateStatus: BLOCKED` forever under normal `gh pr merge`. These release PRs only ever touch the version manifest (no application code), so merging via `gh pr merge --admin` (bypasses required checks, needs repo-admin rights) is the accepted resolution — not a workaround to avoid, just how this specific PR class has to be merged.
+- Required enabling `Allow GitHub Actions to create and approve pull requests` (`can_approve_pull_request_reviews`) in repo Settings → Actions — off by default, blocks `release-please-action` from opening its PR at all if left off.
+- This release (`v1.2.0`) is release-please's own first automated tag on this repo.
+
+### `develop`/`main` reconciliation
+- `develop` carries in-progress Atlas-migration work (`atlas.hcl`, `cmd/atlasloader`, `migrations/`) deliberately **not** promoted to `main` yet — not part of this release. A separate sync merged `main`'s exclusive commits (dependabot bump: `gorm.io/driver/postgres` 1.6.0→1.6.1, `google.golang.org/genai` 1.64.0→1.66.0) back into `develop`, and the arm64/release-please fixes were applied to both branches independently (cherry-picked onto `main`, not merged wholesale) to keep `main` from inheriting unreleased migration work.
+
 ## [UNRELEASED] — 2026-07-18 (4)
 
 ### Gemini sampling temperature pinned
