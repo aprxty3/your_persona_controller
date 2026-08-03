@@ -5,6 +5,21 @@ Conventions: `[A]` Added · `[C] `Changed · `[F]` Fixed · `[D]` Deprecated · 
 
 ---
 
+## [UNRELEASED] — 2026-08-03
+
+### Atlas baseline completed (issue #29, closed) + reproducibility fix
+
+#### [F] `.gitignore`'s `*.sql` pattern was silently discarding every file in `migrations/`
+- Meant to ignore `scripts/backup.sh`'s dump output — but that script only ever produces `.sql.gz` (gzipped), never a bare `.sql`. The blanket `*.sql` pattern had no real purpose for backups and instead swallowed any Atlas migration file generated since Atlas was adopted (2026-07-25), invisibly to `git status`/`git add`. This is almost certainly the actual reason `migrations/` stayed empty for so long, not just "not gotten to yet." Narrowed to `*.sql.gz`.
+
+#### [A] `migrations/20260803132952_init_baseline.sql` — the baseline migration
+- Generated via `atlas migrate diff init_baseline --env gorm --dev-url <scratch DB on the already-running dev Postgres>`, not Atlas's default ephemeral Docker container (`docker://postgres/16/dev` hit repeated `wsarecv: An existing connection was forcibly closed` resets on this Windows/Docker Desktop host — spinning a fresh container was the actual failure point, not Atlas itself). Verified complete against `models.go`: all 12 GORM models registered in `cmd/atlasloader/main.go`'s explicit load list, no stray `gorm:` tags anywhere outside `models.go`, no raw `CREATE TABLE` bypassing GORM, no `many2many`/hidden join tables — 12 models, 12 `TableName()` overrides, 12 `CREATE TABLE` statements, 1:1.
+- Applied to **staging** via `atlas migrate apply --baseline 20260803132952` (explicit flag) — verified `atlas migrate status` → `Executed Files: 1, Pending Files: 0`.
+- Applied to **production** — surprisingly, without ever running the `--baseline` flag explicitly: `atlas migrate status` alone triggered baseline auto-detection in the Atlas build baked into that container at the time (`v1.3.1-canary`, pulled via the then-unpinned `arigaio/atlas:latest`). Confirmed via `SELECT * FROM atlas_schema_revisions` (`applied=0, total=0` — pure bookkeeping, zero DDL executed). Not a documented/guaranteed behavior; see the version-pin fix below.
+
+#### [F] `docker/Dockerfile` pins `arigaio/atlas` to `1.3.0` instead of `:latest`
+- The production baseline (above) landed with a `v1.3.1-canary` build because `:latest` isn't a stable reference — this was already flagged as a known gap when Atlas was first adopted ("image pinned to `:latest` for now — pin a stable version for reproducibility," 2026-07-25) and just proved itself a real risk: local dev CLI (installed manually, `v1.3.0` official) and the container's baked-in binary behaved differently on the exact same command. Pinned to `1.3.0` to match.
+
 ## v1.2.0 — 2026-08-02
 
 ### FE-04 activation: Caddy reverse proxy for the FE VPS deployment + security/CI fixes
