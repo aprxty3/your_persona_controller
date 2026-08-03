@@ -29,8 +29,8 @@ vendor/
 # Delve debugger
 __debug_bin*
 
-# Database dumps
-*.sql
+# Database dumps (scripts/backup.sh only ever produces .sql.gz, never bare .sql —
+# a bare "*.sql" pattern here previously swallowed migrations/*.sql silently)
 *.sql.gz
 *.dump
 *.pgdump

@@ -1,17 +1,23 @@
-# Deploy Runbook — Production (`api.yourpersonas.com`)
+# Deploy Runbook — Production (`your-personas.duckdns.org`)
 
 This is a runbook, not an essay — follow it top to bottom for a fresh deploy. A second person should be able to run this from nothing but this file and a fresh VM, without asking questions.
+
+> **Status: already deployed.** Production and staging have been live on one Oracle Cloud Ampere A1 VM since 2026-07-25 — the steps below describe how to rebuild from zero, not work that is still pending. Current as-built state, plus the running FE stack that shares this VM's Caddy: `psyche-assessment-docs/DEPLOYMENT-GUIDE.md` and `DEPLOYMENT-PROGRESS.md`.
+>
+> **Domains are DuckDNS, deliberately.** `your-personas.duckdns.org` (prod API) / `your-personas-stg.duckdns.org` (staging API) — a real domain was never purchased. The FE uses two more flat DuckDNS names served by this same Caddy instance (`your-personas-app…` / `your-personas-app-stg…`). If a paid domain is bought later, every occurrence below plus `docker/Caddyfile` and the smoke-test URLs in `.github/workflows/ci.yml` need updating together.
+>
+> ⚠️ **Migrations: baseline still pending (issue #29).** `cmd/migrate` now shells out to `atlas migrate apply`, but `migrations/` contains no migration files yet and the existing prod/staging databases have never been baselined. Nothing is blocked today (no schema change is pending, and the app itself no longer touches the schema), but the FIRST schema change requires finishing issue #29 first — see `migrations/README.md`.
 
 ## Prerequisites (do these once, before touching the VM)
 
 These are external/manual — nothing here is code, and none of it can be verified from a dev machine:
 
-1. **DNS**: point `api.yourpersonas.com` at the VM's public IP (an `A`/`AAAA` record). Caddy (below) needs this resolvable before it can issue a TLS certificate.
+1. **DNS**: point `your-personas.duckdns.org` at the VM's public IP (an `A`/`AAAA` record). Caddy (below) needs this resolvable before it can issue a TLS certificate.
 2. **Cloudflare R2**: create the production bucket, generate an S3-compatible API token (`S3_ACCESS_KEY`/`S3_SECRET_KEY`), note the endpoint URL. Then, in the bucket's dashboard:
    - Enable **Object Lifecycle rule**: prefix `guest/` → expire after 14 days. Prefix `member/` gets **no** lifecycle rule. (See `TECHNICAL_DOCUMENTATION.md` Section 6.1 for why — orphan-PDF safety net, not a replacement for the purge job.)
    - **Attach a screenshot or exported rule config to the deploy PR** — this is a checklist item humans forget to verify later, and the setting lives entirely in a dashboard with no code trail otherwise.
-3. **Brevo**: create/verify the sending domain (SPF + DKIM records on your DNS provider), generate SMTP credentials under Settings → SMTP & API → SMTP.
-4. **Cloudflare Turnstile**: create a site key + secret for `api.yourpersonas.com` (or the FE domain, per Turnstile's widget setup) in the Cloudflare dashboard. This is `TURNSTILE_SECRET_KEY`.
+3. **Production SMTP** — `mail.digitalsekuriti.id` (owner's own mail server; the earlier Brevo plan was dropped 2026-07-24, see `psyche-assessment-docs/MEMORY.md`). Obtain `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD` and make sure the sending domain's SPF/DKIM records are in place.
+4. **Cloudflare Turnstile**: create a site key + secret for `your-personas.duckdns.org` (or the FE domain, per Turnstile's widget setup) in the Cloudflare dashboard. This is `TURNSTILE_SECRET_KEY`.
 5. Have SSH access to a fresh VM with Docker + Docker Compose v2 installed.
 6. **GHCR pull access on the VM** — `docker/docker-compose.prod.yml`'s `api`/`worker` services pull `ghcr.io/aprxty3/your_persona_controller` (built and pushed by the `build` job in `.github/workflows/ci.yml` on every push to `main`/`develop`). That package is private by default, so the VM needs its own one-time login — this is a VM-local Docker credential, not a GitHub Actions secret:
    ```sh
@@ -32,7 +38,7 @@ cp .env.example .env
 #   APP_ENV=production
 #   DB_PASSWORD=<generate a real random password, not "changeme">
 #   JWT_SECRET=<generate with: openssl rand -base64 48>
-#   ALLOWED_ORIGINS=https://app.yourpersonas.com   (the FE production origin, no wildcard)
+#   ALLOWED_ORIGINS=https://your-personas-app.duckdns.org   (the FE production origin, no wildcard)
 #   TRUSTED_PROXIES=172.16.0.0/12                  (covers Docker's default bridge ranges;
 #                                                    confirm the exact subnet with
 #                                                    `docker network inspect your-persona-prod_default`
@@ -64,13 +70,13 @@ docker compose -f docker/docker-compose.prod.yml run --rm api ./seed
 
 ```sh
 # Smoke test
-curl -i https://api.yourpersonas.com/healthz
+curl -i https://your-personas.duckdns.org/healthz
 # → 200, {"database":"up","redis":"up"}, and a valid TLS cert (curl won't
-#   complain, or check with: curl -v https://api.yourpersonas.com/healthz 2>&1 | grep -i "SSL certificate verify ok")
+#   complain, or check with: curl -v https://your-personas.duckdns.org/healthz 2>&1 | grep -i "SSL certificate verify ok")
 ```
 
-Then manually, from a browser or Swagger UI (`https://api.yourpersonas.com/swagger/index.html`):
-- `POST /v1/auth/register` with a real email → confirm the OTP email actually arrives (Brevo, not Mailpit — this is the one thing that CANNOT be verified any other way).
+Then manually, from a browser or Swagger UI (`https://your-personas.duckdns.org/swagger/index.html`):
+- `POST /v1/auth/register` with a real email → confirm the OTP email actually arrives (the real production SMTP, not Mailpit — this is the one thing that CANNOT be verified any other way).
 - Full Guest submit path (`guest-session` → `submit`) → confirm a PDF appears in the R2 bucket under `guest/{session_id}/{result_id}.pdf`.
 
 ## 2. Register the backup cron
@@ -97,7 +103,7 @@ Postgres is bound to `127.0.0.1:5432` in `docker-compose.prod.yml` specifically 
 # From two different networks (e.g. your laptop's wifi + phone hotspot),
 # hit an endpoint that's rate-limited and check the app logs —
 # each network should get its own rate-limit bucket, not share one.
-curl -X POST https://api.yourpersonas.com/v1/guest-session -d '{...}'
+curl -X POST https://your-personas.duckdns.org/v1/guest-session -d '{...}'
 docker compose -f docker/docker-compose.prod.yml logs api | grep "rate_limited\|guest session created"
 ```
 
