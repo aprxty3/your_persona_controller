@@ -36,16 +36,35 @@ atlas migrate down --env gorm --url "<db-url>"
 (dropping/renaming columns), review first — Atlas generates the down step from
 the diff, but data already lost cannot be restored by a migration.
 
-## Baseline (pending — tracked in issue #29, do this once before Atlas can apply anything to prod/staging)
+## Baseline (done — issue #29, closed 2026-08-03)
 
-Prod & staging already contain data (created by the old `db.AutoMigrate`), so the
-**first** migration this folder needs is a baseline: a migration whose SQL matches
-the schema as it currently exists in those databases, generated via
-`make migrate-diff name=baseline` against a DB with that exact schema.
+Prod & staging already contained data (created by the old `db.AutoMigrate`), so the
+first migration this folder needed was a baseline: `20260803132952_init_baseline.sql`,
+generated via `atlas migrate diff init_baseline --env gorm` against an empty scratch
+database (`--dev-url` pointed at a throwaway DB on the existing dev Postgres, not
+Atlas's default ephemeral Docker container — the latter hit repeated connection
+resets on this Windows/Docker Desktop setup; a scratch DB on an already-running
+container sidesteps that).
 
-Once `000001_baseline.sql` is committed, prod & staging must each be marked
-"already at this baseline" via `atlas migrate apply --baseline <version>` —
-**without this step Atlas will try to (re)create tables that already exist and
-fail.** Do this exactly once, then all subsequent `atlas migrate apply` runs
-(local dev included) behave normally. Until this is done, `make migrate` /
-`./migrate` have nothing to apply against prod/staging.
+Both environments are now marked "already at this baseline" (`atlas migrate apply
+--baseline 20260803132952`), verified via `atlas migrate status` reporting
+`Executed Files: 1, Pending Files: 0` in each. All subsequent `atlas migrate diff` /
+`atlas migrate apply` runs — local dev included — behave normally from here.
+
+**Gotcha found during this (fixed):** the root `.gitignore`'s `*.sql` pattern (meant
+for `scripts/backup.sh`'s dump files, which are actually always `.sql.gz`) was
+silently swallowing every file in `migrations/` — this is almost certainly why the
+folder stayed empty for so long. Fixed by narrowing the ignore pattern to
+`*.sql.gz`. If a future `atlas migrate diff` run produces a file that doesn't show
+up in `git status`, check `.gitignore` first before assuming the generation failed.
+
+**Gotcha found on production specifically:** applying the baseline there required
+no explicit `--baseline` flag at all — running `atlas migrate status` alone caused
+the newer Atlas build baked into the container (`arigaio/atlas:latest` resolved to
+a `v1.3.1-canary` build at the time) to auto-detect the schema already matched and
+write the baseline revision itself. Confirmed via `SELECT * FROM
+atlas_schema_revisions` (`applied=0, total=0` — no DDL executed, pure bookkeeping).
+This behavior isn't guaranteed across Atlas versions, which is why the Docker image
+is now pinned to `arigaio/atlas:1.3.0` instead of `:latest` — don't rely on
+auto-baseline detection as the intended workflow; the explicit `--baseline <version>`
+flag remains the documented, deterministic path.

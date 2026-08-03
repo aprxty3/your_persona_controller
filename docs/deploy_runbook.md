@@ -6,7 +6,7 @@ This is a runbook, not an essay — follow it top to bottom for a fresh deploy. 
 >
 > **Domains are DuckDNS, deliberately.** `your-personas.duckdns.org` (prod API) / `your-personas-stg.duckdns.org` (staging API) — a real domain was never purchased. The FE uses two more flat DuckDNS names served by this same Caddy instance (`your-personas-app…` / `your-personas-app-stg…`). If a paid domain is bought later, every occurrence below plus `docker/Caddyfile` and the smoke-test URLs in `.github/workflows/ci.yml` need updating together.
 >
-> ⚠️ **Migrations: baseline still pending (issue #29).** `cmd/migrate` now shells out to `atlas migrate apply`, but `migrations/` contains no migration files yet and the existing prod/staging databases have never been baselined. Nothing is blocked today (no schema change is pending, and the app itself no longer touches the schema), but the FIRST schema change requires finishing issue #29 first — see `migrations/README.md`.
+> ✅ **Migrations: baseline done (issue #29, closed 2026-08-03).** `migrations/20260803132952_init_baseline.sql` is applied and baselined on both prod and staging (`atlas migrate status` reports `Pending Files: 0` on each) — a real schema change can now go through the normal `make migrate-diff` → review → commit → `make migrate` flow. Details: `migrations/README.md`.
 
 ## Prerequisites (do these once, before touching the VM)
 
