@@ -421,7 +421,7 @@ definitions:
       user_id:
         type: string
     type: object
-host: localhost:8080
+host: your-personas.duckdns.org
 info:
   contact: {}
   description: API Server for Your Persona psychological assessment platform.
