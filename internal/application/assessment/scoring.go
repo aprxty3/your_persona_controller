@@ -143,8 +143,12 @@ func scoreSJTAnswer(a AnswerInput, q content.Question, sums, maxAbs map[string]f
 	}
 	var optionPoints map[string]map[string]float64
 	if cached, ok := parsedTraitMaps.Load(*q.OptionTraitMap); ok {
-		optionPoints = cached.(map[string]map[string]float64)
-	} else {
+		if parsed, okCast := cached.(map[string]map[string]float64); okCast {
+			optionPoints = parsed
+		}
+	}
+
+	if optionPoints == nil {
 		if err := json.Unmarshal([]byte(*q.OptionTraitMap), &optionPoints); err != nil {
 			return
 		}

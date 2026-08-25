@@ -1,0 +1,14 @@
+<<<<<<< SEARCH
+	if cached, ok := parsedTraitMaps.Load(*q.OptionTraitMap); ok {
+		optionPoints = cached.(map[string]map[string]float64)
+	} else {
+=======
+	if cached, ok := parsedTraitMaps.Load(*q.OptionTraitMap); ok {
+		var okCast bool
+		if optionPoints, okCast = cached.(map[string]map[string]float64); !okCast {
+			// type assertion failed, fall back to parsing (unlikely, but defensive)
+		}
+	}
+
+	if optionPoints == nil {
+>>>>>>> REPLACE
