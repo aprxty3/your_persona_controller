@@ -5,6 +5,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 )
@@ -129,6 +130,8 @@ func scoreLikertAnswer(a AnswerInput, q content.Question, sums, maxAbs map[strin
 	maxAbs[q.Trait] += likertMaxContribution
 }
 
+var parsedTraitMaps sync.Map // cache for parsed OptionTraitMap JSON strings -> map[string]map[string]float64
+
 // scoreSJTAnswer folds one SJT answer into the running tallies. An answered
 // question widens the denominator of every dimension ANY of its options could
 // move — picking an option that doesn't touch a dimension is an implicit
@@ -139,8 +142,13 @@ func scoreSJTAnswer(a AnswerInput, q content.Question, sums, maxAbs map[string]f
 		return
 	}
 	var optionPoints map[string]map[string]float64
-	if err := json.Unmarshal([]byte(*q.OptionTraitMap), &optionPoints); err != nil {
-		return
+	if cached, ok := parsedTraitMaps.Load(*q.OptionTraitMap); ok {
+		optionPoints = cached.(map[string]map[string]float64)
+	} else {
+		if err := json.Unmarshal([]byte(*q.OptionTraitMap), &optionPoints); err != nil {
+			return
+		}
+		parsedTraitMaps.Store(*q.OptionTraitMap, optionPoints)
 	}
 
 	chosen, answered := optionPoints[strings.ToUpper(strings.TrimSpace(a.Value))]
