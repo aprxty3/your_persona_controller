@@ -1,7 +1,6 @@
 package assessment
 
 import (
-	"encoding/json"
 	"math"
 	"strconv"
 	"strings"
@@ -135,13 +134,10 @@ func scoreLikertAnswer(a AnswerInput, q content.Question, sums, maxAbs map[strin
 // neutral on it, not a smaller scale. Unknown option letters or unparsable
 // maps are ignored (contribution 0).
 func scoreSJTAnswer(a AnswerInput, q content.Question, sums, maxAbs map[string]float64) {
-	if q.OptionTraitMap == nil {
+	if q.ParsedOptionTraitMap == nil {
 		return
 	}
-	var optionPoints map[string]map[string]float64
-	if err := json.Unmarshal([]byte(*q.OptionTraitMap), &optionPoints); err != nil {
-		return
-	}
+	optionPoints := q.ParsedOptionTraitMap
 
 	chosen, answered := optionPoints[strings.ToUpper(strings.TrimSpace(a.Value))]
 	if !answered {
