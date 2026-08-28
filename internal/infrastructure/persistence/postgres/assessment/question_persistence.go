@@ -2,6 +2,7 @@ package assessment
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
 	"github.com/aprxty3/your_persona_controller.git/internal/infrastructure/persistence/postgres"
@@ -31,7 +32,7 @@ func NewQuestionRepository(db *gorm.DB, log logger.Logger) *QuestionRepository {
 }
 
 func toQuestionEntity(model *postgres.QuestionModel) content.Question {
-	return content.Question{
+	q := content.Question{
 		ID:               model.ID,
 		Section:          content.QuestionSection(model.Section),
 		Type:             content.QuestionType(model.Type),
@@ -41,6 +42,15 @@ func toQuestionEntity(model *postgres.QuestionModel) content.Question {
 		Trait:            model.Trait,
 		OptionTraitMap:   model.OptionTraitMap,
 	}
+
+	if model.OptionTraitMap != nil {
+		var parsed map[string]map[string]float64
+		if err := json.Unmarshal([]byte(*model.OptionTraitMap), &parsed); err == nil {
+			q.ParsedOptionTraitMap = parsed
+		}
+	}
+
+	return q
 }
 
 func toQuestionTranslationEntity(model *postgres.QuestionTranslationModel) content.QuestionTranslation {

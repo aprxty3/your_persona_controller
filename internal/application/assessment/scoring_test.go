@@ -1,6 +1,7 @@
 package assessment
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/aprxty3/your_persona_controller.git/internal/domain/content"
@@ -29,10 +30,19 @@ func seedQuestionFixtures() map[string]content.Question {
 	sjtMap2 := `{"A":{"JP":1},"B":{"TF":1},"C":{"EI":1},"D":{"JP":-1},"E":{}}`
 	sjtMap3 := `{"A":{"TF":1,"EI":1},"B":{},"C":{"TF":-1},"D":{"JP":1},"E":{}}`
 
+	parsedMap1 := make(map[string]map[string]float64)
+	json.Unmarshal([]byte(sjtMap1), &parsedMap1)
+
+	parsedMap2 := make(map[string]map[string]float64)
+	json.Unmarshal([]byte(sjtMap2), &parsedMap2)
+
+	parsedMap3 := make(map[string]map[string]float64)
+	json.Unmarshal([]byte(sjtMap3), &parsedMap3)
+
 	return map[string]content.Question{
-		qSJT1:     {ID: qSJT1, Type: content.TypeMultipleChoice, OptionTraitMap: &sjtMap1},
-		qSJT2:     {ID: qSJT2, Type: content.TypeMultipleChoice, OptionTraitMap: &sjtMap2},
-		qSJT3:     {ID: qSJT3, Type: content.TypeMultipleChoice, OptionTraitMap: &sjtMap3},
+		qSJT1:     {ID: qSJT1, Type: content.TypeMultipleChoice, OptionTraitMap: &sjtMap1, ParsedOptionTraitMap: parsedMap1},
+		qSJT2:     {ID: qSJT2, Type: content.TypeMultipleChoice, OptionTraitMap: &sjtMap2, ParsedOptionTraitMap: parsedMap2},
+		qSJT3:     {ID: qSJT3, Type: content.TypeMultipleChoice, OptionTraitMap: &sjtMap3, ParsedOptionTraitMap: parsedMap3},
 		qLikertEI: {ID: qLikertEI, Type: content.TypeLikert, Trait: "EI"},
 		qLikertSN: {ID: qLikertSN, Type: content.TypeLikert, Trait: "SN"},
 		qLikertTF: {ID: qLikertTF, Type: content.TypeLikert, Trait: "TF"},

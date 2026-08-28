@@ -28,6 +28,7 @@ type Question struct {
 	IsReverseScored  bool
 	IsAttentionCheck bool
 	DisplayOrder     int
-	Trait            string  // scoring dimension a Likert item measures (EI/SN/TF/JP/GRIT); empty when the item isn't scored numerically
-	OptionTraitMap   *string // SJT only: JSON of per-option signed dimension points
+	Trait                string                            // scoring dimension a Likert item measures (EI/SN/TF/JP/GRIT); empty when the item isn't scored numerically
+	OptionTraitMap       *string                           // SJT only: JSON of per-option signed dimension points
+	ParsedOptionTraitMap map[string]map[string]float64 // SJT only: parsed version of OptionTraitMap to avoid repeated JSON parsing
 }

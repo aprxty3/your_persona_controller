@@ -1,0 +1,3 @@
+## 2026-08-28 - JSON Unmarshal optimization in scoring loop
+**Learning:** The scoring loop inside `ComputeScores` (`internal/application/assessment/scoring.go`) was calling `json.Unmarshal` on `q.OptionTraitMap` for every single SJT answer. Since the question entities are cached/reused in the scoring loop, repeated parsing of JSON strings was an unnecessary overhead.
+**Action:** Added `ParsedOptionTraitMap` to the `content.Question` entity and parsed it once in the PostgreSQL repository mapping function (`toQuestionEntity`), which allows the hot scoring loop to just access the in-memory map directly.
