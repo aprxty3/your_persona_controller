@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# qa-api — single QA entrypoint. Exit 0 = green, 1 = red.
+# Used by you, Claude, Antigravity, or CI. No need to memorize flags.
+set -uo pipefail
+BASE="${API_BASE:-http://localhost:8080}"
+SPEC="${API_SPEC:-$BASE/swagger/doc.json}"
+cd "$(dirname "$0")"
+
+if ! curl -sf -o /dev/null --max-time 3 "$SPEC"; then
+  echo "FAIL  service tidak bisa dihubungi di $SPEC"
+  echo "      hidupkan dulu: docker compose -f docker/docker-compose.dev.yml up -d"
+  exit 1
+fi
+
+exec python3 "$HOME/.claude/skills/api-testing/scripts/api_smoke.py" \
+  --spec "$SPEC" --base "$BASE" \
+  --triage tests/api/TRIAGE.txt --report qa-report.json "$@"

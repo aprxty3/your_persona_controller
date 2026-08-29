@@ -1,0 +1,15 @@
+# QA API triage ledger — your_persona_controller
+#
+# Format:  <IGNORE|BUG>  METHOD  path  explanation
+#   IGNORE = reviewed false positive; downgraded to green
+#   BUG    = real & still open; remains red but flagged
+#   no entry = NEW finding, requires attention
+#
+# Do not delete lines just to make results green. Fix the issue, or document the reason.
+
+BUG  GET  /v1/results/{id}             non-UUID id -> 500 + raw Postgres error leaked to client; should be 400. Found 2026-08-30.
+BUG  GET  /v1/results/{id}/pdf         same: non-UUID id -> 500, same root cause (UUID validation in handler)
+BUG  GET  /v1/results/{id}/pdf-status  same: non-UUID id -> 500, same root cause
+
+# Coverage notes: smoke only tests 9 out of 26 operations (GET only).
+# 15 POST + 2 PATCH not yet touched — need --write and valid payloads.
