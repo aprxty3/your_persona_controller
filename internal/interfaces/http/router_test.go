@@ -53,9 +53,11 @@ func TestParseAllowedOrigins_WildcardAmongOthers_Panics(t *testing.T) {
 	ParseAllowedOrigins("https://a.com,*")
 }
 
+const badRequestCode = "BAD_REQUEST"
+
 func TestErrorCodeForStatus_MapsFrameworkStatuses(t *testing.T) {
 	cases := map[int]string{
-		http.StatusBadRequest:            "BAD_REQUEST",
+		http.StatusBadRequest:            badRequestCode,
 		http.StatusUnauthorized:          "UNAUTHORIZED",
 		http.StatusForbidden:             "FORBIDDEN",
 		http.StatusNotFound:              "NOT_FOUND",
@@ -63,7 +65,7 @@ func TestErrorCodeForStatus_MapsFrameworkStatuses(t *testing.T) {
 		http.StatusRequestEntityTooLarge: "PAYLOAD_TOO_LARGE",
 		http.StatusTooManyRequests:       "RATE_LIMITED",
 		http.StatusBadGateway:            "INTERNAL_ERROR",
-		http.StatusTeapot:                "BAD_REQUEST",
+		http.StatusTeapot:                badRequestCode,
 	}
 	for status, want := range cases {
 		if got := errorCodeForStatus(status); got != want {
@@ -100,8 +102,8 @@ func TestHTTPErrorHandler_WritesEnvelope(t *testing.T) {
 	if body.Success {
 		t.Error("success: got true, want false")
 	}
-	if body.Error.Code != "BAD_REQUEST" {
-		t.Errorf("error.code: got %q, want BAD_REQUEST", body.Error.Code)
+	if body.Error.Code != badRequestCode {
+		t.Errorf("error.code: got %q, want %s", body.Error.Code, badRequestCode)
 	}
 	if body.Error.Message != "missing csrf token in request header" {
 		t.Errorf("error.message: got %q, want the original reason", body.Error.Message)

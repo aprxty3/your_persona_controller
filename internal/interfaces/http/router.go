@@ -3,6 +3,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -91,7 +92,8 @@ func installErrorHandler(e *echo.Echo, log logger.Logger) {
 			return
 		}
 		status, message := http.StatusInternalServerError, ""
-		if he, ok := err.(*echo.HTTPError); ok {
+		var he *echo.HTTPError
+		if errors.As(err, &he) {
 			status = he.Code
 			if m, ok := he.Message.(string); ok {
 				message = m
