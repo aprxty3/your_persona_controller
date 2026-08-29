@@ -148,8 +148,8 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             export CONTROLLER_API_IMAGE_TAG="$IMAGE_TAG"
-            docker compose -f docker/docker-compose.prod.yml --env-file .env pull
-            docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build --remove-orphans
+            docker compose -f docker/docker-compose.yml --env-file .env pull
+            docker compose -f docker/docker-compose.yml --env-file .env up -d --no-build --remove-orphans
             docker image prune -f
       - name: Smoke test
         if: env.VPS_SSH_KEY != ''
@@ -185,8 +185,8 @@ jobs:
             git fetch origin develop
             git reset --hard origin/develop
             export CONTROLLER_API_IMAGE_TAG="$IMAGE_TAG"
-            docker compose -f docker/docker-compose.staging.yml --env-file .env.staging pull
-            docker compose -f docker/docker-compose.staging.yml --env-file .env.staging up -d --no-build --remove-orphans
+            docker compose -f docker/docker-compose.yml --env-file .env.staging pull
+            docker compose -f docker/docker-compose.yml --env-file .env.staging up -d --no-build --remove-orphans
             docker image prune -f
       - name: Smoke test
         if: env.VPS_SSH_KEY != ''

@@ -21,7 +21,7 @@ GORM structs as the single source of truth. This folder replaced the old
 3. Review the generated SQL, then commit it.
 4. Apply:
    - **Local dev:** `make migrate`
-   - **Prod/staging:** `docker compose -f docker/docker-compose.prod.yml --env-file .env run --rm api ./migrate`
+   - **Prod/staging:** `docker compose -f docker/docker-compose.yml --env-file .env run --rm api ./migrate`
      (`./migrate` shells out to `atlas migrate apply` inside the container)
    - **Deploy:** migrations do NOT run automatically (by design) — run `./migrate`
      manually after a deploy whenever the release carries a schema change.

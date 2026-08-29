@@ -3,29 +3,38 @@ export
 
 .DEFAULT_GOAL := help
 
+# One compose file serves every environment; only the env file differs.
+# (dev and prod read the same filename — on different machines.)
+COMPOSE      := docker compose -f docker/docker-compose.yml
+COMPOSE_DEV  := $(COMPOSE) --env-file .env
+COMPOSE_PROD := $(COMPOSE) --env-file .env
+COMPOSE_STG  := $(COMPOSE) --env-file .env.staging
+SHARED_NET   := your-persona-shared
+
 .PHONY: help dev prod stop prune logs run-api run-worker migrate migrate-diff seed build clean wire swag test lint tidy \
 	prod-up prod-down prod-restart prod-redeploy prod-logs prod-ps prod-migrate prod-seed \
 	staging-up staging-down staging-restart staging-redeploy staging-logs staging-ps staging-migrate staging-seed \
 	restart-caddy
 
-dev: ## Start dev environment (Air hot-reload + Postgres/Redis/MinIO/Mailpit)
+dev: ## Start dev environment (Air hot-reload via compose watch + Postgres/Redis/Mailpit)
 	@echo "Starting development environment (Air Hot-Reload)..."
-	docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
+	@docker network inspect $(SHARED_NET) >/dev/null 2>&1 || docker network create $(SHARED_NET)
+	$(COMPOSE_DEV) watch
 
-prod: ## [LOCAL] Prod-like preview via docker-compose.yml — NOT the VPS deploy, no Caddy/TLS/shared network (see `make prod-*` targets below for that)
+prod: ## [LOCAL] Prod-like preview — builds the runtime image but keeps your dev .env; NOT the VPS deploy (see `make prod-*` for that)
 	@echo "Starting production-like preview environment (local only)..."
-	docker compose -f docker/docker-compose.yml up -d --build
+	BUILD_TARGET=runtime API_COMMAND=./api WORKER_COMMAND=./worker $(COMPOSE_DEV) up -d --build
 
 stop: ## Stop all Docker services
 	@echo "Stopping all services..."
-	docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml down
+	$(COMPOSE_DEV) down
 
 prune: ## Stop and remove all containers + volumes (WARNING: DB data lost)
 	@echo "Stopping and removing all containers and volumes..."
-	docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml down -v
+	$(COMPOSE_DEV) down -v
 
 logs: ## Tail Docker service logs (usage: make logs or make logs s=api)
-	docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml logs -f $(if $(s),$(s),)
+	$(COMPOSE_DEV) logs -f $(if $(s),$(s),)
 
 run-api: ## Run API server locally
 	go run ./cmd/api
@@ -80,14 +89,14 @@ tidy: ## Tidy go.mod and go.sum
 ## staging-* — not on a local dev machine) ---
 
 prod-up: ## [VPS] Pull latest image + (re)create prod containers
-	docker compose -f docker/docker-compose.prod.yml --env-file .env pull
-	docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build --remove-orphans
+	$(COMPOSE_PROD) pull
+	$(COMPOSE_PROD) up -d --no-build --remove-orphans
 
 prod-down: ## [VPS] Stop prod containers (keeps volumes/data)
-	docker compose -f docker/docker-compose.prod.yml --env-file .env down
+	$(COMPOSE_PROD) down
 
 prod-restart: ## [VPS] Restart prod containers without pulling a new image (usage: make prod-restart [s=caddy])
-	docker compose -f docker/docker-compose.prod.yml --env-file .env restart $(if $(s),$(s),)
+	$(COMPOSE_PROD) restart $(if $(s),$(s),)
 
 prod-redeploy: ## [VPS] Full redeploy: git reset to origin/main + pull image + recreate (DESTRUCTIVE git reset --hard — VPS only, never run this on a dev machine)
 	git fetch origin main
@@ -96,26 +105,26 @@ prod-redeploy: ## [VPS] Full redeploy: git reset to origin/main + pull image + r
 	docker image prune -f
 
 prod-logs: ## [VPS] Tail prod logs (usage: make prod-logs [s=api])
-	docker compose -f docker/docker-compose.prod.yml --env-file .env logs -f --tail=200 $(if $(s),$(s),)
+	$(COMPOSE_PROD) logs -f --tail=200 $(if $(s),$(s),)
 
 prod-ps: ## [VPS] Show prod container status
-	docker compose -f docker/docker-compose.prod.yml --env-file .env ps
+	$(COMPOSE_PROD) ps
 
 prod-migrate: ## [VPS] Apply pending Atlas migrations against prod DB
-	docker compose -f docker/docker-compose.prod.yml --env-file .env run --rm api ./migrate
+	$(COMPOSE_PROD) run --rm api ./migrate
 
 prod-seed: ## [VPS] Seed prod DB (idempotent — question bank + insight templates)
-	docker compose -f docker/docker-compose.prod.yml --env-file .env run --rm api ./seed
+	$(COMPOSE_PROD) run --rm api ./seed
 
 staging-up: ## [VPS] Pull latest image + (re)create staging containers
-	docker compose -f docker/docker-compose.staging.yml --env-file .env.staging pull
-	docker compose -f docker/docker-compose.staging.yml --env-file .env.staging up -d --no-build --remove-orphans
+	$(COMPOSE_STG) pull
+	$(COMPOSE_STG) up -d --no-build --remove-orphans
 
 staging-down: ## [VPS] Stop staging containers (keeps volumes/data)
-	docker compose -f docker/docker-compose.staging.yml --env-file .env.staging down
+	$(COMPOSE_STG) down
 
 staging-restart: ## [VPS] Restart staging containers without pulling a new image (usage: make staging-restart [s=api-staging])
-	docker compose -f docker/docker-compose.staging.yml --env-file .env.staging restart $(if $(s),$(s),)
+	$(COMPOSE_STG) restart $(if $(s),$(s),)
 
 staging-redeploy: ## [VPS] Full redeploy: git reset to origin/develop + pull image + recreate (DESTRUCTIVE git reset --hard — VPS only, never run this on a dev machine)
 	git fetch origin develop
@@ -124,19 +133,19 @@ staging-redeploy: ## [VPS] Full redeploy: git reset to origin/develop + pull ima
 	docker image prune -f
 
 staging-logs: ## [VPS] Tail staging logs (usage: make staging-logs [s=api-staging])
-	docker compose -f docker/docker-compose.staging.yml --env-file .env.staging logs -f --tail=200 $(if $(s),$(s),)
+	$(COMPOSE_STG) logs -f --tail=200 $(if $(s),$(s),)
 
 staging-ps: ## [VPS] Show staging container status
-	docker compose -f docker/docker-compose.staging.yml --env-file .env.staging ps
+	$(COMPOSE_STG) ps
 
 staging-migrate: ## [VPS] Apply pending Atlas migrations against staging DB
-	docker compose -f docker/docker-compose.staging.yml --env-file .env.staging run --rm api-staging ./migrate
+	$(COMPOSE_STG) run --rm api ./migrate
 
 staging-seed: ## [VPS] Seed staging DB (idempotent — question bank + insight templates)
-	docker compose -f docker/docker-compose.staging.yml --env-file .env.staging run --rm api-staging ./seed
+	$(COMPOSE_STG) run --rm api ./seed
 
-restart-caddy: ## [VPS] Restart the shared Caddy (fixes stuck ACME/TLS retry backoff — a recurring gotcha, see DEPLOYMENT-GUIDE.md) — run from the prod checkout dir, Caddy lives in docker-compose.prod.yml
-	docker compose -f docker/docker-compose.prod.yml --env-file .env restart caddy
+restart-caddy: ## [VPS] Restart the shared Caddy (fixes stuck ACME/TLS retry backoff — a recurring gotcha, see DEPLOYMENT-GUIDE.md) — run from the prod checkout dir, Caddy is the `edge` profile enabled by that .env
+	$(COMPOSE_PROD) restart caddy
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'

@@ -16,8 +16,20 @@ RUN go build -mod=readonly -ldflags="-s -w" -buildvcs=false -o /bin/worker ./cmd
 RUN go build -mod=readonly -ldflags="-s -w" -buildvcs=false -o /bin/migrate ./cmd/migrate
 RUN go build -mod=readonly -ldflags="-s -w" -buildvcs=false -o /bin/seed ./cmd/seed
 
+# --- Dev stage (hot reload; replaces the old docker/Dockerfile.dev) ---
+# Not a dependency of `runtime`, so BuildKit skips it entirely on CI builds.
+FROM golang:1.26-alpine AS dev
+WORKDIR /app
+RUN apk add --no-cache git
+RUN go install github.com/air-verse/air@latest
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+EXPOSE 8080
+CMD ["air"]
+
 # --- Runtime stage (minimal, does not include Go toolchain) ---
-FROM alpine:3.24
+FROM alpine:3.24 AS runtime
 RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 COPY --from=builder /bin/api /bin/worker /bin/migrate /bin/seed ./
