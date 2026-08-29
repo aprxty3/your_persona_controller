@@ -19,18 +19,62 @@
 # `shared` network's subnet instead (172.30.0.0/16) since that's the
 # network Caddy actually reaches api-staging over.
 
+# ---------------------------------------------------------------------------
+# Security headers — PRD §290 mandates these "di reverse proxy/CDN level" and
+# they had never actually been implemented (verified 2026-08-30: not one of
+# them was present on any of the four domains). Applied here rather than in
+# each app so one file covers both the Go API and the Next.js front-ends, and
+# so changing them needs no application rebuild.
+# ---------------------------------------------------------------------------
+(security_headers) {
+	header {
+		# HSTS is sticky — once a browser sees this it refuses plain HTTP for
+		# the domain for a year. Safe here: Caddy already redirects 80 -> 443.
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		# Next.js advertises itself; no reason to tell attackers the stack.
+		-X-Powered-By
+	}
+}
+
+# Front-end only. Report-Only ON PURPOSE for the first deploy: a wrong CSP
+# breaks the app silently, so let the browser console report violations for a
+# round of manual testing first, then rename the header to
+# `Content-Security-Policy` to start enforcing.
+#
+#   script-src keeps 'unsafe-inline' because Next.js App Router emits inline
+#   hydration scripts and there is no nonce middleware yet. That weakens the
+#   XSS defence but still blocks injected EXTERNAL scripts, form hijacking
+#   (form-action), framing (frame-ancestors) and <base> injection. Moving to
+#   nonces is the follow-up worth doing, given refresh_token lives in
+#   localStorage.
+(csp_frontend) {
+	header {
+		Content-Security-Policy-Report-Only "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://us-assets.i.posthog.com; connect-src 'self' https://us.i.posthog.com https://us-assets.i.posthog.com; frame-src https://challenges.cloudflare.com"
+	}
+}
+
 your-personas.duckdns.org {
+	import security_headers
 	reverse_proxy api:8080
 }
 
 your-personas-stg.duckdns.org {
+	import security_headers
 	reverse_proxy api-staging:8080
 }
 
 your-personas-app.duckdns.org {
+	import security_headers
+	import csp_frontend
 	reverse_proxy ui:3000
 }
 
 your-personas-app-stg.duckdns.org {
+	import security_headers
+	import csp_frontend
 	reverse_proxy ui-staging:3000
 }

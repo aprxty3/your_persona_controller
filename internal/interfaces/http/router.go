@@ -11,6 +11,7 @@ import (
 	_ "github.com/aprxty3/your_persona_controller.git/docs" // registers the generated swagger.json/yaml with echo-swagger
 	"github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/handler"
 	appmiddleware "github.com/aprxty3/your_persona_controller.git/internal/interfaces/http/middleware"
+	"github.com/aprxty3/your_persona_controller.git/pkg/httpresponse"
 	"github.com/aprxty3/your_persona_controller.git/pkg/logger"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -83,6 +84,61 @@ func ParseTrustedProxies(raw string) (echo.IPExtractor, error) {
 	return echo.ExtractIPFromXFFHeader(opts...), nil
 }
 
+func installErrorHandler(e *echo.Echo, log logger.Logger) {
+	accessLog := log.With("component", "http_error")
+	e.HTTPErrorHandler = func(err error, c echo.Context) {
+		if c.Response().Committed {
+			return
+		}
+		status, message := http.StatusInternalServerError, ""
+		if he, ok := err.(*echo.HTTPError); ok {
+			status = he.Code
+			if m, ok := he.Message.(string); ok {
+				message = m
+			}
+		}
+		if message == "" {
+			message = http.StatusText(status)
+		}
+		if status >= 500 {
+			// Never leak internals to the client; the access log keeps the detail.
+			message = "Internal server error"
+		}
+		if writeErr := httpresponse.Error(c, status, errorCodeForStatus(status), message); writeErr != nil {
+			accessLog.Error("failed to write error envelope", "error", writeErr)
+		}
+	}
+}
+
+// errorCodeForStatus maps a framework-level HTTP status onto the API contract's
+// error-code vocabulary, so a 404 from the router reads the same way to clients
+// as a 404 raised deliberately inside a handler.
+func errorCodeForStatus(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "BAD_REQUEST"
+	case http.StatusUnauthorized:
+		return "UNAUTHORIZED"
+	case http.StatusForbidden:
+		return "FORBIDDEN"
+	case http.StatusNotFound:
+		return "NOT_FOUND"
+	case http.StatusMethodNotAllowed:
+		return "METHOD_NOT_ALLOWED"
+	case http.StatusRequestEntityTooLarge:
+		return "PAYLOAD_TOO_LARGE"
+	case http.StatusUnsupportedMediaType:
+		return "UNSUPPORTED_MEDIA_TYPE"
+	case http.StatusTooManyRequests:
+		return "RATE_LIMITED"
+	default:
+		if status >= http.StatusInternalServerError {
+			return "INTERNAL_ERROR"
+		}
+		return "BAD_REQUEST"
+	}
+}
+
 // SetupRouter initializes the Echo instance, applies global middlewares,
 func SetupRouter(
 	assessmentHandler *handler.AssessmentHandler,
@@ -101,6 +157,14 @@ func SetupRouter(
 	e := echo.New()
 	e.IPExtractor = ipExtractor
 	accessLog := log.With("component", "http_access")
+
+	// Framework-level failures never reach a handler: CSRF rejection, 404, 405,
+	// 413 from BodyLimit, malformed JSON. Without this they escape as Echo's
+	// default {"message": "..."}, a shape the front-end's envelope parser cannot
+	// read — so every one of them surfaced to users as an opaque
+	// "Unexpected response (HTTP nnn)" with code INTERNAL_ERROR, hiding the real
+	// cause. Route them through the same envelope every handler already writes.
+	installErrorHandler(e, log)
 
 	// ---------------------------------------------------------
 	// GLOBAL MIDDLEWARE
@@ -168,7 +232,10 @@ func SetupRouter(
 	// POST/PATCH; Skipper narrows actual *enforcement* to csrfProtectedPaths.
 	// Safe methods (GET/HEAD/OPTIONS/TRACE) are exempted by Echo itself.
 	e.Use(middleware.CSRFWithConfig(middleware.CSRFConfig{ // #nosec G101 -- "csrf_token"/"X-CSRF-Token" are cookie/header names, not credential values
-		TokenLookup:    "header:X-CSRF-Token",
+		TokenLookup: "header:X-CSRF-Token",
+		ErrorHandler: func(err error, c echo.Context) error {
+			return httpresponse.Error(c, http.StatusForbidden, "CSRF_TOKEN_INVALID", err.Error())
+		},
 		CookieName:     "csrf_token",
 		CookiePath:     "/",
 		CookieHTTPOnly: false,
