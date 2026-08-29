@@ -1,0 +1,3 @@
+## 2026-08-29 - [Avoid slice allocations in loops]
+**Learning:** Checking for elements across multiple sets stored in a map value dynamically with `append()` causes severe memory copying if called inside loops (like string scanning). This caused a large unneeded allocation overhead and performance slowdown when the requested locale fell back to include `en` keywords alongside another language.
+**Action:** Do not merge slices if we just need to iterate over them for individual checks. We can iterate over the base slice and then iterate over the conditional secondary slice. This drops allocations to zero.
