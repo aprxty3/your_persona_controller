@@ -4,39 +4,55 @@ networks:
   default:
     ipam:
       config:
-        - subnet: 172.29.0.0/16
+        - subnet: ${STAGING_SUBNET:-172.29.0.0/16}
   shared:
     external: true
-    name: your-persona-shared
+    name: ${SHARED_NETWORK_NAME:-your-persona-shared}
 
 services:
   api-staging:
     image: ghcr.io/aprxty3/your_persona_controller:${CONTROLLER_API_IMAGE_TAG:-develop}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      network: host
     command: ["./api"]
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
     networks:
       - default
       - shared
     env_file:
       - ../.env.staging
     environment:
-      - DB_HOST=postgres-staging
-      - REDIS_HOST=redis-staging
-      - SMTP_HOST=mailpit-staging
+      - DB_HOST=${DB_HOST:-postgres-staging}
+      - DB_PORT=${DB_PORT:-5432}
+      - REDIS_HOST=${REDIS_HOST:-redis-staging}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - SMTP_HOST=${SMTP_HOST:-mailpit-staging}
     depends_on:
       - postgres-staging
       - redis-staging
 
   worker-staging:
     image: ghcr.io/aprxty3/your_persona_controller:${CONTROLLER_API_IMAGE_TAG:-develop}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      network: host
     command: ["./worker"]
     restart: unless-stopped
+    networks:
+      - default
     env_file:
       - ../.env.staging
     environment:
-      - DB_HOST=postgres-staging
-      - REDIS_HOST=redis-staging
-      - SMTP_HOST=mailpit-staging
+      - DB_HOST=${DB_HOST:-postgres-staging}
+      - DB_PORT=${DB_PORT:-5432}
+      - REDIS_HOST=${REDIS_HOST:-redis-staging}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - SMTP_HOST=${SMTP_HOST:-mailpit-staging}
     depends_on:
       - postgres-staging
       - redis-staging
@@ -47,22 +63,26 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: ${DB_NAME:-your_persona_db}
     volumes:
       - postgres_staging_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
 
   redis-staging:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-}"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
 
   mailpit-staging:
     image: axllent/mailpit
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8026:8025" # web UI — access via SSH tunnel, not public
+      - "127.0.0.1:${MAILPIT_WEB_PORT:-8026}:8025" # web UI — access via SSH tunnel, not public
 
 volumes:
   postgres_staging_data:

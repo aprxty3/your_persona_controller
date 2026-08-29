@@ -3,6 +3,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.dev
+      network: host
     command: ["air", "-c", ".air.toml"]
     volumes:
       - ..:/app
@@ -11,6 +12,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.dev
+      network: host
     command: ["air", "-c", ".air.worker.toml"]
     volumes:
       - ..:/app
