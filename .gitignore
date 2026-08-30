@@ -61,7 +61,6 @@ GEMINI.md
 TECHNICAL_DOCUMENTATION.md
 
 # AI agent skills — internal workflow docs, machine-specific (same class as AGENTS.md)
-# .agents/ = permukaan yang sama untuk Antigravity (rules always-on + symlink skill).
 .claude/
 .agents/
 
