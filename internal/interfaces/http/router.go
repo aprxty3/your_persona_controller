@@ -237,7 +237,8 @@ func SetupRouter(
 		TokenLookup: "header:X-CSRF-Token",
 		ErrorHandler: func(err error, c echo.Context) error {
 			reason := "Invalid or missing CSRF token"
-			if he, ok := err.(*echo.HTTPError); ok {
+			var he *echo.HTTPError
+			if errors.As(err, &he) {
 				if m, ok := he.Message.(string); ok && m != "" {
 					reason = m
 				}
