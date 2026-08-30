@@ -40,7 +40,7 @@ createdb -h localhost -U postgres restore_drill_test
 psql -h localhost -U postgres -d restore_drill_test -f restore-drill.sql
 ```
 
-If your local Postgres is the one from `docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up`, connect via the exposed `localhost:5432` port with the `DB_USER`/`DB_PASSWORD` from `.env`.
+If your local Postgres is the one from `docker compose -f docker/docker-compose.yml up`, connect via the exposed `localhost:5432` port with the `DB_USER`/`DB_PASSWORD` from `.env`.
 
 ## 4. Verify the restore actually worked
 

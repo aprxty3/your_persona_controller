@@ -58,7 +58,7 @@ controller-api/
 │   ├── infrastructure/      # Postgres, Redis, R2, Gemini, SMTP, i18n adapters
 │   └── interfaces/          # HTTP handlers (Echo) + Worker handlers (Asynq)
 ├── pkg/                     # Shared utilities (httpresponse, locale, taskqueue, aivalidator)
-├── docker/                  # Dockerfile, Dockerfile.dev, compose files, Caddyfile
+├── docker/                  # Dockerfile (multi-stage: dev + runtime), one compose file, Caddyfile
 ├── scripts/                 # Ops scripts (DB backup to S3/R2)
 ├── .github/workflows/       # CI/CD pipeline (7 jobs)
 └── Makefile                 # Build and development task runner

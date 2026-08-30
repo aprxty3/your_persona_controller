@@ -19,7 +19,7 @@ These are external/manual — nothing here is code, and none of it can be verifi
 3. **Production SMTP** — `mail.digitalsekuriti.id` (owner's own mail server; the earlier Brevo plan was dropped 2026-07-24, see `psyche-assessment-docs/MEMORY.md`). Obtain `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASSWORD` and make sure the sending domain's SPF/DKIM records are in place.
 4. **Cloudflare Turnstile**: create a site key + secret for `your-personas.duckdns.org` (or the FE domain, per Turnstile's widget setup) in the Cloudflare dashboard. This is `TURNSTILE_SECRET_KEY`.
 5. Have SSH access to a fresh VM with Docker + Docker Compose v2 installed.
-6. **GHCR pull access on the VM** — `docker/docker-compose.prod.yml`'s `api`/`worker` services pull `ghcr.io/aprxty3/your_persona_controller` (built and pushed by the `build` job in `.github/workflows/ci.yml` on every push to `main`/`develop`). That package is private by default, so the VM needs its own one-time login — this is a VM-local Docker credential, not a GitHub Actions secret:
+6. **GHCR pull access on the VM** — `docker/docker-compose.yml`'s `api`/`worker` services pull `ghcr.io/aprxty3/your_persona_controller` (built and pushed by the `build` job in `.github/workflows/ci.yml` on every push to `main`/`develop`). That package is private by default, so the VM needs its own one-time login — this is a VM-local Docker credential, not a GitHub Actions secret:
    ```sh
    # On the VM, once. Use a GitHub PAT (classic or fine-grained) scoped to read:packages only.
    echo "<PAT>" | docker login ghcr.io -u <your-github-username> --password-stdin
@@ -52,20 +52,20 @@ cp .env.example .env
 # Prerequisites #6 for the one-time `docker login ghcr.io` this needs) — this
 # is the same artifact that passed lint/test/integration/security, not a fresh
 # rebuild from whatever happens to be in the working tree on this VM.
-docker compose -f docker/docker-compose.prod.yml --env-file .env pull
-docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build
+docker compose -f docker/docker-compose.yml --env-file .env pull
+docker compose -f docker/docker-compose.yml --env-file .env up -d --no-build
 
 # No image reachable yet (first push to main hasn't run, or GHCR unreachable)?
 # Fall back to building locally instead:
-#   docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --build
+#   docker compose -f docker/docker-compose.yml --env-file .env up -d --build
 ```
 
 ```sh
 # Run the migration MANUALLY — never auto-run at container boot
-docker compose -f docker/docker-compose.prod.yml run --rm api ./migrate
+docker compose -f docker/docker-compose.yml run --rm api ./migrate
 
 # Seed the question bank + insight templates (idempotent, safe to re-run)
-docker compose -f docker/docker-compose.prod.yml run --rm api ./seed
+docker compose -f docker/docker-compose.yml run --rm api ./seed
 ```
 
 ```sh
@@ -95,7 +95,7 @@ aws s3 ls "s3://${S3_BUCKET}/backups/daily/" --endpoint-url "$S3_ENDPOINT"
 # → the .sql.gz this manual run just produced should be listed
 ```
 
-Postgres is bound to `127.0.0.1:5432` in `docker-compose.prod.yml` specifically so this host-run script can reach it via `DB_HOST=localhost` (same as dev) — it is not reachable from outside the VM.
+Postgres is bound to `127.0.0.1:5432` in `docker/docker-compose.yml` (production env file) specifically so this host-run script can reach it via `DB_HOST=localhost` (same as dev) — it is not reachable from outside the VM.
 
 ## 3. Verify trusted-proxy IP extraction actually works
 
@@ -104,7 +104,7 @@ Postgres is bound to `127.0.0.1:5432` in `docker-compose.prod.yml` specifically 
 # hit an endpoint that's rate-limited and check the app logs —
 # each network should get its own rate-limit bucket, not share one.
 curl -X POST https://your-personas.duckdns.org/v1/guest-session -d '{...}'
-docker compose -f docker/docker-compose.prod.yml logs api | grep "rate_limited\|guest session created"
+docker compose -f docker/docker-compose.yml logs api | grep "rate_limited\|guest session created"
 ```
 
 If both networks appear to share the same bucket (11th request from network #2 also gets `429` after only a handful of combined requests), `TRUSTED_PROXIES` doesn't match Caddy's actual container IP/subnet — re-check with `docker network inspect`.
@@ -113,7 +113,7 @@ If both networks appear to share the same bucket (11th request from network #2 a
 
 ```sh
 # Trigger a redeploy (step 5) while a PDF generation job is in flight, then:
-docker compose -f docker/docker-compose.prod.yml logs worker | tail -20
+docker compose -f docker/docker-compose.yml logs worker | tail -20
 # → should show "interrupt signal received, shutting down ... gracefully" followed
 #   by the in-flight job completing, NOT an abrupt kill mid-job.
 ```
@@ -145,17 +145,17 @@ Equivalent raw commands, if you'd rather not use `make` (e.g. debugging what a t
 ```sh
 cd /opt/your-persona/controller-api
 git fetch origin main && git reset --hard origin/main
-docker compose -f docker/docker-compose.prod.yml --env-file .env pull
-docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build --remove-orphans
+docker compose -f docker/docker-compose.yml --env-file .env pull
+docker compose -f docker/docker-compose.yml --env-file .env up -d --no-build --remove-orphans
 # If this release includes a migration:
-docker compose -f docker/docker-compose.prod.yml run --rm api ./migrate
+docker compose -f docker/docker-compose.yml run --rm api ./migrate
 ```
 
-Same commands apply to staging from `/opt/your-persona/controller-api-staging`, substituting `make staging-redeploy` / `make staging-migrate` (or the raw `docker-compose.staging.yml --env-file .env.staging` equivalents, tracking `origin/develop`).
+Same commands apply to staging from `/opt/your-persona/controller-api-staging`, substituting `make staging-redeploy` / `make staging-migrate` (or the raw `docker/docker-compose.yml --env-file .env.staging` equivalents, tracking `origin/develop`).
 
 `docker compose up -d` recreates changed containers one at a time; `api`/`worker` both handle `SIGTERM` gracefully (`SHUTDOWN_TIMEOUT` in `.env`, default 30s) — in-flight HTTP requests and Asynq jobs finish before the old container exits, not before the new one is ready to receive traffic. No separate "drain" step needed.
 
-**Migrations are never run by the automated `deploy` job** — same rule as container boot (see Prerequisites note above): run `docker compose -f docker/docker-compose.prod.yml run --rm api ./migrate` by hand, right after a release you know includes one. This is a deliberate gap, not an oversight — an auto-run migration on every deploy is how you get a schema change applied at 3am with nobody watching if a release goes out unexpectedly.
+**Migrations are never run by the automated `deploy` job** — same rule as container boot (see Prerequisites note above): run `docker compose -f docker/docker-compose.yml run --rm api ./migrate` by hand, right after a release you know includes one. This is a deliberate gap, not an oversight — an auto-run migration on every deploy is how you get a schema change applied at 3am with nobody watching if a release goes out unexpectedly.
 
 ## 6. Rollback
 
@@ -164,8 +164,8 @@ Same commands apply to staging from `/opt/your-persona/controller-api-staging`, 
 ```sh
 cd /opt/your-persona/controller-api
 export CONTROLLER_API_IMAGE_TAG=sha-<short-sha-of-last-known-good-commit>
-docker compose -f docker/docker-compose.prod.yml --env-file .env pull
-docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --no-build
+docker compose -f docker/docker-compose.yml --env-file .env pull
+docker compose -f docker/docker-compose.yml --env-file .env up -d --no-build
 ```
 
 This is deliberately a one-off shell `export`, not something written into `.env` — the next automated `deploy` run doesn't set `CONTROLLER_API_IMAGE_TAG` itself (it exports it fresh per SSH session), so it will happily overwrite this rollback with `main`'s latest `sha-` tag on the next push. If you need the rollback to *stick* until you're ready to re-deploy, pause the `deploy` workflow (Actions tab → disable) or add `CONTROLLER_API_IMAGE_TAG=sha-<...>` to `.env` itself — remember to remove it once you're ready to resume normal deploys, or every future deploy will silently redeploy that pinned old version.
@@ -176,7 +176,7 @@ This is deliberately a one-off shell `export`, not something written into `.env`
 cd /opt/your-persona/controller-api
 git log --oneline -5           # find the last known-good commit
 git checkout <commit-sha>
-docker compose -f docker/docker-compose.prod.yml --env-file .env up -d --build
+docker compose -f docker/docker-compose.yml --env-file .env up -d --build
 ```
 
 If the bad release included a migration that's hard to reverse (dropped/renamed a column), rolling back code without also rolling back schema will break — check `cmd/migrate`'s migration list before rolling back across a migration boundary. There is no automated down-migration in this codebase — a schema rollback is a manual `ALTER TABLE`, not a tool command.

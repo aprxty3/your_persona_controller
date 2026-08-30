@@ -61,3 +61,6 @@ TECHNICAL_DOCUMENTATION.md
 
 # AI agent skills — internal workflow docs, machine-specific (same class as AGENTS.md)
 .claude/
+
+# QA smoke test output (regenerated tiap run, jangan di-commit)
+qa-report.json
