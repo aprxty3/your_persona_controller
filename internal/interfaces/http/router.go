@@ -236,7 +236,13 @@ func SetupRouter(
 	e.Use(middleware.CSRFWithConfig(middleware.CSRFConfig{ // #nosec G101 -- "csrf_token"/"X-CSRF-Token" are cookie/header names, not credential values
 		TokenLookup: "header:X-CSRF-Token",
 		ErrorHandler: func(err error, c echo.Context) error {
-			return httpresponse.Error(c, http.StatusForbidden, "CSRF_TOKEN_INVALID", err.Error())
+			reason := "Invalid or missing CSRF token"
+			if he, ok := err.(*echo.HTTPError); ok {
+				if m, ok := he.Message.(string); ok && m != "" {
+					reason = m
+				}
+			}
+			return httpresponse.Error(c, http.StatusForbidden, "CSRF_TOKEN_INVALID", reason)
 		},
 		CookieName:     "csrf_token",
 		CookiePath:     "/",

@@ -59,7 +59,13 @@
 
 your-personas.duckdns.org {
 	import security_headers
-	reverse_proxy api:8080
+	# api-prod, NOT api: Compose adds the service name as an alias on EVERY
+	# network a service joins, the external `shared` one included. Since every
+	# environment now runs a service literally named `api`, the bare name is
+	# claimed by all of them on `shared` — verified 2026-08-30: resolving `api`
+	# from a container attached only to `shared` returns the STAGING container.
+	# Addressing the per-environment API_ALIAS keeps that ambiguity unreachable.
+	reverse_proxy api-prod:8080
 }
 
 your-personas-stg.duckdns.org {
