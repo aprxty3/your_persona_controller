@@ -1,3 +1,8 @@
+---
+type: note
+title: Restore Drill — Database Backup Recovery
+---
+
 # Restore Drill — Database Backup Recovery
 
 > "A backup that's never been restore-tested is not a backup you can rely on." — PRD Section 7

@@ -1,3 +1,8 @@
+---
+type: note
+title: Deploy Runbook — Production (`your-personas.duckdns.org`)
+---
+
 # Deploy Runbook — Production (`your-personas.duckdns.org`)
 
 This is a runbook, not an essay — follow it top to bottom for a fresh deploy. A second person should be able to run this from nothing but this file and a fresh VM, without asking questions.

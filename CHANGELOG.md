@@ -1,3 +1,8 @@
+---
+type: note
+title: CHANGELOG — controller-api
+---
+
 # CHANGELOG — controller-api
 
 Format: [Semantic Versioning](https://semver.org/) — **[UNRELEASED]** means not yet tagged/released.
