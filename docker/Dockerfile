@@ -1,5 +1,5 @@
 # --- Build stage ---
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
 ENV CGO_ENABLED=0 \
@@ -18,7 +18,7 @@ RUN go build -mod=readonly -ldflags="-s -w" -buildvcs=false -o /bin/seed ./cmd/s
 
 # --- Dev stage (hot reload; replaces the old docker/Dockerfile.dev) ---
 # Not a dependency of `runtime`, so BuildKit skips it entirely on CI builds.
-FROM golang:1.26-alpine AS dev
+FROM golang:1.27-alpine AS dev
 WORKDIR /app
 RUN apk add --no-cache git
 RUN go install github.com/air-verse/air@latest
